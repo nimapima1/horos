@@ -300,7 +300,12 @@ button { font: inherit; color: inherit; }
   .notice { padding: 9px 12px; font-size: 13px; line-height: 1.4; }
   /* Kontrollerna nedtill till höger: överst skulle sökrutan och notisen täcka dem. */
   .maplibregl-ctrl-top-right { top: auto; bottom: 36px; }
-  .legend { display: none; }
+  /* Teckenförklaringen (med Färga efter) nedtill när panelen är stängd. */
+  .legend { left: 10px; right: auto; bottom: 28px; width: calc(100vw - 190px); max-width: 220px; padding: 9px 11px; }   /* kontrollerna står till höger */
+  .legend-title { display: grid; gap: 4px; font-size: 13px; }
+  .legend-scale { grid-template-columns: 1fr; gap: 3px; }
+  .legend .counts { display: none; }
+  body:has(#panel:not([hidden])) .legend, body:has(.filters[open]) .legend { display: none; }
 }
 
 /* --- Textsidor (metod.html) ---------------------------------------------------- */
