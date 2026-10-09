@@ -76,6 +76,8 @@ test('affärer räknar en paketaffär en gång', async () => {
   assert.deepEqual(a.summa, { antal: 1, kr: 300000000 });
   assert.equal(a.senaste[0].antal, 2);
   assert.equal(a.kopare[0].namn, 'Alfa AB');
+  assert.deepEqual(a.perKommun, [{ kommun: 'Testkommun', antal: 1, kr: 300000000 }]);
+  assert.deepEqual((await json('/api/affarer?kommun=Testkommun')).perKommun, []);   // bara utan vald kommun
   assert.deepEqual((await json('/api/affarer?ar=2020')).summa, { antal: 1, kr: 20000000 });
   assert.deepEqual((await json('/api/affarer?min=100')).arLista, ['2024']);   // köpet 2020 är under 100 Mkr
 });

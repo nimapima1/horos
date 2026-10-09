@@ -695,6 +695,10 @@ async function openAffarer(p = {}) {
     <h3>Per användning ${a.ar}</h3>
     ${table('<th>Användning</th><th class="num">Affärer</th><th class="num">Volym</th>', kat.map(([k, v]) =>
       `<tr><td>${esc(k)}${bar(v.kr / (a.summa.kr || 1))}</td><td class="num">${n(v.antal)}</td><td class="num">${mkr(v.kr / 1000)}</td></tr>`), '')}
+    ${a.perKommun.length > 1 ? `<h3>Per kommun ${a.ar}</h3>
+    ${table('<th>Kommun</th><th class="num">Affärer</th><th class="num">Volym</th>', a.perKommun.map((k) =>
+      `<tr><td>${esc(k.kommun ?? 'Okänd')}${bar(k.kr / (a.perKommun[0].kr || 1))}</td>
+        <td class="num">${n(k.antal)}</td><td class="num">${mkr(k.kr / 1000)}</td></tr>`), '')}` : ''}
     <h3>Största köparna ${a.ar}</h3>
     ${table('<th>Köpare</th><th class="num">Affärer</th><th class="num">Volym</th>', a.kopare.map((k) =>
       `<tr><td>${bolagLink(k.orgnr, k.namn, k.demo)}${bar(k.kr / (a.kopare[0].kr || 1))}</td>

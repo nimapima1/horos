@@ -313,6 +313,9 @@ const qa = {
   storsta: db.prepare(`${AFFAR} ${AFFAR_RAD} WHERE substr(a.dag, 1, 4) = ? ORDER BY a.kr DESC LIMIT 5`),
   perTyp: db.prepare(`${AFFAR} SELECT ${SENASTE_TYP} AS typ, count(*) AS antal, sum(a.kr) AS kr
     FROM affar a JOIN fastighet f ON f.beteckning = a.beteckning WHERE substr(a.dag, 1, 4) = ? GROUP BY 1`),
+  perKommun: db.prepare(`${AFFAR} SELECT f.kommun, count(*) AS antal, sum(a.kr) AS kr
+    FROM affar a JOIN fastighet f ON f.beteckning = a.beteckning WHERE substr(a.dag, 1, 4) = ?
+    GROUP BY f.kommun ORDER BY kr DESC LIMIT 15`),
   kopare: db.prepare(`${AFFAR} SELECT a.orgnr, b.namn, max(a.demo) AS demo, count(*) AS antal, sum(a.kr) AS kr
     FROM affar a LEFT JOIN bolag b ON b.orgnr = a.orgnr WHERE substr(a.dag, 1, 4) = ? AND a.orgnr IS NOT NULL
     GROUP BY a.orgnr ORDER BY kr DESC LIMIT 10`),
@@ -353,6 +356,7 @@ function affarer(url) {
       storsta: ar ? qa.storsta.all(...p, ar) : [],
       perTyp: ar ? qa.perTyp.all(...p, ar) : [],
       kopare: ar ? qa.kopare.all(...p, ar) : [],
+      perKommun: ar && !kommun ? qa.perKommun.all(...p, ar) : [],
     };
   });
 }
