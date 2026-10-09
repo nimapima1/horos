@@ -21,9 +21,7 @@ const harStartLage = startLage.length === 3 && startLage.every(Number.isFinite);
 
 const map = new maplibregl.Map({
   container: 'map',
-  style: matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'https://tiles.openfreemap.org/styles/dark'
-    : 'https://tiles.openfreemap.org/styles/positron',
+  style: 'https://tiles.openfreemap.org/styles/dark',   // alltid mörk karta, även i ljust läge
   center: harStartLage ? [startLage[2], startLage[1]] : [18.064, 59.334],
   zoom: harStartLage ? startLage[0] : 15,
   attributionControl: { compact: true },
@@ -202,7 +200,7 @@ const fastighetPaint = (satellit) => (satellit
   }
   : {
     'fill-opacity': ['case', SEL, 0.85, HOVER, 0.75, 0.6],
-    'line-color': ['case', ['any', SEL, HOVER], css('--text'), css('--surface-solid')],
+    'line-color': ['case', ['any', SEL, HOVER], css('--map-text'), css('--map-kant')],
     'line-width': ['case', SEL, 2.5, HOVER, 1.5, 0.6],
     'line-opacity': 1,
   });
@@ -230,13 +228,13 @@ map.on('load', () => {
   // Prickar vid låg zoom, klustrade (se loadVisible).
   map.addSource('punkter', { type: 'geojson', data: EMPTY, cluster: true, clusterMaxZoom: 13, clusterRadius: 44 });
   map.addLayer({ id: 'punkt-kluster', type: 'circle', source: 'punkter', filter: ['has', 'point_count'],
-    paint: { 'circle-color': css('--accent'), 'circle-opacity': 0.85, 'circle-stroke-width': 2, 'circle-stroke-color': css('--surface-solid'),
+    paint: { 'circle-color': css('--c1'), 'circle-opacity': 0.85, 'circle-stroke-width': 2, 'circle-stroke-color': css('--map-kant'),
       'circle-radius': ['step', ['get', 'point_count'], 13, 20, 17, 100, 22, 1000, 28] } });
   map.addLayer({ id: 'punkt-antal', type: 'symbol', source: 'punkter', filter: ['has', 'point_count'],
     layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Regular'], 'text-size': 12 },
-    paint: { 'text-color': css('--surface-solid') } });
+    paint: { 'text-color': css('--map-kant') } });
   map.addLayer({ id: 'punkt', type: 'circle', source: 'punkter', filter: ['!', ['has', 'point_count']],
-    paint: { 'circle-color': valueColor(), 'circle-radius': 6, 'circle-stroke-width': 1.5, 'circle-stroke-color': css('--surface-solid') } });
+    paint: { 'circle-color': valueColor(), 'circle-radius': 6, 'circle-stroke-width': 1.5, 'circle-stroke-color': css('--map-kant') } });
   map.on('click', 'punkt-kluster', async (e) => {
     const f = e.features[0];
     const zoom = await map.getSource('punkter').getClusterExpansionZoom(f.properties.cluster_id);

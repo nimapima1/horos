@@ -31,11 +31,14 @@
   --warn-text: #78350F;
   --shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 10px 30px rgb(15 23 42 / 0.12);
 
-  /* Taxeringsvärde: ljus till mörk = lågt till högt */
-  --v0: #CBD5E1; --v1: #BAE6FD; --v2: #38BDF8; --v3: #0284C7; --v4: #075985;
-  --plan: #C026D3;     /* plangränser: skiljer sig från de blå värdefärgerna */
+  /* Kartfärger, alltid för den mörka kartan (även i ljust läge).
+     Taxeringsvärde: mörk till ljus = lågt till högt. */
+  --v0: #475569; --v1: #0C4A6E; --v2: #0369A1; --v3: #0EA5E9; --v4: #7DD3FC;
+  --plan: #F0ABFC;     /* plangränser: skiljer sig från de blå värdefärgerna */
   /* Kategorier (användning, ägartyp) */
-  --c1: #0369A1; --c2: #EA580C; --c3: #059669; --c4: #CA8A04; --c5: #7C3AED; --c6: #E11D48;
+  --c1: #38BDF8; --c2: #FB923C; --c3: #34D399; --c4: #FACC15; --c5: #A78BFA; --c6: #FB7185;
+  --map-kant: #0F172A;   /* fastighetsgränser och prickarnas kant */
+  --map-text: #E2E8F0;   /* markerad gräns och text i kluster */
 
   --radius: 14px;
   --radius-sm: 9px;
@@ -59,10 +62,6 @@
     --warn-bg: rgb(251 191 36 / 0.14);
     --warn-text: #FCD34D;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.45);
-    /* Mot mörk karta: mörk till ljus = lågt till högt */
-    --v0: #475569; --v1: #0C4A6E; --v2: #0369A1; --v3: #0EA5E9; --v4: #7DD3FC;
-    --plan: #F0ABFC;
-    --c1: #38BDF8; --c2: #FB923C; --c3: #34D399; --c4: #FACC15; --c5: #A78BFA; --c6: #FB7185;
     color-scheme: dark;
   }
 }
