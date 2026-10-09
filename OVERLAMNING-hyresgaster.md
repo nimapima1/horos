@@ -7,9 +7,9 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
 ## Läget
 
 - Allt från 2026-10-09 är committat på `master`. Publicerat (http://37.27.152.172) till och med commit
-  d7585fa; rättningarna efter granskningen (2639294) är **inte publicerade** än. Den publika databasen
+  d7585fa; rättningarna efter granskningarna (2639294 och aaa718c) är **inte publicerade** än. Den publika databasen
   har fortfarande 0 fastigheter.
-- `npm test` ska ge 12 gröna tester, varav 9 i `test/server.test.mjs`. De startar servern mot en
+- `npm test` ska ge 13 gröna tester, varav 10 i `test/server.test.mjs`. De startar servern mot en
   liten testdatabas i `data/_test/`. Följ samma mönster för nya API:er.
 - Lokal server för att prova i webbläsarpanelen: `preview_start {name: "horos-3005"}`
   (`.claude/launch.json`), med exempeldata i `data/fastighetskarta.sqlite`.
