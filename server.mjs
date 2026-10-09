@@ -308,12 +308,15 @@ const qa = {
 };
 const AFFAR_MIN = [0, 10, 40, 100];   // Mkr; fasta val så att cachen inte kan växa obegränsat
 const STORST_EFTER = { antal: 'antal', areal: 'areal_m2', varde: 'varde_tkr' };
-const storstaAgare = Object.fromEntries(Object.entries(STORST_EFTER).map(([k, col]) => [k, db.prepare(`
+// [kommun|bbox][efter]: med bbox avgränsas urvalet till kartutsnittet i stället för kommunen.
+const storstaSql = (bbox, col) => db.prepare(`
   SELECT a.orgnr, b.namn, b.jurform, max(b.demo) AS demo, count(*) AS antal,
     sum(f.areal_m2) AS areal_m2, sum(${SENASTE_VARDE}) AS varde_tkr
   FROM agande a JOIN fastighet f ON f.beteckning = a.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr
-  WHERE (? IS NULL OR f.kommun = ?) AND (? IS NULL OR ${harTyp('f')})
-  GROUP BY a.orgnr ORDER BY ${col} DESC NULLS LAST LIMIT 25`)]));
+  WHERE ${bbox ? overlapar('fastighet', 'f') : '(? IS NULL OR f.kommun = ?)'} AND (? IS NULL OR ${harTyp('f')})
+  GROUP BY a.orgnr ORDER BY ${col} DESC NULLS LAST LIMIT 25`);
+const storstaAgare = Object.fromEntries([false, true].map((bbox) => [bbox ? 'bbox' : 'kommun',
+  Object.fromEntries(Object.entries(STORST_EFTER).map(([k, col]) => [k, storstaSql(bbox, col)]))]));
 
 // I publikt läge ändras databasen inte: svaren cachas (nycklarna är begränsade av valideringen).
 const cache = new Map();
@@ -346,8 +349,13 @@ function storsta(url) {
   const kommun = oneOf(url.searchParams.get('kommun'), KOMMUNER);
   const anv = oneOf(url.searchParams.get('anv'), TYPER);
   const efter = STORST_EFTER[url.searchParams.get('efter')] ? url.searchParams.get('efter') : 'antal';
+  const bbox = (url.searchParams.get('bbox') ?? '').split(',').map(Number);
+  if (bbox.length === 4 && !bbox.some(Number.isNaN)) {   // kartutsnittet: cachas inte (godtyckliga nycklar)
+    const [minx, miny, maxx, maxy] = bbox;
+    return { kommun: null, utsnitt: true, anv, efter, agare: storstaAgare.bbox[efter].all(minx, maxx, miny, maxy, anv, anv) };
+  }
   return cached(`storsta|${kommun}|${anv}|${efter}`, () => ({
-    kommun, anv, efter, agare: storstaAgare[efter].all(kommun, kommun, anv, anv),
+    kommun, anv, efter, agare: storstaAgare.kommun[efter].all(kommun, kommun, anv, anv),
   }));
 }
 

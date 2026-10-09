@@ -235,11 +235,22 @@ map.on('load', () => {
     hovered = id;
     if (hovered) map.setFeatureState({ source: 'fastigheter', id: hovered }, { hover: true });
   };
+  // Snabbinfo vid hovring (bara med mus): beteckning, ägare, värde och det kartan färgas efter.
+  const tip = matchMedia('(hover: hover)').matches
+    && new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'tip', offset: 12, maxWidth: '260px' });
   map.on('mousemove', 'fastighet-fill', (e) => {
     map.getCanvas().style.cursor = 'pointer';
-    if (e.features[0].id !== hovered) setHover(e.features[0].id);
+    const p = e.features[0].properties;
+    if (e.features[0].id !== hovered) {
+      setHover(e.features[0].id);
+      const extra = { anv: p.typ, agartyp: p.agartyp, kopar: p.kop_ar ? `Senast köpt ${p.kop_ar}` : 'Inget registrerat köp' }[colorBy.value];
+      tip?.setHTML(`<strong>${esc(p.beteckning)}</strong>${p.demo ? demoTag(1) : ''}
+        <div>${esc(p.agare ?? 'Ägare saknas')}</div>
+        <div class="muted">Taxeringsvärde ${mkr(p.varde_tkr ?? null)}${extra ? ` · ${esc(extra)}` : ''}</div>`);
+    }
+    tip?.setLngLat(e.lngLat).addTo(map);
   });
-  map.on('mouseleave', 'fastighet-fill', () => { map.getCanvas().style.cursor = ''; setHover(null); });
+  map.on('mouseleave', 'fastighet-fill', () => { map.getCanvas().style.cursor = ''; setHover(null); tip?.remove(); });
   map.on('moveend', loadVisible);
   applyBasemap(basemap.select.value);
   loadVisible();
@@ -271,6 +282,7 @@ async function loadVisible() {
   $('#zoom-hint').textContent = markeradOrg ? 'Visar bara bolagets fastigheter. Zooma in för att se alla.' : 'Zooma in för att se fastigheter';
   const seq = ++loadSeq;
   updateUrl();
+  if (agareUtsnitt && !$('#panel').hidden && $('#panel form[data-view=agare]')) openAgare(agareUtsnitt);
   if (tooFar) {
     $('#filter-hits').textContent = 'Zooma in för att se träffar';
     map.getSource('fastigheter').setData(EMPTY);
@@ -631,9 +643,15 @@ async function openAffarer(p = {}) {
 }
 
 // Största fastighetsägare efter antal, tomtareal eller taxeringsvärde.
+// Senaste parametrarna när området är kartutsnittet; listan räknas då om när kartan flyttas (se loadVisible).
+let agareUtsnitt = null;
 async function openAgare(p = {}) {
-  const [s, r] = await Promise.all([statusP, apiPanel(`/api/storsta-agare?${new URLSearchParams(p)}`)]);
+  const utsnitt = p.kommun === 'utsnitt';
+  const b = map.getBounds();
+  const q = utsnitt ? { ...p, kommun: '', bbox: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((x) => x.toFixed(5)).join(',') } : p;
+  const [s, r] = await Promise.all([statusP, apiPanel(`/api/storsta-agare?${new URLSearchParams(q)}`)]);
   if (!r) return;
+  agareUtsnitt = utsnitt ? p : null;
   select(null);
   const n = (x) => (x == null ? '–' : Math.round(x).toLocaleString('sv-SE'));
   const areal = r.efter === 'areal';   // tredje kolumnen: tomtareal, annars taxeringsvärde
@@ -641,7 +659,7 @@ async function openAgare(p = {}) {
     <h2>Största ägare</h2>
     <div class="meta">Juridiska personer med lagfart. Samägda fastigheter räknas fullt för varje ägare.</div>
     <form class="view-form" data-view="agare">
-      ${field('Kommun', 'kommun', options(s.kommuner ?? [], r.kommun, 'Alla kommuner'))}
+      ${field('Område', 'kommun', options([['utsnitt', 'I kartutsnittet'], ...(s.kommuner ?? [])], r.utsnitt ? 'utsnitt' : r.kommun, 'Alla kommuner'))}
       ${field('Användning', 'anv', options(s.typer ?? [], r.anv, 'Alla'))}
       ${field('Rangordna efter', 'efter', options([['antal', 'Antal fastigheter'], ['areal', 'Tomtareal'], ['varde', 'Taxeringsvärde']], r.efter))}
     </form>

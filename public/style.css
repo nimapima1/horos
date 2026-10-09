@@ -323,3 +323,13 @@ button { font: inherit; color: inherit; }
 @media (prefers-color-scheme: dark) { .page .btn, .page .btn:hover { color: #0B1120; } }
 .page .btn[aria-disabled="true"] { background: var(--surface-sunken); color: var(--subtle); pointer-events: none; }
 .page code { font-size: 14px; background: var(--surface-sunken); padding: 1px 5px; border-radius: 5px; }
+
+/* --- Snabbinfo vid hovring ------------------------------------------------------- */
+.tip { pointer-events: none; }
+.tip .maplibregl-popup-content {
+  padding: 8px 11px; font: 13px/1.4 var(--font-body); color: var(--text);
+  background: var(--surface-solid); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow);
+}
+.tip .maplibregl-popup-tip { display: none; }
+.tip .muted { font-size: 12px; }
+.tip .tag { margin-left: 6px; }
