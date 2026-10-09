@@ -272,6 +272,17 @@ const filterParams = (url) => FILTER.flatMap(([k, f]) => {
   return Number.isNaN(v) ? [null, null] : [v, v];
 });
 
+// Fastigheterna i kartutsnittet (bbox) med filtren, eller null om bbox saknas.
+function traffar(url) {
+  const bbox = (url.searchParams.get('bbox') ?? '').split(',').map(Number);
+  if (bbox.length !== 4 || bbox.some(Number.isNaN)) return null;
+  const [minx, miny, maxx, maxy] = bbox;
+  const org = normOrgnr(url.searchParams.get('org') ?? '') || null;   // bara ett bolags fastigheter
+  return q.inBbox.all(minx, maxx, miny, maxy, org, org, ...filterParams(url));
+}
+// Kolumnerna i träff-exporten (utan geometri, se EXPORT_GEOMETRI).
+const TRAFF_COLS = ['beteckning', 'agare', 'agartyp', 'typ', 'varde_tkr', 'areal_m2', 'kop_dag', 'kop_kr'];
+
 // --- Affärer och största ägare -------------------------------------------------
 // En affär = överlåtelser med samma dag, köpeskilling och förvärvare: vid en paketaffär står
 // hela köpeskillingen på varje fastighet och skulle annars räknas flera gånger.
@@ -438,14 +449,16 @@ const featureJson = (geojson, properties) =>
 const EXPORT_COLS = ['beteckning', 'kommun', 'areal_m2', 'agare_orgnr', 'agare_namn', 'taxeringsar',
   'taxeringsvarde_tkr', 'senaste_overlatelse', 'senaste_kopeskilling_kr'];
 const exportCache = new Map();
+// BOM + semikolon så att svensk Excel öppnar filen rätt.
+const csvCell = (v) => (v == null ? '' : /[;"\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+const toCsv = (cols, rows) => '﻿' + [cols.join(';'), ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(';'))].join('\r\n');
+
 function buildExport(kind) {
   if (exportCache.has(kind)) return exportCache.get(kind);
   const rows = q.export.all();
   let body;
   if (kind === 'csv') {
-    const cell = (v) => (v == null ? '' : /[;"\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
-    // BOM + semikolon så att svensk Excel öppnar filen rätt.
-    body = '﻿' + [EXPORT_COLS.join(';'), ...rows.map((r) => EXPORT_COLS.map((c) => cell(r[c])).join(';'))].join('\r\n');
+    body = toCsv(EXPORT_COLS, rows);
   } else {
     const features = rows.map((r) => featureJson(r.geojson, Object.fromEntries(EXPORT_COLS.map((c) => [c, r[c]]))));
     body = `{"type":"FeatureCollection","features":[${features.join(',')}]}`;
@@ -484,11 +497,8 @@ const routes = [
   }]],
 
   [/^\/api\/fastigheter$/, 'api', (_m, url) => {
-    const bbox = (url.searchParams.get('bbox') ?? '').split(',').map(Number);
-    if (bbox.length !== 4 || bbox.some(Number.isNaN)) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
-    const [minx, miny, maxx, maxy] = bbox;
-    const org = normOrgnr(url.searchParams.get('org') ?? '') || null;   // bara ett bolags fastigheter
-    const rows = q.inBbox.all(minx, maxx, miny, maxy, org, org, ...filterParams(url));
+    const rows = traffar(url);
+    if (!rows) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
     const features = rows.slice(0, MAX_FEATURES).map((r) =>
       featureJson(r.geojson, { beteckning: r.beteckning, varde_tkr: r.varde_tkr, agare: r.agare, demo: r.demo,
         typ: r.typ, agartyp: r.agartyp, kop_ar: r.kop_dag ? Number(r.kop_dag.slice(0, 4)) : null }));
@@ -534,6 +544,17 @@ const routes = [
 
   [/^\/tiles\/historisk\/(\d{4})\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'tiles',
     (m, _url, res) => historiskTile(res, ...m.slice(1).map(Number))],
+
+  [/^\/data\/horos-traffar\.csv$/, 'api', (_m, url, res) => {
+    const rows = traffar(url);
+    if (!rows) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
+    res.writeHead(200, {
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': 'attachment; filename="horos-traffar.csv"',
+      'cache-control': 'no-store',
+    });
+    res.end(toCsv(TRAFF_COLS, rows.slice(0, MAX_FEATURES)));
+  }],
 
   // Det gamla filnamnet (-stockholm) fungerar fortfarande för befintliga länkar.
   [/^\/data\/horos-fastigheter(?:-stockholm)?\.(csv|geojson)$/, 'api', (m, _url, res) => {

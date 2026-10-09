@@ -283,6 +283,7 @@ async function loadVisible() {
   for (const { properties: p } of fc.features) { p.anv_kat = anvKat(p.typ); p.agar_kat = agarKat(p.agartyp); }
   const n = fc.features.length;
   $('#filter-hits').textContent = `${fc.truncated ? 'Minst ' : ''}${n.toLocaleString('sv-SE')} ${n === 1 ? 'fastighet' : 'fastigheter'} i kartutsnittet`;
+  $('#filter-csv').href = `data/horos-traffar.csv?bbox=${bbox}${filterQuery()}${utzoomat ? `&org=${markeradOrg}` : ''}`;
   map.getSource('fastigheter').setData(fc);
   map.getSource('planer').setData(planer);
   if (selected) map.setFeatureState({ source: 'fastigheter', id: selected }, { selected: true });
