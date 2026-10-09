@@ -519,6 +519,11 @@ async function openBolag(orgnr) {
       <dt>Adress</dt><dd>${esc([b.adress, [b.postnr, b.postort].filter(Boolean).join(' ')].filter(Boolean).join(', ') || '–')}</dd>
       <dt>Registrerad</dt><dd>${esc(b.registrerad ?? '–')}</dd>
     </dl>
+    ${b.demo ? '' : `<p class="small">Mer om bolaget:
+      <a href="https://foretagsinfo.bolagsverket.se/sok-foretagsinformation-web/foretag/${esc(b.orgnr)}" target="_blank" rel="noopener noreferrer">Bolagsverket</a>
+      (grunduppgifter) ·
+      <a href="https://www.allabolag.se/${esc(b.orgnr)}" target="_blank" rel="noopener noreferrer">Allabolag</a>
+      (bokslut, koncern)</p>`}
     ${b.verksamhet ? `<h3>Verksamhet</h3><p class="small">${esc(b.verksamhet)}</p>` : ''}
     <h3>Fastigheter</h3>
     ${table('<th>Beteckning</th><th class="num">Taxeringsvärde</th>', b.fastigheter.map((f) =>
