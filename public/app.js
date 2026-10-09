@@ -333,8 +333,10 @@ async function loadVisible() {
     type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] },
     properties: { beteckning, varde_tkr, kop_ar, demo, ...kategorier({ typ, agartyp, varde_tkr, areal_m2 }) } })) };
   const n = fc.features.length + punkter.features.length;
+  const sumTkr = [...fc.features, ...punkter.features].reduce((s, f) => s + (f.properties.varde_tkr ?? 0), 0);
   $('#filter-hits').textContent = lage === 'inget' ? 'Zooma in för att se träffar'
-    : `${fc.truncated || pkt.truncated ? 'Minst ' : ''}${n.toLocaleString('sv-SE')} ${n === 1 ? 'fastighet' : 'fastigheter'} i kartutsnittet`;
+    : `${fc.truncated || pkt.truncated ? 'Minst ' : ''}${n.toLocaleString('sv-SE')} ${n === 1 ? 'fastighet' : 'fastigheter'} i kartutsnittet`
+      + (sumTkr ? `, taxerade till ${mkr(sumTkr)}` : '');
   $('#filter-csv').href = `data/horos-traffar.csv?${urval}`;
   map.getSource('fastigheter').setData(fc);
   map.getSource('punkter').setData(punkter);
