@@ -7,17 +7,18 @@
 // och bara de bolag som äger eller har förvärvat någon av dem (om inte --alla-bolag anges).
 // Det motsvarar åtagandet i ansökan till Lantmäteriet.
 //
-//   node scripts/build-public.mjs [--lm-beslut <ärendenummer>] [--alla-bolag] [--export-geometri]
-//                                 [--out data/public.sqlite]
+//   node scripts/build-public.mjs [--lm-beslut <ärendenummer>] [--lm-planer <ärendenummer>]
+//                                 [--alla-bolag] [--export-geometri] [--out data/public.sqlite]
 //
 // --export-geometri gör fastighetsgränserna nedladdningsbara som GeoJSON. Ange det bara om
 // Lantmäteriets beslut tillåter vidarespridning av geometrierna.
 //
 // Data från Lantmäteriets fastighetsindelning tas bara med om --lm-beslut anges, dvs.
-// när ansökan har beviljats. Läs beslutets villkor innan du publicerar.
+// när ansökan har beviljats. Läs beslutets villkor innan du publicerar. Planerna (Markreglerande
+// bestämmelse) är en egen licens och tas bara med om --lm-planer anges.
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { openDb, DB_PATH, ROOT, harJuridiskAgare, rebuildAdressFts, rebuildBolagFts, withTransaction } from '../lib/db.mjs';
+import { openDb, DB_PATH, ROOT, harJuridiskAgare, rebuildAdressFts, rebuildBolagFts, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 
 const args = parseArgs(process.argv.slice(2));
@@ -31,6 +32,8 @@ if (lmRader && !args['lm-beslut']) {
     + 'med --lm-beslut <nr> när ansökan har beviljats (och läs villkoren i beslutet).');
   process.exit(1);
 }
+const planRader = src.prepare('SELECT count(*) AS n FROM plan WHERE demo = 0').get().n;
+if (planRader && !args['lm-planer']) console.log(`Hoppar över ${planRader} planer: ange --lm-planer <ärendenr> när licensen finns.`);
 src.close();
 
 for (const f of [OUT, `${OUT}-wal`, `${OUT}-shm`]) rmSync(f, { force: true });
@@ -57,24 +60,28 @@ withTransaction(db, () => {
     -- Alla adresser (öppna OSM-data, inga personuppgifter), så att sökningen även kan svara
     -- att en adress inte har någon fastighet i Horos.
     INSERT INTO adress SELECT * FROM src.adress;
+    ${args['lm-planer'] ? 'INSERT INTO plan SELECT * FROM src.plan WHERE demo = 0;' : ''}
     CREATE TABLE meta (nyckel TEXT PRIMARY KEY, varde TEXT);
   `);
   const meta = db.prepare('INSERT INTO meta VALUES (?, ?)');
   meta.run('byggd', new Date().toISOString().slice(0, 19).replace('T', ' '));
   meta.run('lm_beslut', args['lm-beslut'] ? String(args['lm-beslut']) : null);
+  meta.run('lm_planer', args['lm-planer'] ? String(args['lm-planer']) : null);
   meta.run('export_geometri', args['export-geometri'] ? '1' : '0');
 });
 db.exec('DETACH DATABASE src');
 
 rebuildBolagFts(db);
 rebuildAdressFts(db);
+rebuildRtree(db, 'fastighet');
+rebuildRtree(db, 'plan');
 // Servern öppnar filen skrivskyddat: ingen WAL, kompakt fil.
 db.exec('PRAGMA journal_mode = DELETE; VACUUM;');
 
 const c = db.prepare(`SELECT (SELECT count(*) FROM fastighet) f, (SELECT count(*) FROM bolag) b,
   (SELECT count(*) FROM taxering) t, (SELECT count(*) FROM agande) a, (SELECT count(*) FROM transaktion) x,
-  (SELECT count(*) FROM adress) ad`).get();
+  (SELECT count(*) FROM adress) ad, (SELECT count(*) FROM plan) p`).get();
 db.close();
-console.log(`Klart: ${OUT}\n  ${c.f} fastigheter, ${c.b} bolag, ${c.t} taxeringar, ${c.a} ägarposter, ${c.x} överlåtelser, ${c.ad} adresser`);
+console.log(`Klart: ${OUT}\n  ${c.f} fastigheter, ${c.b} bolag, ${c.t} taxeringar, ${c.a} ägarposter, ${c.x} överlåtelser, ${c.ad} adresser, ${c.p} planer`);
 if (!c.f) console.log('  (Inga fastigheter ännu: väntar på Lantmäteriet/Skatteverket. Sidan blir en tom karta'
   + (args['alla-bolag'] ? ' med bolagssök.)' : '; kör med --alla-bolag för att kunna söka bland alla bolag.)'));

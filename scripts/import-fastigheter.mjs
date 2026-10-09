@@ -1,4 +1,5 @@
-// Importerar Lantmäteriets Fastighetsindelning (GeoPackage, SWEREF 99 TM) för en kommun.
+// Importerar Lantmäteriets Fastighetsindelning (GeoPackage, SWEREF 99 TM). Produkten levereras
+// per kommun; kör skriptet en gång per fil.
 // Beställ "Fastighetsindelning Nedladdning, vektor" (avgiftsfri, kräver juridisk prövning) på
 // https://geotorget.lantmateriet.se och lägg filen i data/raw/.
 //
@@ -6,7 +7,7 @@
 //     --list                 visa lager och kolumner i filen och avsluta
 //     --layer <tabell>       vilket lager som innehåller fastighetsytor (gissas annars)
 //     --beteckning <kolumn>  kolumn med fastighetsbeteckning (gissas annars)
-//     --kommun <värde>       behåll bara rader där kommunkolumnen matchar (standard: 0180/Stockholm)
+//     --kommun <värde>       behåll bara rader där kommunkolumnen matchar, t.ex. 0180 (standard: alla)
 //     --kommun-kolumn <kol>  kolumn för kommunfiltret (gissas annars)
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, geomBbox, normBeteckning, withTransaction } from '../lib/db.mjs';
@@ -46,10 +47,10 @@ const cols = columnsOf(layer.table_name);
 const find = (re) => cols.find((c) => re.test(c));
 const betCol = args.beteckning ?? find(/^fastighetsbeteckning$/i) ?? find(/beteckning/i);
 const kommunCol = args['kommun-kolumn'] ?? find(/^kommunkod$/i) ?? find(/kommunnamn/i) ?? find(/kommun/i);
-const kommunVal = String(args.kommun ?? '0180').toUpperCase();
+const kommunVal = args.kommun ? String(args.kommun).toUpperCase() : null;
 const kommunMatch = (v) => {
   const s = String(v ?? '').toUpperCase().trim();
-  return s === kommunVal || (kommunVal === '0180' && (s === '180' || s === 'STOCKHOLM'));
+  return !kommunVal || s === kommunVal || (kommunVal === '0180' && (s === '180' || s === 'STOCKHOLM'));
 };
 
 // Beteckning byggs av delar om ingen färdig kolumn finns.
@@ -63,7 +64,7 @@ const betOf = (r) => {
   return null;
 };
 
-console.log(`Lager: ${layer.table_name} · beteckning: ${betCol ?? `${parts.trakt}+${parts.block}+${parts.enhet}`} · kommun: ${kommunCol ?? '(inget filter)'}=${kommunVal}`);
+console.log(`Lager: ${layer.table_name} · beteckning: ${betCol ?? `${parts.trakt}+${parts.block}+${parts.enhet}`} · kommunfilter: ${kommunVal ? `${kommunCol}=${kommunVal}` : '(inget)'}`);
 
 // Samla ytor per beteckning (en fastighet kan ha flera skiften).
 const byBet = new Map();
@@ -75,22 +76,23 @@ for (const r of gpkg.prepare(`SELECT * FROM "${layer.table_name}"`).iterate()) {
   const g = parseGpkgGeometry(r[layer.geom]);
   if (!bet || !g) { skipped++; continue; }
   const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-  if (!byBet.has(bet)) byBet.set(bet, []);
-  byBet.get(bet).push(...polys);
+  if (!byBet.has(bet)) byBet.set(bet, { kommun: parts.kommun ? r[parts.kommun] : null, polys: [] });
+  byBet.get(bet).polys.push(...polys);
 }
 console.log(`${read} ytor lästa, ${skipped} utanför kommunen eller utan beteckning, ${byBet.size} fastigheter.`);
 
 const db = openDb();
 const ins = db.prepare(`INSERT OR REPLACE INTO fastighet (beteckning, kommun, areal_m2, geojson, minx, miny, maxx, maxy, kalla, demo)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'lantmateriet', 0)`);
-const kommunNamn = kommunVal === '0180' ? 'Stockholm' : kommunVal;
+// "STOCKHOLM" -> "Stockholm", "UPPLANDS VÄSBY" -> "Upplands Väsby"
+const namnform = (s) => s && String(s).toLowerCase().replace(/(^|[\s-])\p{L}/gu, (c) => c.toUpperCase());
 withTransaction(db, () => {
-  for (const [bet, polys] of byBet) {
+  for (const [bet, { kommun, polys }] of byBet) {
     const src = polys.length === 1 ? { type: 'Polygon', coordinates: polys[0] } : { type: 'MultiPolygon', coordinates: polys };
     const area = planarArea(src);
     const wgs = mapCoords(src, ([x, y]) => round6(sweref99tmToWgs84(x, y)));
     const bb = geomBbox(wgs);
-    ins.run(bet, kommunNamn, Math.round(area), JSON.stringify(wgs), bb.minx, bb.miny, bb.maxx, bb.maxy);
+    ins.run(bet, namnform(kommun) ?? (kommunVal === '0180' ? 'Stockholm' : null), Math.round(area), JSON.stringify(wgs), bb.minx, bb.miny, bb.maxx, bb.maxy);
   }
 });
 console.log(`Klart: ${byBet.size} fastigheter importerade. Ta bort exempeldata med: npm run demo -- --clear`);

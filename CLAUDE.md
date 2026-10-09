@@ -1,7 +1,7 @@
 # Horos – arbetsanteckningar för Claude
 
-Horos är en öppen, ideell karta över fastigheter som ägs av **juridiska personer** i Stockholms
-kommun: ägare, användning, taxeringsvärde och senaste köpeskilling, byggd på öppna källor och
+Horos är en öppen, ideell karta över fastigheter som ägs av **juridiska personer**, än så länge
+i Stockholms kommun men på sikt **hela landet** (bygg inget som förutsätter Stockholm): ägare, användning, taxeringsvärde och senaste köpeskilling, byggd på öppna källor och
 allmänna handlingar. Användaren skriver på svenska; svara på svenska.
 
 Det besökarna främst vill se (enligt användaren, ~90 %): **nuvarande användning, ägare och senaste
@@ -20,9 +20,13 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   (ui-ux-pro-max: Swiss/minimalism + glas, Lexend/Source Sans 3, slate/#0369A1). CSP tillåter
   inga inline-skript.
 - Importskript i `scripts/`: `import-bolag`, `import-fastigheter` (GPKG), `import-taxering`,
-  `import-lagfarter`, `import-adresser` (OSM via Overpass, eller `--fil`), `demo-data`.
+  `import-lagfarter`, `import-adresser` (OSM via Overpass, eller `--fil`), `import-planer`
+  (Markreglerande bestämmelse, GPKG per kommun), `demo-data` (även påhittade planer).
+- Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
+  lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
+- Tester: `npm test` (node:test, `test/`).
   `build-public.mjs` bygger `data/public.sqlite` med bara tillåtna fastigheter; Lantmäteriets
-  data kräver `--lm-beslut <ärendenr>`. Live byggs med `--alla-bolag`.
+  data kräver `--lm-beslut <ärendenr>`, planerna `--lm-planer <ärendenr>`. Live byggs med `--alla-bolag`.
 - Lokalt: `node --disable-warning=ExperimentalWarning server.mjs` (PATH: `/c/Program Files/nodejs`).
   Använd en annan port än 3000 (`PORT=3005`) om användaren har en egen server igång.
   SQLite-filer för test i `data/_test/` (långa sökvägar i scratchpad fungerar inte).
@@ -73,11 +77,26 @@ Väntar på:
   - Ortofoto historiska Visning – LM2026/153973, **beviljad** (används)
   - Belägenhetsadress Nedladdning, vektor – inskickad 2026-10-09
   - Byggnad Nedladdning, vektor – ifylld 2026-10-09; kontrollera att den skickades
+- Lantmäteriet geodatasupport (geodatasupport@lm.se, 026-63 36 00 vardagar 9–12): förfrågan
+  skickad 2026-10-09 om rikstäckning. Frågor: ändamålsprövning för Fastighetsinformation
+  (Inskrivning: ägare, förvärv) och Taxering Nedladdning vid icke-kommersiell användning; urval med
+  bara juridiska ägare; köpeskilling i Förvärv eller Fastighetsprisuttag; publicering per fastighet;
+  offert för hela landet; Markreglerande bestämmelse (detaljplaner) för hela landet; utökning av
+  ärendena Fastighetsindelning/Belägenhetsadress/Byggnad till hela landet; FUK via forskningspartner.
+  Uppskattning ur avgiftsdokumentet: ägare+förvärv+taxering ca 2 kr/registerenhet, ca 650 tkr + moms
+  för hela landet med faktor 0,1 (mindre om urval på juridiska ägare går); planer ca 7–22 tkr/år.
+  Svaret avgör vägen till rikstäckning. Formell ansökan görs sedan som beställning på Geotorget
+  (helst alla produkter i samma beställning). Skrapning är uteslutet (risk att förlora licenserna).
 
 När filer kommer: lägg i `data/raw/`, kör importskriptet med `--dry` först, påminn om åtagandena,
 bygg med `build-public` och publicera.
 
 ## Att göra
+
+- Rikstäckning: vid många fastigheter behövs lägsta zoom med prickar/kluster eller vektorrutor;
+  historiska flygfoton och OSM-adresserna är fortfarande avgränsade till Stockholm; texter säger
+  "i Stockholm" (stämmer tills annan data finns).
+- Planer: länk till kommunens plandokument (insynsbk för Stockholm) när kolumnerna i filen är kända.
 
 - Domän + HTTPS: `fastighetskarta-admin set-domain <domän>` när A/AAAA-posten pekar på servern.
 - Kontaktuppgift på metodsidan (platshållare "kontaktuppgift kommer").

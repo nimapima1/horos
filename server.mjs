@@ -2,8 +2,8 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
-import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare } from './lib/db.mjs';
-import { pointInGeom } from './lib/geo.mjs';
+import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, rebuildRtree } from './lib/db.mjs';
+import { innerPoints, pointInGeom } from './lib/geo.mjs';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -16,12 +16,23 @@ const db = openDb({ readOnly: PUBLIC_MODE });
 const hasTable = (name) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE name = ?").get(name);
 const HAS_FTS = hasTable('bolag_fts');
 const HAS_ADRESS = hasTable('adress_fts');
+const HAS_PLAN = hasTable('plan');   // saknas i publika databaser byggda före planerna
+
+// Rumsliga index. build-public bygger dem i den publika databasen; lokalt byggs de om vid
+// start, så att de stämmer efter en import.
+// shortcut: ombyggnad vid varje lokal start tar några sekunder med hela landet; flytta till importskripten då.
+if (!PUBLIC_MODE) for (const t of ['fastighet', 'plan']) rebuildRtree(db, t);
+// SQL-villkor "bbox överlappar", parametrar (minx, maxx, miny, maxy). Utan R-träd (en äldre
+// publik databas) används bbox-kolumnerna direkt.
+const overlapar = (table, alias) => (hasTable(`${table}_rtree`)
+  ? `${alias}.rowid IN (SELECT id FROM ${table}_rtree WHERE maxx >= ? AND minx <= ? AND maxy >= ? AND miny <= ?)`
+  : `${alias}.maxx >= ? AND ${alias}.minx <= ? AND ${alias}.maxy >= ? AND ${alias}.miny <= ?`);
 
 // Spärr för åtagandet i ansökan till Lantmäteriet: publikt får bara fastigheter med
 // juridisk ägare visas, och ingen exempeldata. Servern startar inte annars.
 if (PUBLIC_MODE) {
   const fel = [];
-  const demo = db.prepare(`SELECT ${DATA_TABLES.map((t) => `(SELECT count(*) FROM ${t} WHERE demo = 1)`).join(' + ')} AS n`).get().n;
+  const demo = db.prepare(`SELECT ${DATA_TABLES.filter(hasTable).map((t) => `(SELECT count(*) FROM ${t} WHERE demo = 1)`).join(' + ')} AS n`).get().n;
   if (demo) fel.push(`${demo} rader exempeldata`);
   const utanAgare = db.prepare(`SELECT count(*) AS n FROM fastighet f WHERE NOT ${harJuridiskAgare()}`).get().n;
   if (utanAgare) fel.push(`${utanAgare} fastigheter utan känd juridisk ägare`);
@@ -144,8 +155,10 @@ const q = {
       (SELECT b.namn FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
          WHERE a.beteckning = f.beteckning LIMIT 1) AS agare
     FROM fastighet f
-    WHERE f.maxx >= ? AND f.minx <= ? AND f.maxy >= ? AND f.miny <= ?
+    WHERE ${overlapar('fastighet', 'f')}
     LIMIT ${MAX_FEATURES + 1}`),
+  planerIBbox: HAS_PLAN && db.prepare(`SELECT p.id, p.typ, p.planid, p.namn, p.datum, p.geojson, p.demo FROM plan p
+    WHERE ${overlapar('plan', 'p')} ORDER BY p.datum DESC NULLS LAST LIMIT ${MAX_FEATURES + 1}`),
   fastighet: db.prepare('SELECT beteckning, kommun, areal_m2, kalla, demo FROM fastighet WHERE beteckning = ?'),
   taxering: db.prepare(`SELECT t.*, b.namn AS agare_namn FROM taxering t
     LEFT JOIN bolag b ON b.orgnr = t.agare_orgnr
@@ -171,8 +184,8 @@ const q = {
     WHERE beteckning LIKE ? ORDER BY length(beteckning) LIMIT 10`),
   sokAdress: HAS_ADRESS && db.prepare(`SELECT a.gata, a.nummer, a.postnr, a.ort, a.lon, a.lat
     FROM adress_fts JOIN adress a ON a.id = adress_fts.rowid WHERE adress_fts MATCH ? LIMIT 200`),
-  fastighetVidPunkt: db.prepare(`SELECT beteckning, geojson FROM fastighet
-    WHERE minx <= ? AND maxx >= ? AND miny <= ? AND maxy >= ? LIMIT 100`),
+  fastighetVidPunkt: db.prepare(`SELECT f.beteckning, f.geojson FROM fastighet f
+    WHERE ${overlapar('fastighet', 'f')} LIMIT 100`),
   adresserIBbox: HAS_ADRESS && db.prepare(`SELECT gata, nummer, lon, lat FROM adress
     WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? LIMIT 2000`),
   fastighetGeom: db.prepare('SELECT geojson, minx, miny, maxx, maxy FROM fastighet WHERE beteckning = ?'),
@@ -218,6 +231,16 @@ const fastighetVid = (lon, lat) =>
   q.fastighetVidPunkt.all(lon, lon, lat, lat).find((f) => pointInGeom([lon, lat], JSON.parse(f.geojson)))?.beteckning ?? null;
 
 // Adresserna som ligger på fastigheten, t.ex. ["Drottninggatan 53", "Drottninggatan 55"].
+// Planerna som gäller någon del av fastigheten, nyaste först.
+function planerPa(bet) {
+  const f = q.planerIBbox && q.fastighetGeom.get(bet);
+  if (!f) return [];
+  const pts = innerPoints(JSON.parse(f.geojson));
+  return q.planerIBbox.all(f.minx, f.maxx, f.miny, f.maxy)
+    .filter((p) => { const g = JSON.parse(p.geojson); return pts.some((pt) => pointInGeom(pt, g)); })
+    .map(({ geojson, ...p }) => p);
+}
+
 function adresserPa(bet) {
   const f = q.adresserIBbox && q.fastighetGeom.get(bet);
   if (!f) return [];
@@ -314,7 +337,16 @@ const routes = [
     const bet = normBeteckning(decodeURIComponent(m[1]));
     const f = q.fastighet.get(bet);
     if (!f) return [404, { error: 'Fastigheten finns inte' }];
-    return [200, { ...f, adresser: adresserPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet) }];
+    return [200, { ...f, adresser: adresserPa(bet), planer: planerPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet) }];
+  }],
+
+  [/^\/api\/planer$/, 'api', (_m, url) => {
+    const bbox = (url.searchParams.get('bbox') ?? '').split(',').map(Number);
+    if (bbox.length !== 4 || bbox.some(Number.isNaN)) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
+    const [minx, miny, maxx, maxy] = bbox;
+    const rows = q.planerIBbox ? q.planerIBbox.all(minx, maxx, miny, maxy) : [];
+    const features = rows.slice(0, MAX_FEATURES).map(({ geojson, ...p }) => featureJson(geojson, p));
+    return [200, `{"type":"FeatureCollection","truncated":${rows.length > MAX_FEATURES},"features":[${features.join(',')}]}`];
   }],
 
   [/^\/api\/bolag\/([\d-]+)$/, 'api', (m) => {
@@ -338,14 +370,15 @@ const routes = [
   [/^\/tiles\/historisk\/(\d{4})\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'tiles',
     (m, _url, res) => historiskTile(res, ...m.slice(1).map(Number))],
 
-  [/^\/data\/horos-fastigheter-stockholm\.(csv|geojson)$/, 'api', (m, _url, res) => {
+  // Det gamla filnamnet (-stockholm) fungerar fortfarande för befintliga länkar.
+  [/^\/data\/horos-fastigheter(?:-stockholm)?\.(csv|geojson)$/, 'api', (m, _url, res) => {
     const kind = m[1];
     if (kind === 'geojson' && !EXPORT_GEOMETRI) {
       return [403, { error: 'Fastighetsgränserna får inte laddas ner som fil ännu (väntar på Lantmäteriets villkor).' }];
     }
     res.writeHead(200, {
       'content-type': kind === 'csv' ? 'text/csv; charset=utf-8' : 'application/geo+json; charset=utf-8',
-      'content-disposition': `attachment; filename="horos-fastigheter-stockholm.${kind}"`,
+      'content-disposition': `attachment; filename="horos-fastigheter.${kind}"`,
       'cache-control': 'public, max-age=3600',
     });
     res.end(buildExport(kind));

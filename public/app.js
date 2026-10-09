@@ -82,6 +82,39 @@ class BasemapSelect {
 const basemap = new BasemapSelect();
 map.addControl(basemap, 'top-right');
 
+// Plantyperna i Lantmäteriets Markreglerande bestämmelse.
+const PLANTYP = {
+  DP: 'Detaljplan', ÄDP: 'Ändring av detaljplan', SPL: 'Stadsplan', BPL: 'Byggnadsplan',
+  OB: 'Områdesbestämmelser', ÄOB: 'Ändring av områdesbestämmelser', FP: 'Fastighetsplan',
+  TI: 'Tomtindelning', APL: 'Avstyckningsplan', GPL: 'Generalplan',
+};
+
+// Knapp som slår av och på planlagret (detaljplaner m.m.).
+class PlanToggle {
+  onAdd() {
+    this.el = document.createElement('div');
+    this.el.className = 'maplibregl-ctrl maplibregl-ctrl-group plan-toggle';
+    this.button = document.createElement('button');
+    this.button.type = 'button';
+    this.button.textContent = 'Detaljplaner';
+    this.on = store.get('horos.planer') === '1';
+    this.button.setAttribute('aria-pressed', String(this.on));
+    this.button.addEventListener('click', () => {
+      this.on = !this.on;
+      this.button.setAttribute('aria-pressed', String(this.on));
+      store.set('horos.planer', this.on ? '1' : '0');
+      if (!map.getLayer('plan-line')) return;   // kartan laddas fortfarande; lagret skapas med rätt läge
+      map.setLayoutProperty('plan-line', 'visibility', this.on ? 'visible' : 'none');
+      loadVisible();
+    });
+    this.el.append(this.button);
+    return this.el;
+  }
+  onRemove() { this.el.remove(); }
+}
+const planToggle = new PlanToggle();
+map.addControl(planToggle, 'top-right');
+
 const SEL = ['boolean', ['feature-state', 'selected'], false];
 const HOVER = ['boolean', ['feature-state', 'hover'], false];
 const valueColor = () => ['step', ['coalesce', ['get', 'varde_tkr'], -1],
@@ -123,6 +156,11 @@ map.on('load', () => {
   const { 'fill-opacity': fillOp, ...linePaint } = fastighetPaint(basemap.imagery);
   map.addLayer({ id: 'fastighet-fill', type: 'fill', source: 'fastigheter', paint: { 'fill-color': valueColor(), 'fill-opacity': fillOp } });
   map.addLayer({ id: 'fastighet-line', type: 'line', source: 'fastigheter', paint: linePaint });
+  // Plangränser ovanpå fastigheterna, streckade så att de inte förväxlas med fastighetsgränser.
+  map.addSource('planer', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'plan-line', type: 'line', source: 'planer',
+    layout: { visibility: planToggle.on ? 'visible' : 'none', 'line-join': 'round' },
+    paint: { 'line-color': css('--plan'), 'line-width': 2.5, 'line-dasharray': [2, 1.5] } });
 
   map.on('click', 'fastighet-fill', (e) => { adressMarker?.remove(); openFastighet(e.features[0].properties.beteckning); });
   let hovered = null;
@@ -145,12 +183,17 @@ let loadSeq = 0;
 async function loadVisible() {
   const tooFar = map.getZoom() < MIN_ZOOM;
   $('#zoom-hint').hidden = !tooFar;
-  if (tooFar) return map.getSource('fastigheter').setData(EMPTY);
-  const b = map.getBounds();
   const seq = ++loadSeq;
-  const fc = await api(`/api/fastigheter?bbox=${[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((n) => n.toFixed(5)).join(',')}`);
+  if (tooFar) {
+    map.getSource('fastigheter').setData(EMPTY);
+    return map.getSource('planer').setData(EMPTY);
+  }
+  const b = map.getBounds();
+  const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((n) => n.toFixed(5)).join(',');
+  const [fc, planer] = await Promise.all([api(`/api/fastigheter?bbox=${bbox}`), planToggle.on ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
   if (seq !== loadSeq) return;
   map.getSource('fastigheter').setData(fc);
+  map.getSource('planer').setData(planer);
   if (selected) map.setFeatureState({ source: 'fastigheter', id: selected }, { selected: true });
 }
 
@@ -220,6 +263,11 @@ async function openFastighet(bet, adress) {
       [`Taxeringsvärde${ar ? ` ${ar}` : ''}`, f.taxering.length ? mkr(varde) : '–'],
       ['Areal', f.areal_m2 ? `${Math.round(f.areal_m2).toLocaleString('sv-SE')} m²` : '–'],
     ])}
+    <h3>Detaljplan</h3>
+    ${table('<th>Plan</th><th class="num">Laga kraft</th>', f.planer.map((p) =>
+      `<tr><td><strong>${esc(PLANTYP[p.typ] ?? p.typ)}</strong>${p.namn ? ` · ${esc(p.namn)}` : ''}${demoTag(p.demo)}
+        <div class="muted small">${esc(p.planid ?? '')}</div></td><td class="num">${esc(p.datum ?? '')}</td></tr>`),
+      'Väntar på uppgifter från Lantmäteriet.')}
     <h3>Lagfarna ägare</h3>
     ${table('<th>Ägare</th><th>Andel</th><th class="num">Sedan</th>', f.agare.map((a) =>
       `<tr><td>${bolagLink(a.orgnr, a.namn, a.demo)}<div class="muted small">${fmtOrgnr(a.orgnr)}</div></td>
@@ -236,7 +284,7 @@ async function openFastighet(bet, adress) {
         <td>${x.forvarvare_orgnr ? bolagLink(x.forvarvare_orgnr, x.forvarvare_namn) : '–'}<div class="muted small">${esc(x.art ?? '')}</div></td>
         <td class="num">${kr(x.kopeskilling_kr)}</td></tr>`),
       'Inga registrerade överlåtelser.')}
-    <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}</p>
+    <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.planer.length ? ` · planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}` : ''}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}</p>
   `);
 }
 
@@ -352,6 +400,7 @@ function openOm() {
       <dt>Gränser</dt><dd>Lantmäteriet, Fastighetsindelning</dd>
       <dt>Taxering</dt><dd>Skatteverket, allmänna handlingar</dd>
       <dt>Ägare, köp</dt><dd>Lantmäteriet, allmänna handlingar</dd>
+      <dt>Planer</dt><dd>Lantmäteriet, Markreglerande bestämmelse</dd>
       <dt>Adresser</dt><dd>© OpenStreetMap-bidragsgivare (ODbL)</dd>
       <dt>Karta</dt><dd>OpenFreeMap, © OpenStreetMap-bidragsgivare</dd>
       <dt>Satellit</dt><dd>EOxCloudless 2025 (Copernicus Sentinel-2)</dd>

@@ -64,6 +64,9 @@ const insA = db.prepare(`INSERT INTO agande (beteckning, orgnr, andel, inskrivni
 const insX = db.prepare(`INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr, art, andel, demo)
   VALUES (?, ?, ?, ?, 'Köp', '1/1', 1)`);
 
+const insP = db.prepare(`INSERT INTO plan (id, typ, planid, namn, datum, kommun, geojson, minx, miny, maxx, maxy, demo)
+  VALUES (?, ?, ?, ?, ?, 'Stockholm', ?, ?, ?, ?, ?, 1)`);
+
 const date = (y0, y1) => {
   const y = y0 + Math.floor(rnd() * (y1 - y0 + 1));
   return `${y}-${String(1 + Math.floor(rnd() * 12)).padStart(2, '0')}-${String(1 + Math.floor(rnd() * 28)).padStart(2, '0')}`;
@@ -94,6 +97,20 @@ withTransaction(db, () => {
     if (rnd() < 0.15) insX.run(bet, date(1995, 2000), Math.round(varde * 1000 * (0.4 + rnd() * 0.3)), pick(BOLAG)[0]);
     n++;
   }
+  // Påhittade planer: ett rutnät av rektanglar över området, plus en nyare plan tvärs över
+  // några av dem (som när en detaljplan ersätter delar av äldre stadsplaner).
+  const [syd, vast, nord, ost] = BBOX, cols = 4, rows = 3;
+  const rect = (x0, y0, x1, y1) => ({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
+  const plan = (id, typ, namn, datum, geom) => {
+    const bb = geomBbox(geom);
+    insP.run(id, typ, `EXEMPEL-${id}`, namn, datum, JSON.stringify(geom), bb.minx, bb.miny, bb.maxx, bb.maxy);
+  };
+  for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+    const x0 = vast + ((ost - vast) * i) / cols, y0 = syd + ((nord - syd) * j) / rows;
+    plan(`P${i}${j}`, pick(['SPL', 'SPL', 'DP', 'BPL']), `Exempelkvarteren ${i * rows + j + 1}`, date(1931, 1990),
+      rect(x0, y0, x0 + (ost - vast) / cols, y0 + (nord - syd) / rows));
+  }
+  plan('PNY', 'DP', 'Exempelstråket', date(2015, 2024), rect(vast + (ost - vast) * 0.3, syd + (nord - syd) * 0.4, vast + (ost - vast) * 0.7, syd + (nord - syd) * 0.55));
 });
 rebuildBolagFts(db);   // så att exempelbolagen hittas i sökningen
 console.log(`Klart: ${n} exempelfastigheter i centrala Stockholm. Ta bort dem med --clear.`);

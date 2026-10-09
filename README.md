@@ -18,6 +18,7 @@ npm run import:bolag      # Bolagsverket + SCB -> data/fastighetskarta.sqlite
 npm run import:adresser   # adresser för sökningen från OpenStreetMap (Overpass)
 npm run demo              # exempelfastigheter i centrala Stockholm (valfritt)
 npm start                 # http://localhost:3000
+npm test                  # tester (node:test)
 ```
 
 ## Källor
@@ -29,6 +30,7 @@ npm start                 # http://localhost:3000
 | Taxeringsvärden | Skatteverket, begäran om allmän handling | ⏳ Begärt 2026-10-09 | `import:taxering` |
 | Lagfarna ägare, köpeskillingar | Lantmäteriet, begäran om allmän handling | ⏳ Begärt 2026-10-09 | `import:lagfarter` |
 | Adresser (sökning) | © OpenStreetMap-bidragsgivare (ODbL); senare Lantmäteriet, *Belägenhetsadress Nedladdning, vektor* | ✅ OSM nu; ansökan hos Lantmäteriet förberedd | `import:adresser` |
+| Detaljplaner, stadsplaner m.fl. | Lantmäteriet, *Markreglerande bestämmelse Nedladdning, vektor* (per kommun, GeoPackage) | ⏳ Licensavgift, faktor 0,1 för icke-kommersiell användning. Tas med i `build-public` först med `--lm-planer <ärendenr>` | `import:planer` |
 | Användning (byggnaders ändamål) | Lantmäteriet, *Byggnad Nedladdning, vektor* | ⏳ Ansökan förberedd (GDPR-prövning) | – |
 | Byggnader i exempeldatan | © OpenStreetMap-bidragsgivare (ODbL) | Endast demo | `demo` |
 
@@ -55,6 +57,21 @@ vecka. Det går bra att köra om skriptet.
    node scripts/import-fastigheter.mjs data/raw/<fil>.gpkg --kommun 0180
    npm run demo -- --clear
    ```
+
+### Detaljplaner
+
+Ansök på Geotorget om *Markreglerande bestämmelse Nedladdning, vektor* (licensavgift per km²,
+faktor 0,1 för icke-kommersiell användning). Den levereras per kommun; importera varje fil:
+
+```sh
+node scripts/import-planer.mjs data/raw/<fil>.gpkg --list   # lager, kolumner och plantyper
+node scripts/import-planer.mjs data/raw/<fil>.gpkg --dry
+node scripts/import-planer.mjs data/raw/<fil>.gpkg
+```
+
+Bara plantyper tas med (DP, ÄDP, SPL, BPL, OB, ÄOB, FP, TI, APL, GPL); naturreservat,
+byggnadsminnen m.m. i samma fil hoppas över. Kolumner gissas och kan anges med `--typ`,
+`--planid`, `--namn` och `--datum`.
 
 ### Taxering och lagfarter
 
@@ -101,11 +118,12 @@ data/                   databas och råfiler (ingår inte i git)
 
 - `GET /api/status`: antal poster per tabell
 - `GET /api/fastigheter?bbox=minLon,minLat,maxLon,maxLat`: GeoJSON för kartutsnittet
-- `GET /api/fastighet/<beteckning>`: ägare, taxering och överlåtelser
+- `GET /api/planer?bbox=minLon,minLat,maxLon,maxLat`: planer (GeoJSON) i kartutsnittet
+- `GET /api/fastighet/<beteckning>`: ägare, taxering, överlåtelser och gällande planer
 - `GET /api/bolag/<orgnr>`: bolagsuppgifter och fastighetsinnehav
 - `GET /api/sok?q=<text>`: bolag (namn/org.nr) och fastigheter (beteckning)
-- `GET /data/horos-fastigheter-stockholm.csv`: hela den publika datan (öppen data)
-- `GET /data/horos-fastigheter-stockholm.geojson`: med gränser, bara om databasen byggts med `--export-geometri`
+- `GET /data/horos-fastigheter.csv`: hela den publika datan (öppen data)
+- `GET /data/horos-fastigheter.geojson`: med gränser, bara om databasen byggts med `--export-geometri`
 - `GET /tiles/satellit/{z}/{x}/{y}.jpg`: satellitbild via servern (EOxCloudless/Sentinel-2 tills
   Lantmäteriets ortofoto finns), cachas i minnet så att besökarnas IP-adresser inte når tredje part
 
