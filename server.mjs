@@ -312,9 +312,14 @@ const AFFAR = `WITH affar AS (
   FROM transaktion x JOIN fastighet f ON f.beteckning = x.beteckning
   WHERE x.kopeskilling_kr >= ? AND (? IS NULL OR f.kommun = ?)
   GROUP BY 1, 2, 3)`;
+// Säljaren = förvärvaren i fastighetens föregående överlåtelse (om den finns).
 const AFFAR_RAD = `SELECT a.dag, a.kr, a.orgnr, a.beteckning, a.antal, a.demo, b.namn, f.kommun,
-    f.minx, f.miny, f.maxx, f.maxy
-  FROM affar a JOIN fastighet f ON f.beteckning = a.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr`;
+    f.minx, f.miny, f.maxx, f.maxy, s.orgnr AS saljare_orgnr, sb.namn AS saljare
+  FROM affar a
+  LEFT JOIN (SELECT p.beteckning, p.inskrivningsdag, p.forvarvare_orgnr AS orgnr FROM transaktion p) s
+    ON s.beteckning = a.beteckning AND s.inskrivningsdag = (SELECT max(p2.inskrivningsdag) FROM transaktion p2
+      WHERE p2.beteckning = a.beteckning AND p2.inskrivningsdag < a.dag)
+  LEFT JOIN bolag sb ON sb.orgnr = s.orgnr JOIN fastighet f ON f.beteckning = a.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr`;
 const qa = {
   ar: db.prepare(`${AFFAR} SELECT DISTINCT substr(dag, 1, 4) AS ar FROM affar WHERE dag IS NOT NULL ORDER BY ar DESC`),
   summa: db.prepare(`${AFFAR} SELECT count(*) AS antal, sum(kr) AS kr FROM affar WHERE substr(dag, 1, 4) = ?`),

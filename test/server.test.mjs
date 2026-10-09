@@ -117,4 +117,6 @@ test('bolag: köp och sålt (körs sist, lägger till en försäljning)', async 
   const alfa = await json('/api/bolag/5560000001');
   assert.deepEqual(alfa.kop.map((x) => [x.dag, x.antal]), [['2024-05-01', 2], ['2023-03-01', 1]]);
   assert.deepEqual(alfa.salt, []);
+  const affar = (await json('/api/affarer?ar=2023')).senaste[0];
+  assert.deepEqual([affar.namn, affar.saljare], ['Alfa AB', 'Brf Beta']);
 });

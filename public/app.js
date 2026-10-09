@@ -687,7 +687,7 @@ const bar = (andel) => `<div class="bar"><i style="width:${Math.max(1, Math.roun
 const fastighetLink = (r) => `<a data-fastighet="${esc(r.beteckning)}" ${bboxAttr(r)}>${esc(r.beteckning)}</a>`
   + (r.antal > 1 ? ` <span class="muted small">+ ${r.antal - 1} till</span>` : '');
 const affarRad = (r) => `<tr><td class="num">${esc(r.dag ?? '')}</td>
-  <td>${fastighetLink(r)}<div class="muted small">${r.orgnr ? bolagLink(r.orgnr, r.namn, r.demo) : '–'}</div></td>
+  <td>${fastighetLink(r)}<div class="muted small">${r.orgnr ? bolagLink(r.orgnr, r.namn, r.demo) : '–'}${r.saljare_orgnr && r.saljare_orgnr !== r.orgnr ? ` från ${bolagLink(r.saljare_orgnr, r.saljare)}` : ''}</div></td>
   <td class="num">${mkr(r.kr / 1000)}</td></tr>`;
 
 // Affärer: volym, antal och de senaste och största köpen, som Datschas transaktionsöversikt.
