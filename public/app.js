@@ -622,6 +622,16 @@ function openOm() {
     <p>I antikens Athen ställdes gränsstenar, <em>horoi</em> (ὅροι), ut på tomter för att
       offentligt visa vem som hade anspråk på marken. Horos gör samma sak med dagens offentliga uppgifter:
       vilka bolag, föreningar och kommuner som äger fastigheterna, deras taxeringsvärden och vad de har köpts för.</p>
+    <h3>Det här kan du göra</h3>
+    <ul class="small">
+      <li>Klicka på en fastighet för ägare, användning, senaste köp, grannar och köp i närheten.</li>
+      <li>Klicka på ett bolag och välj <strong>Visa alla på kartan</strong> för att se hela innehavet.</li>
+      <li>Använd <strong>Filter</strong> för att hitta fastigheter efter användning, ägartyp, värde och köp,
+        och ladda ner träffarna som CSV.</li>
+      <li>Byt <strong>Färga efter</strong> i teckenförklaringen för att se värde, användning, ägartyp eller köpår.</li>
+      <li><a href="#affarer">Affärer</a> och <a href="#agare">Ägare</a> sammanfattar köpen och de största ägarna.</li>
+      <li>Adressen i webbläsaren sparar kartläge, filter och vald fastighet, så att du kan dela länken.</li>
+    </ul>
     <h3>Källor</h3>
     <dl>
       <dt>Bolag</dt><dd>Bolagsverket och SCB, värdefulla datamängder</dd>
