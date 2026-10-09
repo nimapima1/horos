@@ -120,3 +120,8 @@ test('bolag: köp och sålt (körs sist, lägger till en försäljning)', async 
   const affar = (await json('/api/affarer?ar=2023')).senaste[0];
   assert.deepEqual([affar.namn, affar.saljare], ['Alfa AB', 'Brf Beta']);
 });
+
+test('sök: bolag med fastigheter först och med antal', async () => {
+  const r = await json(`/api/sok?q=${encodeURIComponent('Alfa')}`);
+  assert.deepEqual(r.bolag.map((b) => [b.namn, b.fastigheter]), [['Alfa AB', 2]]);
+});

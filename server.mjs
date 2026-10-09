@@ -206,6 +206,7 @@ const q = {
     LEFT JOIN bolag b ON b.orgnr = x.forvarvare_orgnr
     WHERE x.beteckning = ? ORDER BY x.inskrivningsdag DESC`),
   bolag: db.prepare('SELECT * FROM bolag WHERE orgnr = ?'),
+  antalAgda: db.prepare('SELECT count(DISTINCT beteckning) AS n FROM agande WHERE orgnr = ?'),
   // Bolagets köp; en paketaffär (se AFFAR) blir en rad med antal fastigheter.
   bolagKop: db.prepare(`SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, min(x.beteckning) AS beteckning,
       count(*) AS antal, f.minx, f.miny, f.maxx, f.maxy
@@ -232,6 +233,8 @@ const q = {
     ? db.prepare(`SELECT b.orgnr, b.namn, b.postort, b.demo, b.avregistrerad
         FROM bolag_fts JOIN bolag b ON b.rowid = bolag_fts.rowid WHERE bolag_fts MATCH ? LIMIT 300`)
     : db.prepare('SELECT orgnr, namn, postort, demo, avregistrerad FROM bolag WHERE namn LIKE ? LIMIT 300'),
+  agareLista: db.prepare(`SELECT b.orgnr, b.namn, b.postort, b.demo, b.avregistrerad, count(DISTINCT a.beteckning) AS n
+    FROM agande a JOIN bolag b ON b.orgnr = a.orgnr GROUP BY b.orgnr`),
   sokFastighet: db.prepare(`SELECT beteckning, minx, miny, maxx, maxy FROM fastighet
     WHERE beteckning LIKE ? ORDER BY length(beteckning) LIMIT 10`),
   sokAdress: HAS_ADRESS && db.prepare(`SELECT a.gata, a.nummer, a.postnr, a.ort, a.lon, a.lat
@@ -404,12 +407,24 @@ const EXPORT_GEOMETRI = META.export_geometri === '1' || process.env.EXPORT_GEOME
 
 // Fritext -> FTS5-fråga med prefixmatchning per ord: "vasa kron" -> "vasa"* "kron"*
 const ftsQuery = (term) => term.split(/\s+/).filter(Boolean).map((w) => `"${w.replace(/"/g, '')}"*`).join(' ');
-const bolagTraff = ({ orgnr, namn, postort, demo }) => ({ orgnr, namn, postort, demo });
+const bolagTraff = ({ orgnr, namn, postort, demo, n }) => ({ orgnr, namn, postort, demo, fastigheter: n ?? q.antalAgda.get(orgnr).n });
+
+// Bolag som äger fastigheter, i minnet: de ska inte försvinna bland fulltextsökningens 300 första
+// träffar bland 2,2 miljoner bolag. shortcut: läses vid start, som TYPER.
+const AGARE = q.agareLista.all().map((b) => ({ ...b, sok: b.namn.toLocaleLowerCase('sv') }));
+const sokAgare = (term) => {
+  const ord = term.toLocaleLowerCase('sv').split(/\s+/).filter(Boolean);
+  return AGARE.filter((b) => ord.every((o) => b.sok.includes(o))).slice(0, 50);
+};
 
 function sokBolag(term) {
-  return q.sokBolag.all(HAS_FTS ? ftsQuery(term) : `%${term}%`)
-    // Aktiva före avregistrerade, kortare namn (närmare träff) först.
-    .sort((x, y) => (x.avregistrerad ? 1 : 0) - (y.avregistrerad ? 1 : 0) || x.namn.length - y.namn.length)
+  const fraga = HAS_FTS ? ftsQuery(term) : `%${term}%`;
+  // Ägarträffarna sist, så att de (med antal fastigheter, n) vinner vid dubbletter.
+  const unika = new Map([...q.sokBolag.all(fraga), ...sokAgare(term)].map((b) => [b.orgnr, b]));
+  return [...unika.values()]
+    .map((b) => ({ ...b, n: b.n ?? q.antalAgda.get(b.orgnr).n }))
+    // Bolag med fastigheter först, sedan aktiva före avregistrerade, kortare namn (närmare träff) först.
+    .sort((x, y) => (y.n > 0) - (x.n > 0) || (x.avregistrerad ? 1 : 0) - (y.avregistrerad ? 1 : 0) || x.namn.length - y.namn.length)
     .slice(0, 15)
     .map(bolagTraff);
 }

@@ -64,10 +64,15 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 
 Live: ny design och logotyp, bakgrundsväljare (karta, satellit 2025, flygfoton 2005/1995/1975/1960),
 adressökning (120 177 OSM-adresser) och panel med Ägare/Användning/Senaste köp först.
-Lokalt, inte publicerat än: kartfilter (användning, ägartyp, värde, köpår, köpeskilling, tomtyta),
-"Färga efter" i teckenförklaringen, panelvyerna Affärer (`#affarer`, `/api/affarer`) och Största ägare
-(`#agare`, `/api/storsta-agare`), samt "ägare sedan", köp per m² och K/T-kvot i fastighetspanelen.
-Idéerna kommer från Datscha/Property Intel (bara gränssnittet tittat på, ingen data hämtad).
+Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, bara gränssnittet tittat på):
+- Kartan: filter (användning, ägartyp, värde, köpår, köpeskilling, tomtyta) med antal träffar och
+  CSV-nedladdning (`/data/horos-traffar.csv`); "Färga efter" värde, värde/m², användning, ägartyp,
+  köpår; prickar/kluster zoom 10–14 (`/api/punkter`); hovringsruta; delbar adress (`?l=&f=&farg=` + filter).
+- Panelvyer: Affärer (`#affarer`, `/api/affarer`: volym, per användning/kommun, köpare, största,
+  senaste, säljare) och Största ägare (`#agare`, `/api/storsta-agare`, även i kartutsnittet).
+- Fastighetspanelen: ägare sedan, köp/m², K/T-kvot, taxeringsändring, säljare, grannar, köp i närheten.
+- Bolagspanelen: tomtareal, köp, sålt, "Visa alla på kartan" (`/api/fastigheter?org=`).
+- Sök: ägare först med antal fastigheter (ägarlistan i minnet). Servertester i `test/server.test.mjs`.
 Den publika databasen har **0 fastigheter** (bara bolag och adresser) tills riktiga data finns.
 
 Väntar på:

@@ -594,7 +594,7 @@ async function runSearch() {
   }
   if (r.bolag.length) {
     items.push('<li class="group">Bolag</li>');
-    for (const b of r.bolag) items.push(`<li data-kind="b" data-id="${esc(b.orgnr)}">${esc(b.namn)}${demoTag(b.demo)} <span class="muted small">${fmtOrgnr(b.orgnr)}${b.postort ? ` · ${esc(b.postort)}` : ''}</span></li>`);
+    for (const b of r.bolag) items.push(`<li data-kind="b" data-id="${esc(b.orgnr)}">${esc(b.namn)}${demoTag(b.demo)} <span class="muted small">${fmtOrgnr(b.orgnr)}${b.postort ? ` · ${esc(b.postort)}` : ''}${b.fastigheter ? ` · ${b.fastigheter.toLocaleString('sv-SE')} ${b.fastigheter === 1 ? 'fastighet' : 'fastigheter'}` : ''}</span></li>`);
   }
   if (!items.length) items.push('<li class="group">Inga träffar</li>');
   $('#results').innerHTML = items.join('');
