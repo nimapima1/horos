@@ -348,9 +348,13 @@ const storstaAgare = Object.fromEntries([false, true].map((bbox) => [bbox ? 'bbo
   Object.fromEntries(Object.entries(STORST_EFTER).map(([k, col]) => [k, storstaSql(bbox, col)]))]));
 
 // I publikt läge ändras databasen inte: svaren cachas (nycklarna är begränsade av valideringen).
+// Töms vid dygnsskiftet, eftersom affärerna räknar "senaste 30 dagarna" från dagens datum.
 const cache = new Map();
+let cacheDag = '';
 const cached = (key, fn) => {
   if (!PUBLIC_MODE) return fn();
+  const idag = new Date().toISOString().slice(0, 10);
+  if (idag !== cacheDag) { cache.clear(); cacheDag = idag; }
   if (!cache.has(key)) cache.set(key, fn());
   return cache.get(key);
 };
@@ -359,10 +363,10 @@ const oneOf = (v, list) => (v && list.includes(v) ? v : null);
 function affarer(url) {
   const kommun = oneOf(url.searchParams.get('kommun'), KOMMUNER);
   const minMkr = AFFAR_MIN.includes(Number(url.searchParams.get('min'))) ? Number(url.searchParams.get('min')) : 0;
-  return cached(`affarer|${kommun}|${minMkr}|${url.searchParams.get('ar')}`, () => {
-    const p = [minMkr * 1e6, kommun, kommun];
-    const arLista = qa.ar.all(...p).map((r) => r.ar);
-    const ar = oneOf(url.searchParams.get('ar'), arLista) ?? arLista[0] ?? null;
+  const p = [minMkr * 1e6, kommun, kommun];
+  const arLista = cached(`affarAr|${kommun}|${minMkr}`, () => qa.ar.all(...p).map((r) => r.ar));
+  const ar = oneOf(url.searchParams.get('ar'), arLista) ?? arLista[0] ?? null;
+  return cached(`affarer|${kommun}|${minMkr}|${ar}`, () => {
     return {
       kommun, min: minMkr, ar, arLista,
       summa: ar ? qa.summa.get(...p, ar) : { antal: 0, kr: null },
