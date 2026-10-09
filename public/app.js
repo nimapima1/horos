@@ -439,9 +439,9 @@ const ungefarM2 = (m2) => `≈ ${(Math.round(m2 / (m2 < 1000 ? 10 : 100)) * (m2 
 const procent = (x) => `${Math.round(x * 100)} %`;
 
 // Rutan Användning: taxeringstypen och uppskattad fördelning på lokaltyper med LOA.
-function anvandningRuta(typer, ar, anvandning) {
+// harForetag: företagsuppgifterna (SCB) är inlästa, så att en tom lista betyder "inga företag".
+function anvandningRuta(typer, ar, anvandning, loa, harForetag) {
   const rader = uppskattadAnvandning(anvandning);
-  const loa = rader.reduce((s, r) => s + r.loa, 0);
   return `<section class="anv" aria-labelledby="anv-rubrik">
     <div class="stat-label" id="anv-rubrik">Användning</div>
     <div class="fact-value">${rader.length ? `${esc(rader[0].typ)} ${procent(rader[0].andel)}` : typer.length ? esc(typer.join(' · ')) : '–'}</div>
@@ -456,7 +456,7 @@ function anvandningRuta(typer, ar, anvandning) {
         <tr class="anv-summa"><td>Totalt</td><td></td><td class="num">${ungefarM2(loa)}</td></tr>
       </table>
       <div class="fact-sub">Uppskattat från branscher och antal anställda hos företagen på fastigheten (SCB).
-        Grov indikation, inte uppmätt yta.</div>` : `<div class="fact-sub">Ingen uppskattning: inga företag registrerade på fastigheten.</div>`}
+        Grov indikation, inte uppmätt yta.</div>` : `<div class="fact-sub">${harForetag ? 'Ingen uppskattning: inga företag registrerade på fastigheten.' : 'Ingen uppskattning ännu.'}</div>`}
   </section>`;
 }
 
@@ -465,7 +465,7 @@ function hyresgastTabell(hyresgaster) {
   const perAdress = new Map();
   for (const h of hyresgaster) {
     const k = h.adress ?? 'Adress saknas';
-    perAdress.set(k, [...(perAdress.get(k) ?? []), h]);
+    (perAdress.get(k) ?? perAdress.set(k, []).get(k)).push(h);
   }
   // Adresserna i gatuordning (92 före 92A före 94), "Adress saknas" sist; företagen störst först.
   const adresser = [...perAdress].sort(([x], [y]) => (x === 'Adress saknas') - (y === 'Adress saknas')
@@ -517,7 +517,7 @@ async function openFastighet(bet, adress) {
       ['Senaste köp', kop ? mkr(kop.kopeskilling_kr / 1000) : '–',
         kop ? `${esc(kop.inskrivningsdag ?? '')}${kop.forvarvare_namn ? ` · ${esc(kop.forvarvare_namn)}` : ''}${paket ? ` · paketaffär, ${kop.i_affar} fastigheter` : ''}` : 'Inga registrerade köp'],
     ])}
-    ${anvandningRuta(anvandning, ar, f.anvandning)}
+    ${anvandningRuta(anvandning, ar, f.anvandning, loa, !!f.hyresgaster)}
     ${stats([
       [`Taxeringsvärde${ar ? ` ${ar}` : ''}`, f.taxering.length ? mkr(varde) : '–'],
       ['Upplåtelseform', UPPLATELSE[f.upplatelse] ?? '–', f.upplatelse ? 'Enligt Lantmäteriet' : 'Uppgift saknas'],
@@ -534,9 +534,9 @@ async function openFastighet(bet, adress) {
         ['K/T-kvot', varde ? (kop.kopeskilling_kr / (varde * 1000)).toLocaleString('sv-SE', { maximumFractionDigits: 2 }) : '–'],
       ] : []),
     ])}
-    <h3>Företag på adressen</h3>
+    ${f.hyresgaster ? `<h3>Företag på adressen</h3>
     <div class="meta small">Företag med arbetsställe på fastigheten enligt SCB:s företagsregister. Det säger inget om hyresavtal.</div>
-    ${hyresgastTabell(f.hyresgaster)}
+    ${hyresgastTabell(f.hyresgaster)}` : ''}
     <h3>Detaljplan</h3>
     ${table('<th>Plan</th><th class="num">Laga kraft</th>', f.planer.map((p) =>
       `<tr><td><strong>${esc(PLANTYP[p.typ] ?? p.typ)}</strong>${p.namn ? ` · ${esc(p.namn)}` : ''}${demoTag(p.demo)}
@@ -577,7 +577,7 @@ async function openFastighet(bet, adress) {
           : x.areal_m2 && (!x.andel || x.andel === '1/1') ? `${kr(x.kr / x.areal_m2)}/m²` : ''}</div></td></tr>`),
       'Inga registrerade köp i närheten.')}
     <button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>
-    <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.planer.length ? ` · planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}` : ''}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}${f.hyresgaster.length ? ` · företag: ${f.hyresgaster.some((h) => h.demo) ? 'påhittade (exempel)' : 'SCB'}` : ''}</p>
+    <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.planer.length ? ` · planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}` : ''}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}${f.hyresgaster?.length ? ` · företag: ${f.hyresgaster.some((h) => h.demo) ? 'påhittade (exempel)' : 'SCB'}` : ''}</p>
   `);
 }
 
@@ -718,6 +718,7 @@ function openAdress(adress, lonlat, bet) {
 }
 
 // Om Horos.
+let harForetag = false;   // sätts av status: företagsuppgifter (SCB) finns
 function openOm() {
   select(null);
   showPanel(`
@@ -743,7 +744,7 @@ function openOm() {
       <dt>Taxering</dt><dd>Skatteverket, allmänna handlingar</dd>
       <dt>Ägare, köp</dt><dd>Lantmäteriet, allmänna handlingar</dd>
       <dt>Planer</dt><dd>Lantmäteriet, Markreglerande bestämmelse</dd>
-      <dt>Företag</dt><dd>SCB, företagsregistret (arbetsställen)</dd>
+      ${harForetag ? '<dt>Företag</dt><dd>SCB, företagsregistret (arbetsställen)</dd>' : ''}
       <dt>Adresser</dt><dd>© OpenStreetMap-bidragsgivare (ODbL)</dd>
       <dt>Karta</dt><dd>OpenFreeMap, © OpenStreetMap-bidragsgivare</dd>
       <dt>Satellit</dt><dd>EOxCloudless 2025 (Copernicus Sentinel-2)</dd>
@@ -770,6 +771,9 @@ statusP.then((s) => {
   for (const t of s.lokaltyper ?? []) filterForm.lok.add(new Option(t, t));
   for (const l of s.lan ?? []) filterForm.lan.add(new Option(l.namn, l.kod));
   kommunInfo = s.kommunInfo ?? [];
+  // Utan företagsuppgifter (SCB) finns inga lokaltyper eller uppskattad LOA att filtrera på.
+  harForetag = (s.lokaltyper ?? []).length > 0;
+  for (const k of ['lok', 'loamin', 'loamax']) filterForm[k].closest('label').hidden = !harForetag;
   if (START.get('lan')) filterForm.lan.value = START.get('lan');
   fyllKommuner();
   const valda = ['anv', 'jur', 'lok', 'rf', 'kommun', 'agkat', 'lan'].filter((k) => START.get(k));

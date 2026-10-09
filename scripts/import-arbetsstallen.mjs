@@ -59,11 +59,9 @@ const db = openDb();
 rebuildRtree(db, 'fastighet');
 const kandidater = db.prepare(`SELECT f.beteckning, f.geojson FROM fastighet f
   WHERE f.rowid IN (SELECT id FROM fastighet_rtree WHERE maxx >= ? AND minx <= ? AND maxy >= ? AND miny <= ?)`);
-const geom = new Map();
-const fastighetVid = (lon, lat) => kandidater.all(lon, lon, lat, lat).find((f) => {
-  if (!geom.has(f.beteckning)) geom.set(f.beteckning, JSON.parse(f.geojson));
-  return pointInGeom([lon, lat], geom.get(f.beteckning));
-})?.beteckning ?? null;
+// Ingen cache av polygonerna: med hela landet skulle den växa till flera GB.
+const fastighetVid = (lon, lat) =>
+  kandidater.all(lon, lon, lat, lat).find((f) => pointInGeom([lon, lat], JSON.parse(f.geojson)))?.beteckning ?? null;
 
 const ins = db.prepare(`INSERT OR REPLACE INTO arbetsstalle
   (cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, postnr, ort, lon, lat, beteckning)

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { typText, okandKod } from '../lib/typkoder.mjs';
+import { typText } from '../lib/typkoder.mjs';
 
 test('typkoder översätts med hänsyn till taxeringsåret', () => {
   assert.equal(typText('325', 2025), 'Hyreshusenhet, lokaler');
@@ -11,8 +11,5 @@ test('typkoder översätts med hänsyn till taxeringsåret', () => {
   assert.equal(typText('Hyreshusenhet, lokaler', 2025), 'Hyreshusenhet, lokaler');   // text lämnas
   assert.equal(typText('', 2025), null);
   assert.equal(typText('999', 2025), '999');                                     // okänd kod lämnas
-  assert.equal(okandKod('999', 2025), true);
-  assert.equal(okandKod('211', 2025), true);                                     // fanns bara t.o.m. 2014
-  assert.equal(okandKod('211', 2014), false);
-  assert.equal(okandKod('Hyreshusenhet, lokaler'), false);
+  assert.equal(typText('211', 2025), '211');                                     // fanns bara t.o.m. 2014
 });

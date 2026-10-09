@@ -19,7 +19,9 @@ const hasTable = (name) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE name 
 const HAS_FTS = hasTable('bolag_fts');
 const HAS_ADRESS = hasTable('adress_fts');
 const HAS_PLAN = hasTable('plan');   // saknas i publika databaser byggda före planerna
-const HAS_AE = hasTable('arbetsstalle');   // likaså arbetsställena (SCB)
+// Arbetsställen (SCB) med minst en rad: den publika databasen har tabellen men inga rader förrän
+// build-public körs med --scb-villkor, och då ska inget om företag visas.
+const HAS_AE = hasTable('arbetsstalle') && !!db.prepare('SELECT 1 FROM arbetsstalle LIMIT 1').get();
 const HAS_TOMTRATT = !!db.prepare("SELECT 1 FROM pragma_table_info('agande') WHERE name = 'tomtratt'").get();
 
 // Rumsliga index. build-public bygger dem i den publika databasen; lokalt byggs de om vid
@@ -269,7 +271,7 @@ const q = {
     WHERE x.beteckning = ? ORDER BY x.inskrivningsdag DESC`),
   bolag: db.prepare('SELECT * FROM bolag WHERE orgnr = ?'),
   // Företag med arbetsställe på fastigheten, störst först.
-  hyresgaster: HAS_AE && db.prepare(`SELECT a.orgnr, b.namn, a.benamning, a.sni, a.avdelning, a.bransch, a.anstkl,
+  hyresgaster: HAS_AE && db.prepare(`SELECT a.orgnr, b.namn, a.benamning, a.sni, a.bransch, a.anstkl,
       a.adress, a.demo
     FROM arbetsstalle a LEFT JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = ?
     ORDER BY a.anstkl DESC NULLS LAST, coalesce(b.namn, a.benamning) LIMIT 300`),
@@ -675,7 +677,8 @@ const routes = [
     const f = q.fastighet.get(bet);
     if (!f) return [404, { error: 'Fastigheten finns inte' }];
     return [200, { ...f, upplatelse: q.upplatelse.get(bet).u, adresser: adresserPa(bet), planer: planerPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet),
-      hyresgaster: q.hyresgaster ? q.hyresgaster.all(bet) : [], anvandning: q.anvandning ? q.anvandning.all(bet) : [],
+      // null = inga företagsuppgifter inlästa (skiljer sig från [] = inga företag på fastigheten).
+      hyresgaster: q.hyresgaster ? q.hyresgaster.all(bet) : null, anvandning: q.anvandning ? q.anvandning.all(bet) : [],
       ...omgivning(bet) }];
   }],
 

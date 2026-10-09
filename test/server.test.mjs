@@ -16,8 +16,8 @@ const rect = (x0, y0, x1, y1) => JSON.stringify({ type: 'Polygon', coordinates: 
 before(async () => {
   for (const ext of ['', '-wal', '-shm']) rmSync(DB + ext, { force: true });
   const db = openDb({ path: DB });
-  db.exec(`INSERT INTO bolag (orgnr, namn, jurform) VALUES
-    ('5560000001', 'Alfa AB', 'Aktiebolag'), ('7690000002', 'Brf Beta', 'Bostadsrättsförening')`);
+  db.exec(`INSERT INTO bolag (orgnr, namn, jurform, sni) VALUES
+    ('5560000001', 'Alfa AB', 'Aktiebolag', '68201'), ('7690000002', 'Brf Beta', 'Bostadsrättsförening', NULL)`);
   const insF = db.prepare(`INSERT INTO fastighet (beteckning, kommun, areal_m2, geojson, minx, miny, maxx, maxy, kalla)
     VALUES (?, 'Testkommun', ?, ?, ?, ?, ?, ?, 'lantmateriet')`);
   // 1:1 och 1:2 gränsar till varandra, 1:3 ligger en bit bort.
@@ -79,7 +79,8 @@ test('kartfiltren', async () => {
   assert.equal(await antal('&agare=556000-0001'), 2);
   assert.equal(await antal('&agare=gamma%20beta'), 0);
   assert.equal(await antal('&agkat=brf'), 1);
-  assert.equal(await antal('&agkat=ovriga'), 2);      // Alfa AB saknar SNI 68
+  assert.equal(await antal('&agkat=fastighetsbolag'), 2);   // Alfa AB har SNI 68201
+  assert.equal(await antal('&agkat=ovriga'), 0);
   assert.equal(await antal('&agkat=kommun'), 0);
   assert.equal(await antal('&lok=Industri'), 0);
   assert.equal(await antal('&loamin=700'), 1);

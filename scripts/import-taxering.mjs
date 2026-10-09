@@ -9,7 +9,7 @@
 // sparas som Skatteverkets klartext för taxeringsåret, se lib/typkoder.mjs.
 import { openDb, normOrgnr, normBeteckning, withTransaction, markPrivata } from '../lib/db.mjs';
 import { loadMapped, parseArgs, num } from '../lib/csv.mjs';
-import { typText, okandKod } from '../lib/typkoder.mjs';
+import { typText } from '../lib/typkoder.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const file = args._[0];
@@ -48,8 +48,9 @@ for (const r of rows) {
     continue;
   }
   const ar = num(get(r, 'ar'));
-  if (okandKod(get(r, 'typ'), ar)) okanda.add(String(get(r, 'typ')).trim());
-  recs.push([normBeteckning(get(r, 'beteckning')), get(r, 'taxeringsenhet'), typText(get(r, 'typ'), ar), ar,
+  const typ = get(r, 'typ'), text = typText(typ, ar);
+  if (/^\d{3}$/.test(typ ?? '') && text === typ) okanda.add(typ);   // kod som inte finns i listan
+  recs.push([normBeteckning(get(r, 'beteckning')), get(r, 'taxeringsenhet'), text, ar,
     toTkr(num(get(r, 'varde'))), toTkr(num(get(r, 'markvarde'))), toTkr(num(get(r, 'byggvarde'))), orgnr, get(r, 'andel')]);
 }
 console.log(`${recs.length} rader att importera, ${personer} hoppade över (fysiska personer).`);
