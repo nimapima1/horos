@@ -211,6 +211,16 @@ const q = {
       count(*) AS antal, f.minx, f.miny, f.maxx, f.maxy
     FROM transaktion x JOIN fastighet f ON f.beteckning = x.beteckning
     WHERE x.forvarvare_orgnr = ? GROUP BY x.inskrivningsdag, x.kopeskilling_kr ORDER BY dag DESC LIMIT 50`),
+  // Sålt: bolagets förvärv som följs av en överlåtelse till någon annan (nästa förvärv av fastigheten).
+  bolagSalt: db.prepare(`SELECT x.beteckning, x.inskrivningsdag AS kopt, x.kopeskilling_kr AS kop_kr,
+      y.inskrivningsdag AS salt, y.kopeskilling_kr AS salt_kr, y.forvarvare_orgnr AS kopare_orgnr, b.namn AS kopare,
+      f.minx, f.miny, f.maxx, f.maxy
+    FROM transaktion x
+    JOIN transaktion y ON y.beteckning = x.beteckning AND y.inskrivningsdag = (SELECT min(z.inskrivningsdag)
+      FROM transaktion z WHERE z.beteckning = x.beteckning AND z.inskrivningsdag > x.inskrivningsdag)
+    JOIN fastighet f ON f.beteckning = x.beteckning LEFT JOIN bolag b ON b.orgnr = y.forvarvare_orgnr
+    WHERE x.forvarvare_orgnr = ? AND y.forvarvare_orgnr IS NOT x.forvarvare_orgnr
+    ORDER BY y.inskrivningsdag DESC LIMIT 50`),
   bolagFastigheter: db.prepare(`
     SELECT DISTINCT f.beteckning, f.areal_m2, f.minx, f.miny, f.maxx, f.maxy, ${SENASTE_VARDE} AS varde_tkr
     FROM fastighet f
@@ -561,7 +571,7 @@ const routes = [
     const orgnr = normOrgnr(m[1]);
     const b = orgnr && q.bolag.get(orgnr);
     if (!b) return [404, { error: 'Bolaget finns inte bland importerade juridiska personer' }];
-    return [200, { ...b, fastigheter: q.bolagFastigheter.all(orgnr, orgnr), kop: q.bolagKop.all(orgnr) }];
+    return [200, { ...b, fastigheter: q.bolagFastigheter.all(orgnr, orgnr), kop: q.bolagKop.all(orgnr), salt: q.bolagSalt.all(orgnr) }];
   }],
 
   [/^\/api\/sok$/, 'api', (_m, url) => {

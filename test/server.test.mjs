@@ -105,3 +105,16 @@ test('träff-export som CSV', async () => {
   assert.match(rader[0], /beteckning;agare;/);
   assert.equal(rader.length, 3);
 });
+
+test('bolag: köp och sålt (körs sist, lägger till en försäljning)', async () => {
+  const db = openDb({ path: DB });
+  db.exec(`INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr)
+    VALUES ('T 1:2', '2023-03-01', 35000000, '5560000001')`);
+  db.close();
+  const beta = await json('/api/bolag/7690000002');
+  assert.deepEqual(beta.salt.map((x) => [x.beteckning, x.kopt, x.salt, x.kopare, x.salt_kr]),
+    [['T 1:2', '2020-01-01', '2023-03-01', 'Alfa AB', 35000000]]);
+  const alfa = await json('/api/bolag/5560000001');
+  assert.deepEqual(alfa.kop.map((x) => [x.dag, x.antal]), [['2024-05-01', 2], ['2023-03-01', 1]]);
+  assert.deepEqual(alfa.salt, []);
+});

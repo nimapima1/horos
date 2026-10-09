@@ -475,11 +475,15 @@ async function openFastighet(bet, adress) {
         <tr><td></td><td class="muted small" colspan="2">Mark ${mkr(t.markvarde_tkr)} · Byggnad ${mkr(t.byggvarde_tkr)}${t.taxeringsenhet ? ` · Enhet ${esc(t.taxeringsenhet)}` : ''}</td></tr>`),
       'Väntar på uppgifter från Skatteverket.')}
     <h3>Överlåtelser</h3>
-    ${table('<th class="num">Datum</th><th>Förvärvare</th><th class="num">Köpeskilling</th>', f.transaktioner.map((x) =>
-      `<tr><td class="num">${esc(x.inskrivningsdag ?? '')}</td>
-        <td>${x.forvarvare_orgnr ? bolagLink(x.forvarvare_orgnr, x.forvarvare_namn) : '–'}<div class="muted small">${esc(x.art ?? '')}</div></td>
-        <td class="num">${kr(x.kopeskilling_kr)}</td></tr>`),
-      'Inga registrerade överlåtelser.')}
+    ${table('<th class="num">Datum</th><th>Förvärvare</th><th class="num">Köpeskilling</th>', f.transaktioner.map((x, i) => {
+      // Säljaren är förvärvaren i överlåtelsen före (listan är nyast först), om den finns i Horos.
+      const fore = f.transaktioner[i + 1];
+      const fran = fore?.forvarvare_orgnr && fore.forvarvare_orgnr !== x.forvarvare_orgnr
+        ? `från ${bolagLink(fore.forvarvare_orgnr, fore.forvarvare_namn)}` : '';
+      return `<tr><td class="num">${esc(x.inskrivningsdag ?? '')}</td>
+        <td>${x.forvarvare_orgnr ? bolagLink(x.forvarvare_orgnr, x.forvarvare_namn) : '–'}<div class="muted small">${[esc(x.art ?? ''), fran].filter(Boolean).join(' · ')}</div></td>
+        <td class="num">${kr(x.kopeskilling_kr)}</td></tr>`;
+    }), 'Inga registrerade överlåtelser.')}
     <h3>Köp i närheten</h3>
     <div class="meta small">Inom cirka 300 meter, senaste först.</div>
     ${table('<th class="num">Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', f.narKop.map((x) =>
@@ -527,7 +531,14 @@ async function openBolag(orgnr) {
     ${table('<th class="num">Datum</th><th>Fastighet</th><th class="num">Pris</th>', b.kop.map((x) =>
       `<tr><td class="num">${esc(x.dag ?? '')}</td><td>${fastighetLink(x)}</td><td class="num">${x.kr == null ? '–' : mkr(x.kr / 1000)}</td></tr>`),
       'Inga registrerade köp.')}
-    <p class="muted small" style="margin-top:16px">Källa: Bolagsverket och SCB, värdefulla datamängder.</p>
+    <h3>Sålt</h3>
+    ${table('<th>Fastighet</th><th class="num">Köpt</th><th class="num">Sålt</th>', b.salt.map((x) => {
+      const ar = x.kopt && x.salt ? (Date.parse(x.salt) - Date.parse(x.kopt)) / (365.25 * 864e5) : null;
+      return `<tr><td>${fastighetLink(x)}<div class="muted small">${x.kopare_orgnr ? `till ${bolagLink(x.kopare_orgnr, x.kopare)}` : ''}${ar != null ? `${x.kopare_orgnr ? ' · ' : ''}ägd ${ar.toLocaleString('sv-SE', { maximumFractionDigits: 1 })} år` : ''}</div></td>
+        <td class="num">${esc(x.kopt ?? '')}<div class="muted small">${x.kop_kr == null ? '–' : mkr(x.kop_kr / 1000)}</div></td>
+        <td class="num">${esc(x.salt ?? '')}<div class="muted small">${x.salt_kr == null ? '–' : mkr(x.salt_kr / 1000)}</div></td></tr>`;
+    }), 'Inga registrerade försäljningar.')}
+    <p class="muted small" style="margin-top:16px">Källa: Bolagsverket och SCB, värdefulla datamängder. Köp och försäljningar: Lantmäteriet.</p>
   `);
 }
 
