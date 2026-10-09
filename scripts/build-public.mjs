@@ -17,7 +17,7 @@
 // när ansökan har beviljats. Läs beslutets villkor innan du publicerar.
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { openDb, DB_PATH, ROOT, harJuridiskAgare, rebuildBolagFts, withTransaction } from '../lib/db.mjs';
+import { openDb, DB_PATH, ROOT, harJuridiskAgare, rebuildAdressFts, rebuildBolagFts, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 
 const args = parseArgs(process.argv.slice(2));
@@ -54,6 +54,9 @@ withTransaction(db, () => {
     INSERT INTO transaktion SELECT * FROM src.transaktion WHERE demo = 0 AND beteckning IN (SELECT beteckning FROM tillaten);
     INSERT INTO bolag SELECT * FROM src.bolag WHERE demo = 0 ${args['alla-bolag'] ? '' : `AND orgnr IN (
       SELECT orgnr FROM agande UNION SELECT agare_orgnr FROM taxering UNION SELECT forvarvare_orgnr FROM transaktion)`};
+    -- Alla adresser (öppna OSM-data, inga personuppgifter), så att sökningen även kan svara
+    -- att en adress inte har någon fastighet i Horos.
+    INSERT INTO adress SELECT * FROM src.adress;
     CREATE TABLE meta (nyckel TEXT PRIMARY KEY, varde TEXT);
   `);
   const meta = db.prepare('INSERT INTO meta VALUES (?, ?)');
@@ -64,12 +67,14 @@ withTransaction(db, () => {
 db.exec('DETACH DATABASE src');
 
 rebuildBolagFts(db);
+rebuildAdressFts(db);
 // Servern öppnar filen skrivskyddat: ingen WAL, kompakt fil.
 db.exec('PRAGMA journal_mode = DELETE; VACUUM;');
 
 const c = db.prepare(`SELECT (SELECT count(*) FROM fastighet) f, (SELECT count(*) FROM bolag) b,
-  (SELECT count(*) FROM taxering) t, (SELECT count(*) FROM agande) a, (SELECT count(*) FROM transaktion) x`).get();
+  (SELECT count(*) FROM taxering) t, (SELECT count(*) FROM agande) a, (SELECT count(*) FROM transaktion) x,
+  (SELECT count(*) FROM adress) ad`).get();
 db.close();
-console.log(`Klart: ${OUT}\n  ${c.f} fastigheter, ${c.b} bolag, ${c.t} taxeringar, ${c.a} ägarposter, ${c.x} överlåtelser`);
+console.log(`Klart: ${OUT}\n  ${c.f} fastigheter, ${c.b} bolag, ${c.t} taxeringar, ${c.a} ägarposter, ${c.x} överlåtelser, ${c.ad} adresser`);
 if (!c.f) console.log('  (Inga fastigheter ännu: väntar på Lantmäteriet/Skatteverket. Sidan blir en tom karta'
   + (args['alla-bolag'] ? ' med bolagssök.)' : '; kör med --alla-bolag för att kunna söka bland alla bolag.)'));

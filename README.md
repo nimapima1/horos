@@ -15,6 +15,7 @@ Kräver Node 22.13 eller senare. Enda beroendet är MapLibre, som kopieras till
 
 ```sh
 npm run import:bolag      # Bolagsverket + SCB -> data/fastighetskarta.sqlite
+npm run import:adresser   # adresser för sökningen från OpenStreetMap (Overpass)
 npm run demo              # exempelfastigheter i centrala Stockholm (valfritt)
 npm start                 # http://localhost:3000
 ```
@@ -27,6 +28,8 @@ npm start                 # http://localhost:3000
 | Fastighetsgränser | Lantmäteriet, *Fastighetsindelning Nedladdning, vektor* via [Geotorget](https://geotorget.lantmateriet.se) | ⏳ Avgiftsfri men kräver juridisk prövning (FRL); villkor för värdefulla datamängder med personuppgifter. Ansökan 2026-10-09 | `import:fastigheter` |
 | Taxeringsvärden | Skatteverket, begäran om allmän handling | ⏳ Begärt 2026-10-09 | `import:taxering` |
 | Lagfarna ägare, köpeskillingar | Lantmäteriet, begäran om allmän handling | ⏳ Begärt 2026-10-09 | `import:lagfarter` |
+| Adresser (sökning) | © OpenStreetMap-bidragsgivare (ODbL); senare Lantmäteriet, *Belägenhetsadress Nedladdning, vektor* | ✅ OSM nu; ansökan hos Lantmäteriet förberedd | `import:adresser` |
+| Användning (byggnaders ändamål) | Lantmäteriet, *Byggnad Nedladdning, vektor* | ⏳ Ansökan förberedd (GDPR-prövning) | – |
 | Byggnader i exempeldatan | © OpenStreetMap-bidragsgivare (ODbL) | Endast demo | `demo` |
 
 ### Bolag

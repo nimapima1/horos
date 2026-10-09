@@ -124,7 +124,7 @@ map.on('load', () => {
   map.addLayer({ id: 'fastighet-fill', type: 'fill', source: 'fastigheter', paint: { 'fill-color': valueColor(), 'fill-opacity': fillOp } });
   map.addLayer({ id: 'fastighet-line', type: 'line', source: 'fastigheter', paint: linePaint });
 
-  map.on('click', 'fastighet-fill', (e) => openFastighet(e.features[0].properties.beteckning));
+  map.on('click', 'fastighet-fill', (e) => { adressMarker?.remove(); openFastighet(e.features[0].properties.beteckning); });
   let hovered = null;
   const setHover = (id) => {
     if (hovered) map.setFeatureState({ source: 'fastigheter', id: hovered }, { hover: false });
@@ -165,7 +165,7 @@ function showPanel(html) {
   $('#panel').hidden = false;
   $('#panel').scrollTop = 0;
 }
-$('#close').addEventListener('click', () => { $('#panel').hidden = true; select(null); });
+$('#close').addEventListener('click', () => { $('#panel').hidden = true; select(null); adressMarker?.remove(); });
 
 const demoTag = (d) => (d ? '<span class="tag">exempel</span>' : '');
 const bolagLink = (orgnr, namn, demo) =>
@@ -185,21 +185,40 @@ async function apiPanel(path) {
   catch (e) { showPanel(`<p class="empty">${esc(e.message)}</p>`); return null; }
 }
 
-async function openFastighet(bet) {
+// Det de flesta letar efter, överst: [[etikett, värde, undertext], ...]
+const facts = (items) => `<div class="facts">${items.map(([label, value, sub]) =>
+  `<div class="fact"><div class="stat-label">${label}</div><div class="fact-value">${value}</div>${sub ? `<div class="fact-sub">${sub}</div>` : ''}</div>`).join('')}</div>`;
+
+// adress: söktexten när fastigheten öppnades från en adressträff.
+async function openFastighet(bet, adress) {
   const f = await apiPanel(`/api/fastighet/${encodeURIComponent(bet)}`);
   if (!f) return;
   select(f.beteckning);
-  // Senaste årets taxeringsvärde (summan av fastighetens taxeringsenheter) och senaste köp.
+  // Senaste taxeringsåret: värdet är summan av fastighetens taxeringsenheter.
   const ar = f.taxering[0]?.ar;
-  const varde = f.taxering.filter((t) => t.ar === ar).reduce((s, t) => s + (t.varde_tkr ?? 0), 0);
+  const senaste = f.taxering.filter((t) => t.ar === ar);
+  const varde = senaste.reduce((s, t) => s + (t.varde_tkr ?? 0), 0);
   const kop = f.transaktioner.find((x) => x.kopeskilling_kr != null);
+  // Lagfarna ägare, annars ägarna i taxeringen.
+  const agare = f.agare.length ? f.agare
+    : [...new Map(senaste.filter((t) => t.agare_orgnr).map((t) => [t.agare_orgnr, { orgnr: t.agare_orgnr, namn: t.agare_namn }])).values()];
+  const anvandning = [...new Set(senaste.map((t) => t.typ).filter(Boolean))];
+  const rubrik = adress ?? f.adresser[0] ?? f.beteckning;
+  const ovriga = f.adresser.filter((a) => a !== rubrik);
   showPanel(`
-    <h2>${esc(f.beteckning)}${demoTag(f.demo)}</h2>
-    <div class="meta">${esc(f.kommun ?? '')} · källa: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}</div>
+    <h2>${esc(rubrik)}${demoTag(f.demo)}</h2>
+    <div class="meta">${rubrik === f.beteckning ? '' : `${esc(f.beteckning)} · `}${esc(f.kommun ?? '')}</div>
+    ${ovriga.length ? `<div class="meta small">Även ${esc(ovriga.join(', '))}</div>` : ''}
+    ${facts([
+      ['Ägare', agare.length ? bolagLink(agare[0].orgnr, agare[0].namn, agare[0].demo) : '–',
+        agare.length > 1 ? `och ${agare.length - 1} till, se nedan` : agare.length ? fmtOrgnr(agare[0].orgnr) : 'Väntar på uppgifter från Lantmäteriet'],
+      ['Användning', anvandning.length ? esc(anvandning.join(' · ')) : '–', anvandning.length ? `Enligt taxeringen ${ar}` : 'Väntar på uppgifter från Skatteverket'],
+      ['Senaste köp', kop ? mkr(kop.kopeskilling_kr / 1000) : '–',
+        kop ? `${esc(kop.inskrivningsdag ?? '')}${kop.forvarvare_namn ? ` · ${esc(kop.forvarvare_namn)}` : ''}` : 'Inga registrerade köp'],
+    ])}
     ${stats([
       [`Taxeringsvärde${ar ? ` ${ar}` : ''}`, f.taxering.length ? mkr(varde) : '–'],
       ['Areal', f.areal_m2 ? `${Math.round(f.areal_m2).toLocaleString('sv-SE')} m²` : '–'],
-      [`Senaste köp${kop?.inskrivningsdag ? ` ${kop.inskrivningsdag.slice(0, 4)}` : ''}`, kop ? mkr(kop.kopeskilling_kr / 1000) : '–'],
     ])}
     <h3>Lagfarna ägare</h3>
     ${table('<th>Ägare</th><th>Andel</th><th class="num">Sedan</th>', f.agare.map((a) =>
@@ -217,6 +236,7 @@ async function openFastighet(bet) {
         <td>${x.forvarvare_orgnr ? bolagLink(x.forvarvare_orgnr, x.forvarvare_namn) : '–'}<div class="muted small">${esc(x.art ?? '')}</div></td>
         <td class="num">${kr(x.kopeskilling_kr)}</td></tr>`),
       'Inga registrerade överlåtelser.')}
+    <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}</p>
   `);
 }
 
@@ -277,6 +297,10 @@ async function runSearch() {
   const r = await api(`/api/sok?q=${encodeURIComponent(term)}`);
   if (seq !== searchSeq) return;
   const items = [];
+  if (r.adresser.length) {
+    items.push('<li class="group">Adresser</li>');
+    for (const a of r.adresser) items.push(`<li data-kind="a" data-id="${esc(a.beteckning ?? '')}" data-adress="${esc(a.adress)}" data-lonlat="${a.lon},${a.lat}">${esc(a.adress)}${a.ort ? ` <span class="muted small">${esc(a.ort)}</span>` : ''}</li>`);
+  }
   if (r.fastigheter.length) {
     items.push('<li class="group">Fastigheter</li>');
     for (const f of r.fastigheter) items.push(`<li data-kind="f" data-id="${esc(f.beteckning)}" ${bboxAttr(f)}>${esc(f.beteckning)}</li>`);
@@ -295,8 +319,23 @@ $('#results').addEventListener('click', (e) => {
   if (!li) return;
   $('#results').hidden = true;
   if (li.dataset.kind === 'b') openBolag(li.dataset.id);
+  else if (li.dataset.kind === 'a') openAdress(li.dataset.adress, li.dataset.lonlat.split(',').map(Number), li.dataset.id);
   else { flyToBbox(li.dataset.bbox); openFastighet(li.dataset.id); }
 });
+
+// Adressträff: flyg dit, markera punkten och öppna fastigheten den ligger på.
+let adressMarker;
+function openAdress(adress, lonlat, bet) {
+  map.flyTo({ center: lonlat, zoom: Math.max(map.getZoom(), 17) });
+  adressMarker ??= new maplibregl.Marker({ color: getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#0369A1' });
+  adressMarker.setLngLat(lonlat).addTo(map);
+  if (bet) return openFastighet(bet, adress);
+  select(null);
+  showPanel(`
+    <h2>${esc(adress)}</h2>
+    <p class="empty">Ingen fastighet i Horos på den här adressen. Horos visar bara fastigheter som ägs
+      av bolag, föreningar och andra juridiska personer, och bara i Stockholms kommun.</p>`);
+}
 
 // Om Horos.
 function openOm() {
@@ -313,6 +352,7 @@ function openOm() {
       <dt>Gränser</dt><dd>Lantmäteriet, Fastighetsindelning</dd>
       <dt>Taxering</dt><dd>Skatteverket, allmänna handlingar</dd>
       <dt>Ägare, köp</dt><dd>Lantmäteriet, allmänna handlingar</dd>
+      <dt>Adresser</dt><dd>© OpenStreetMap-bidragsgivare (ODbL)</dd>
       <dt>Karta</dt><dd>OpenFreeMap, © OpenStreetMap-bidragsgivare</dd>
       <dt>Satellit</dt><dd>EOxCloudless 2025 (Copernicus Sentinel-2)</dd>
       <dt>Flygfoton</dt><dd>Lantmäteriet, historiska ortofoton 1960–2005 (CC0)</dd>

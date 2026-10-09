@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare } from './lib/db.mjs';
+import { pointInGeom } from './lib/geo.mjs';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -14,6 +15,7 @@ const TRUST_PROXY = process.env.TRUST_PROXY === '1';   // bakom Caddy: läs klie
 const db = openDb({ readOnly: PUBLIC_MODE });
 const hasTable = (name) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE name = ?").get(name);
 const HAS_FTS = hasTable('bolag_fts');
+const HAS_ADRESS = hasTable('adress_fts');
 
 // Spärr för åtagandet i ansökan till Lantmäteriet: publikt får bara fastigheter med
 // juridisk ägare visas, och ingen exempeldata. Servern startar inte annars.
@@ -167,6 +169,13 @@ const q = {
     : db.prepare('SELECT orgnr, namn, postort, demo, avregistrerad FROM bolag WHERE namn LIKE ? LIMIT 300'),
   sokFastighet: db.prepare(`SELECT beteckning, minx, miny, maxx, maxy FROM fastighet
     WHERE beteckning LIKE ? ORDER BY length(beteckning) LIMIT 10`),
+  sokAdress: HAS_ADRESS && db.prepare(`SELECT a.gata, a.nummer, a.postnr, a.ort, a.lon, a.lat
+    FROM adress_fts JOIN adress a ON a.id = adress_fts.rowid WHERE adress_fts MATCH ? LIMIT 200`),
+  fastighetVidPunkt: db.prepare(`SELECT beteckning, geojson FROM fastighet
+    WHERE minx <= ? AND maxx >= ? AND miny <= ? AND maxy >= ? LIMIT 100`),
+  adresserIBbox: HAS_ADRESS && db.prepare(`SELECT gata, nummer, lon, lat FROM adress
+    WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? LIMIT 2000`),
+  fastighetGeom: db.prepare('SELECT geojson, minx, miny, maxx, maxy FROM fastighet WHERE beteckning = ?'),
   export: db.prepare(`
     SELECT f.beteckning, f.kommun, f.areal_m2, f.geojson,
       (SELECT group_concat(a.orgnr, '|') FROM agande a WHERE a.beteckning = f.beteckning) AS agare_orgnr,
@@ -202,6 +211,42 @@ function sokBolag(term) {
     .sort((x, y) => (x.avregistrerad ? 1 : 0) - (y.avregistrerad ? 1 : 0) || x.namn.length - y.namn.length)
     .slice(0, 15)
     .map(bolagTraff);
+}
+
+// Fastigheten som adresspunkten ligger på (bbox-kandidater, sedan punkt-i-polygon).
+const fastighetVid = (lon, lat) =>
+  q.fastighetVidPunkt.all(lon, lon, lat, lat).find((f) => pointInGeom([lon, lat], JSON.parse(f.geojson)))?.beteckning ?? null;
+
+// Adresserna som ligger på fastigheten, t.ex. ["Drottninggatan 53", "Drottninggatan 55"].
+function adresserPa(bet) {
+  const f = q.adresserIBbox && q.fastighetGeom.get(bet);
+  if (!f) return [];
+  const geom = JSON.parse(f.geojson);
+  const namn = q.adresserIBbox.all(f.minx, f.maxx, f.miny, f.maxy)
+    .filter((a) => pointInGeom([a.lon, a.lat], geom)).map((a) => `${a.gata} ${a.nummer}`);
+  return [...new Set(namn)].sort((x, y) => x.localeCompare(y, 'sv', { numeric: true })).slice(0, 12);
+}
+
+// "drottninggatan 53" -> adresser där ett sökt ord är exakt husnumret först, sedan kortast
+// gatunamn. Samma gata + nummer inom ungefär en kilometer visas en gång (OSM har ofta både en
+// adresspunkt och en byggnad), men samma gatunamn i två kommuner hålls isär.
+function sokAdress(term) {
+  if (!q.sokAdress || !/\p{L}/u.test(term)) return [];
+  const ord = new Set(term.toLowerCase().split(/\s+/));
+  const seen = new Set();
+  return q.sokAdress.all(ftsQuery(term))
+    .sort((x, y) => ord.has(y.nummer.toLowerCase()) - ord.has(x.nummer.toLowerCase())
+      || x.gata.length - y.gata.length || parseInt(x.nummer) - parseInt(y.nummer))
+    .filter((a) => {
+      const key = `${a.gata}|${a.nummer}|${Math.round(a.lat * 100)}|${Math.round(a.lon * 50)}`.toLowerCase();
+      return !seen.has(key) && seen.add(key);
+    })
+    .slice(0, 6)
+    .map(({ gata, nummer, postnr, ort, lon, lat }) => ({
+      adress: `${gata} ${nummer}`,
+      ort: [postnr && postnr.replace(/^(\d{3})(\d{2})$/, '$1 $2'), ort].filter(Boolean).join(' ') || null,
+      lon, lat, beteckning: fastighetVid(lon, lat),
+    }));
 }
 
 // GeoJSON-feature som sträng: geometrin ligger redan som JSON i databasen och skarvas in
@@ -269,7 +314,7 @@ const routes = [
     const bet = normBeteckning(decodeURIComponent(m[1]));
     const f = q.fastighet.get(bet);
     if (!f) return [404, { error: 'Fastigheten finns inte' }];
-    return [200, { ...f, taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet) }];
+    return [200, { ...f, adresser: adresserPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet) }];
   }],
 
   [/^\/api\/bolag\/([\d-]+)$/, 'api', (m) => {
@@ -281,10 +326,10 @@ const routes = [
 
   [/^\/api\/sok$/, 'api', (_m, url) => {
     const term = (url.searchParams.get('q') ?? '').trim();
-    if (term.length < 2) return [200, { bolag: [], fastigheter: [] }];
+    if (term.length < 2) return [200, { adresser: [], bolag: [], fastigheter: [] }];
     const orgnr = normOrgnr(term);
     const bolag = orgnr ? [q.bolag.get(orgnr)].filter(Boolean).map(bolagTraff) : sokBolag(term);
-    return [200, { bolag, fastigheter: q.sokFastighet.all(`%${normBeteckning(term)}%`) }];
+    return [200, { adresser: orgnr ? [] : sokAdress(term), bolag, fastigheter: q.sokFastighet.all(`%${normBeteckning(term)}%`) }];
   }],
 
   [/^\/tiles\/satellit\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'tiles',
