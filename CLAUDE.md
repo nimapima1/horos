@@ -84,4 +84,3 @@ bygg med `build-public` och publicera.
 - Vid nästa serverändring: ta bort längdutskriften i `set-secret` och Caddys `Via`-huvud.
 - När Byggnad beviljas: importera ändamål och visa som "Användning" (före taxeringstypen).
 - När Belägenhetsadress beviljas: byt OSM-adresserna (`kalla='osm'`) mot Lantmäteriets.
-- Kolla den nya panelen på mobil.
