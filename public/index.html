@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Horos – bolagsägda fastigheter i Stockholm</title>
+  <meta name="description" content="Horos är en öppen karta över fastigheter som ägs av bolag, föreningar och kommuner i Stockholm, byggd på offentliga källor.">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-row">
+        <strong>Horos</strong>
+        <nav class="links" aria-label="Sidor">
+          <a id="om" href="#om">Om</a>
+          <a href="metod.html">Metod</a>
+          <a href="metod.html#data">Data</a>
+        </nav>
+      </div>
+      <span class="muted tagline">Bolagsägda fastigheter i Stockholm · öppna källor</span>
+    </div>
+    <div class="search">
+      <input id="q" type="search" placeholder="Sök bolag, org.nr eller fastighet…" autocomplete="off" aria-label="Sök">
+      <ul id="results" class="results" hidden></ul>
+    </div>
+  </header>
+
+  <div id="demo-banner" class="demo-banner" hidden>
+    <strong>EXEMPELDATA.</strong> Fastigheterna är OpenStreetMap-byggnader och ägare, taxeringsvärden och
+    köpeskillingar är påhittade. Riktiga uppgifter läses in när Lantmäteriet och Skatteverket har svarat.
+  </div>
+
+  <main class="layout">
+    <div id="map"></div>
+    <aside id="panel" class="panel" hidden>
+      <button id="close" class="close" aria-label="Stäng">×</button>
+      <div id="panel-body"></div>
+    </aside>
+    <div class="legend">
+      <div class="legend-title">Taxeringsvärde</div>
+      <div class="legend-row"><i style="background:var(--v1)"></i>&lt; 25 Mkr</div>
+      <div class="legend-row"><i style="background:var(--v2)"></i>25–100 Mkr</div>
+      <div class="legend-row"><i style="background:var(--v3)"></i>100–300 Mkr</div>
+      <div class="legend-row"><i style="background:var(--v4)"></i>&gt; 300 Mkr</div>
+      <div class="legend-row"><i style="background:var(--v0)"></i>Uppgift saknas</div>
+      <div id="zoom-hint" class="muted small" hidden>Zooma in för att se fastigheter</div>
+    </div>
+  </main>
+
+  <footer class="status">
+    <span id="counts" class="muted small"></span>
+    <span class="muted small">Källor: Lantmäteriet · Bolagsverket · SCB · Skatteverket · Karta © OpenFreeMap, © OpenStreetMap</span>
+  </footer>
+
+  <script src="vendor/maplibre-gl-csp.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

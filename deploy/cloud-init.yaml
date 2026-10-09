@@ -1,0 +1,278 @@
+#cloud-config
+# Horos – serverkonfiguration, version 3.
+# Klistra in hela filen under "Cloud config" när servern skapas i Hetzner Cloud Console.
+# Ubuntu 24.04. Installerar Node 24 (NodeSource) och Caddy (HTTPS, från Caddys officiella
+# releaser på GitHub) med automatiska uppdateringar, brandvägg, skapar användaren "deploy"
+# (din SSH-nyckel) och stänger av root- och lösenordsinloggning. Hemligheter (t.ex. inloggning
+# till Lantmäteriets tjänster) läggs i /etc/fastighetskarta/secrets.env med
+# "fastighetskarta-admin set-secret".
+#
+# Version 2: hemlighetsfil, diskcache för kartrutor, installationskontroll.
+# Version 3: Caddys apt-förråd (Cloudsmith) svarar 402 för alla, så v1/v2 fick Ubuntus gamla
+# Caddy 2.6.2. Caddy installeras nu från GitHub-releasen med kontroll av SHA-512, och uppdateras
+# veckovis av en timer. Nya adminkommandon för underhåll (update-caddy, upgrade-system, reboot)
+# så att servern inte behöver byggas om för sådant. Automatisk omstart 04:30 när en
+# säkerhetsuppdatering kräver det.
+
+package_update: true
+package_upgrade: true
+packages:
+  - ufw
+  - unattended-upgrades
+  - curl
+  - gnupg
+  - debian-keyring
+  - debian-archive-keyring
+  - apt-transport-https
+
+users:
+  - default
+  - name: deploy
+    shell: /bin/bash
+    lock_passwd: true
+  - name: fastighetskarta
+    system: true
+    shell: /usr/sbin/nologin
+    no_create_home: true
+
+write_files:
+  - path: /etc/sudoers.d/deploy
+    permissions: '0440'
+    content: |
+      deploy ALL=(root) NOPASSWD: /usr/local/sbin/fastighetskarta-admin
+
+  - path: /usr/local/sbin/fastighetskarta-admin
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Det enda deploy-användaren får köra som root.
+      set -euo pipefail
+      SECRETS=/etc/fastighetskarta/secrets.env
+      case "${1:-}" in
+        restart)
+          systemctl restart fastighetskarta ;;
+        status)
+          systemctl --no-pager --lines=0 status fastighetskarta caddy || true ;;
+        logs)
+          n="${2:-100}"; [[ "$n" =~ ^[0-9]{1,5}$ ]] || { echo "logs <antal rader>"; exit 1; }
+          journalctl -u fastighetskarta -n "$n" --no-pager ;;
+        versions)
+          echo "node $(node --version)"; caddy version
+          cat /var/lib/fastighetskarta-install.log 2>/dev/null || true ;;
+        set-domain)
+          d="${2:-}"
+          [[ "$d" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$ ]] || { echo "Ogiltig domän: $d"; exit 1; }
+          sed "s|__SITE__|$d|" /etc/caddy/Caddyfile.template > /etc/caddy/Caddyfile
+          caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          systemctl reload caddy
+          echo "Caddy hämtar nu ett certifikat för https://$d (kräver att DNS pekar hit)." ;;
+        set-secret)
+          # Värdet läses från stdin så att det aldrig hamnar i kommandoraden eller historiken.
+          name="${2:-}"
+          [[ "$name" =~ ^[A-Z][A-Z0-9_]{1,40}$ ]] || { echo "Namnet ska vara VERSALER_OCH_UNDERSTRECK"; exit 1; }
+          IFS= read -r value || true
+          value="${value%$'\r'}"   # PowerShell skickar Windows-radslut
+          [[ -n "$value" ]] || { echo "Tomt värde, inget sparat."; exit 1; }
+          esc="${value//\\/\\\\}"; esc="${esc//\"/\\\"}"
+          tmp=$(mktemp)
+          { grep -v "^${name}=" "$SECRETS" 2>/dev/null || true; printf '%s="%s"\n' "$name" "$esc"; } > "$tmp"
+          install -m 0640 -o root -g fastighetskarta "$tmp" "$SECRETS"
+          rm -f "$tmp"
+          systemctl restart fastighetskarta
+          echo "Sparade $name (${#value} tecken) och startade om tjänsten." ;;
+        list-secrets)
+          cut -d= -f1 "$SECRETS" 2>/dev/null || echo "(inga)" ;;
+        update-caddy)
+          [[ -z "${2:-}" || "${2:-}" == "--force" ]] || { echo "update-caddy [--force]"; exit 1; }
+          /usr/local/sbin/horos-update-caddy ${2:-} ;;
+        upgrade-system)
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get -y -q -o Dpkg::Options::=--force-confold upgrade
+          [[ -f /var/run/reboot-required ]] && echo "Omstart krävs: kör 'fastighetskarta-admin reboot'." || echo "Ingen omstart krävs." ;;
+        reboot)
+          echo "Startar om servern om 1 minut (sidan är nere ungefär en minut)."
+          shutdown -r +1 >/dev/null 2>&1 ;;
+        *)
+          echo "Användning: fastighetskarta-admin restart|status|logs [n]|versions|set-domain <domän>|set-secret <NAMN> (värde på stdin)|list-secrets|update-caddy [--force]|upgrade-system|reboot"
+          exit 1 ;;
+      esac
+
+  - path: /usr/local/sbin/horos-update-caddy
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Installerar eller uppdaterar Caddy från Caddys officiella releaser på GitHub.
+      # Paketets SHA-512 kontrolleras mot releasens checksums.txt innan det installeras.
+      set -euo pipefail
+      arch=$(dpkg --print-architecture)
+      tag=$(curl -fsSL -H 'Accept: application/vnd.github+json' https://api.github.com/repos/caddyserver/caddy/releases/latest \
+        | grep -oE '"tag_name": *"v[0-9]+\.[0-9]+\.[0-9]+"' | grep -oE 'v[0-9.]+' | head -1)
+      [[ -n "$tag" ]] || { echo "Kunde inte läsa senaste Caddy-version från GitHub."; exit 1; }
+      new=${tag#v}
+      cur=$(dpkg-query -W -f='${Version}' caddy 2>/dev/null || echo ingen)
+      if [[ "$cur" == "$new" && "${1:-}" != "--force" ]]; then
+        echo "Caddy $cur är redan senaste versionen."; exit 0
+      fi
+      tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+      base="https://github.com/caddyserver/caddy/releases/download/$tag"
+      deb="caddy_${new}_linux_${arch}.deb"
+      curl -fsSL -o "$tmp/$deb" "$base/$deb"
+      curl -fsSL -o "$tmp/checksums.txt" "$base/caddy_${new}_checksums.txt"
+      ( cd "$tmp" && grep " $deb\$" checksums.txt | sha512sum -c --quiet - ) \
+        || { echo "Kontrollsumman stämmer inte, installerar inte."; exit 1; }
+      DEBIAN_FRONTEND=noninteractive apt-get install -y -q -o Dpkg::Options::=--force-confold "$tmp/$deb"
+      systemctl reload caddy 2>/dev/null || systemctl restart caddy || true
+      echo "Caddy: $cur -> $(caddy version | cut -d' ' -f1)"
+
+  - path: /etc/systemd/system/horos-update-caddy.service
+    content: |
+      [Unit]
+      Description=Uppdatera Caddy från GitHub-releasen
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/horos-update-caddy
+
+  - path: /etc/systemd/system/horos-update-caddy.timer
+    content: |
+      [Unit]
+      Description=Veckovis uppdatering av Caddy
+
+      [Timer]
+      OnCalendar=weekly
+      RandomizedDelaySec=6h
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
+  # Ubuntus egen (gamla) Caddy får aldrig installeras eller ersätta GitHub-versionen.
+  - path: /etc/apt/preferences.d/no-ubuntu-caddy
+    content: |
+      Package: caddy
+      Pin: release o=Ubuntu
+      Pin-Priority: -1
+
+  - path: /etc/systemd/system/fastighetskarta.service
+    content: |
+      [Unit]
+      Description=Horos (fastighetskarta)
+      After=network.target
+      StartLimitIntervalSec=60
+      StartLimitBurst=5
+
+      [Service]
+      User=fastighetskarta
+      Group=fastighetskarta
+      WorkingDirectory=/opt/fastighetskarta/current
+      Environment=NODE_ENV=production PUBLIC_MODE=1 TRUST_PROXY=1 HOST=127.0.0.1 PORT=3000
+      Environment=FASTIGHETSKARTA_DB=/var/lib/fastighetskarta/public.sqlite
+      Environment=TILES_DIR=/var/lib/fastighetskarta/tiles CACHE_DIR=/var/cache/fastighetskarta
+      EnvironmentFile=-/etc/fastighetskarta/secrets.env
+      ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server.mjs
+      Restart=on-failure
+      RestartSec=3
+      # Diskcache för kartrutor (Lantmäteriets visningstjänster); det enda appen får skriva till.
+      CacheDirectory=fastighetskarta
+      # Härdning: appen läser kod och data, skriver bara i cachen.
+      NoNewPrivileges=yes
+      ProtectSystem=strict
+      ProtectHome=yes
+      PrivateTmp=yes
+      PrivateDevices=yes
+      ProtectKernelTunables=yes
+      ProtectKernelModules=yes
+      ProtectControlGroups=yes
+      RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+      RestrictNamespaces=yes
+      LockPersonality=yes
+      CapabilityBoundingSet=
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/caddy/Caddyfile.template
+    content: |
+      __SITE__ {
+        encode zstd gzip
+        reverse_proxy 127.0.0.1:3000
+        header {
+          Strict-Transport-Security "max-age=31536000"
+          X-Content-Type-Options "nosniff"
+          Referrer-Policy "strict-origin-when-cross-origin"
+          Permissions-Policy "geolocation=(), camera=(), microphone=()"
+          Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tiles.openfreemap.org; connect-src 'self' https://tiles.openfreemap.org; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+          -Server
+        }
+        # Ingen åtkomstlogg: besökarnas IP-adresser sparas inte.
+      }
+
+  # Automatiska uppdateringar även från NodeSource (inte bara Ubuntus säkerhetsförråd), och
+  # automatisk omstart på natten när en uppdatering (t.ex. ny kärna) kräver det.
+  - path: /etc/apt/apt.conf.d/51horos-unattended-upgrades
+    content: |
+      Unattended-Upgrade::Origins-Pattern {
+        "site=deb.nodesource.com";
+      };
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "04:30";
+
+runcmd:
+  - export HOME=/root
+  # Node 24 från NodeSource (Ubuntus egen version är för gammal för node:sqlite).
+  - curl -fsSL https://deb.nodesource.com/setup_24.x -o /tmp/nodesource_setup.sh
+  - bash /tmp/nodesource_setup.sh
+  - apt-get install -y nodejs
+  # Caddy från den officiella GitHub-releasen (kontrollerad med SHA-512), uppdateras veckovis.
+  - /usr/local/sbin/horos-update-caddy || /usr/local/sbin/horos-update-caddy
+  # Tills en domän är satt: servera över http på serverns IP.
+  - sed "s|__SITE__|:80|; /Strict-Transport-Security/d" /etc/caddy/Caddyfile.template > /etc/caddy/Caddyfile
+  - systemctl reload caddy || systemctl restart caddy
+  # Kataloger: koden och datan ägs av deploy, appen läser bara. Hemligheter ägs av root.
+  - mkdir -p /opt/fastighetskarta/releases /var/lib/fastighetskarta/tiles /etc/fastighetskarta
+  - chown -R deploy:deploy /opt/fastighetskarta /var/lib/fastighetskarta
+  - chmod 755 /opt/fastighetskarta /var/lib/fastighetskarta
+  - install -m 0640 -o root -g fastighetskarta /dev/null /etc/fastighetskarta/secrets.env
+  - chmod 750 /etc/fastighetskarta
+  - chgrp fastighetskarta /etc/fastighetskarta
+  # SSH-nyckeln som valdes i Hetzner hamnar hos root eller ubuntu beroende på avbildning;
+  # kopiera den till deploy. Stäng av root-/lösenordsinloggning bara om kopieringen lyckades,
+  # så att du aldrig blir utelåst.
+  - mkdir -p /home/deploy/.ssh
+  - cat /root/.ssh/authorized_keys /home/ubuntu/.ssh/authorized_keys 2>/dev/null | grep -E '^(ssh-|ecdsa-)' | sort -u > /home/deploy/.ssh/authorized_keys || true
+  - chown -R deploy:deploy /home/deploy/.ssh
+  - chmod 700 /home/deploy/.ssh
+  - chmod 600 /home/deploy/.ssh/authorized_keys
+  - |
+    if [ -s /home/deploy/.ssh/authorized_keys ]; then
+      printf 'PermitRootLogin no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nAllowUsers deploy\n' > /etc/ssh/sshd_config.d/99-fastighetskarta.conf
+      systemctl restart ssh
+    else
+      echo 'VARNING: ingen SSH-nyckel hittades; SSH-härdningen hoppades över.' >> /etc/motd
+    fi
+  # Brandvägg: bara SSH, HTTP och HTTPS (inkl. HTTP/3).
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow OpenSSH
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 443/udp
+  - ufw --force enable
+  - systemctl daemon-reload
+  - systemctl enable fastighetskarta
+  - systemctl enable --now unattended-upgrades
+  - systemctl enable --now horos-update-caddy.timer
+  # Kontroll: skriv ner vad som installerades, och varna om något saknas.
+  - |
+    {
+      echo "Installerad $(date -u +%FT%TZ)"
+      echo "node: $(node --version 2>&1)"
+      echo "caddy: $(caddy version 2>&1)"
+      echo "caddy-paket: $(dpkg-query -W -f='${Version} (${Maintainer})' caddy 2>&1)"
+      systemctl is-enabled horos-update-caddy.timer >/dev/null 2>&1 && echo "caddy-uppdatering: veckovis" || echo "VARNING: timern för Caddy-uppdatering är inte aktiv"
+      node -e "process.exit(Number(process.versions.node.split('.')[0]) >= 22 ? 0 : 1)" && echo "node-version: ok" || echo "VARNING: node är för gammal"
+      caddy version | grep -qE '^v2\.(([7-9])|([1-9][0-9]))' && echo "caddy-version: ok" || echo "VARNING: caddy är äldre än 2.7 (fel förråd?)"
+    } > /var/lib/fastighetskarta-install.log 2>&1
+  - grep VARNING /var/lib/fastighetskarta-install.log >> /etc/motd || true

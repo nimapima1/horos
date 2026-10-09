@@ -1,0 +1,25 @@
+{
+  "name": "horos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Horos – öppen karta över bolagsägda fastigheter, byggd på offentliga källor",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.mjs",
+    "import:bolag": "node --disable-warning=ExperimentalWarning scripts/import-bolag.mjs",
+    "import:fastigheter": "node --disable-warning=ExperimentalWarning scripts/import-fastigheter.mjs",
+    "import:taxering": "node --disable-warning=ExperimentalWarning scripts/import-taxering.mjs",
+    "import:lagfarter": "node --disable-warning=ExperimentalWarning scripts/import-lagfarter.mjs",
+    "demo": "node --disable-warning=ExperimentalWarning scripts/demo-data.mjs",
+    "vendor": "node scripts/vendor.mjs",
+    "postinstall": "node scripts/vendor.mjs",
+    "build:public": "node --disable-warning=ExperimentalWarning scripts/build-public.mjs",
+    "start:public": "node --disable-warning=ExperimentalWarning -e \"process.env.PUBLIC_MODE='1';process.env.FASTIGHETSKARTA_DB='data/public.sqlite';import('./server.mjs')\""
+  },
+  "dependencies": {
+    "maplibre-gl": "4.7.1"
+  }
+}

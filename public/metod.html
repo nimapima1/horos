@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Metod och källor – Horos</title>
+  <meta name="description" content="Hur Horos tar fram uppgifterna om bolagsägda fastigheter i Stockholm, vilka källor som används, vad som inte ingår och hur datan kan laddas ner.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="textpage">
+  <main class="page">
+    <p><a href="./">← Till kartan</a></p>
+    <h1>Metod och källor</h1>
+    <p class="muted" id="byggd">Horos är en öppen, ideell karta över fastigheter i Stockholms kommun som ägs av
+      bolag, föreningar, stiftelser, kommuner och andra juridiska personer.</p>
+
+    <h2>Varför</h2>
+    <p>Uppgifter om vem som äger mark och byggnader är offentliga, men utspridda hos flera myndigheter och
+      i praktiken tillgängliga främst genom kommersiella tjänster. Horos samlar de offentliga uppgifterna om
+      kommersiellt fastighetsägande på ett ställe, fritt för alla.</p>
+    <p>Namnet kommer från antikens Athen, där gränsstenar (<em>horoi</em>) ställdes ut på tomter för att
+      offentligt visa vem som hade anspråk på marken.</p>
+
+    <h2>Källor</h2>
+    <table>
+      <tr><th>Uppgift</th><th>Källa</th><th>Hur den hämtas</th></tr>
+      <tr><td>Bolag: namn, juridisk form, bransch, adress, verksamhet</td>
+          <td>Bolagsverket och SCB</td><td>Värdefulla datamängder (öppna data), uppdateras veckovis</td></tr>
+      <tr><td>Fastighetsgränser och beteckningar</td>
+          <td>Lantmäteriet, Fastighetsindelning</td><td>Värdefull datamängd efter juridisk prövning</td></tr>
+      <tr><td>Taxeringsvärden</td>
+          <td>Skatteverket, fastighetstaxeringsregistret</td><td>Allmän handling</td></tr>
+      <tr><td>Lagfarna ägare och köpeskillingar</td>
+          <td>Lantmäteriet, fastighetsregistret</td><td>Allmän handling</td></tr>
+      <tr><td>Bakgrundskarta</td>
+          <td>OpenFreeMap, © OpenStreetMap-bidragsgivare</td><td>Öppna kartdata (ODbL)</td></tr>
+      <tr><td>Satellitbild</td>
+          <td>EOxCloudless 2025 av EOX IT Services GmbH (innehåller bearbetade Copernicus Sentinel-data)</td>
+          <td>CC BY-NC-SA 4.0, 10 m upplösning, hämtas via Horos server. Ersätts av Lantmäteriets ortofoto.</td></tr>
+    </table>
+
+    <h2>Urval</h2>
+    <ul>
+      <li>En fastighet visas bara om minst en ägare är en juridisk person och <strong>ingen</strong> ägare är en
+        privatperson. Samägda fastigheter med privatpersoner utesluts helt.</li>
+      <li>Uppgifter om privatpersoner (namn, personnummer, enskilda firmor, dödsbon) samlas inte in, lagras
+        inte och visas inte. Det kontrolleras automatiskt innan något publiceras.</li>
+      <li>Geografiskt omfattar Horos i dag Stockholms kommun.</li>
+    </ul>
+
+    <h2>Begränsningar</h2>
+    <ul>
+      <li><strong>Gränserna är inte juridiskt gällande.</strong> Lantmäteriets fastighetsindelning är en
+        översiktlig redovisning; den exakta gränsen avgörs av förrättningshandlingarna.</li>
+      <li><strong>Taxering gäller taxeringsenheter, inte fastigheter.</strong> En fastighet kan bestå av flera
+        taxeringsenheter och tvärtom. Horos summerar taxeringsvärdet för fastighetens enheter det senaste året.</li>
+      <li><strong>Köpeskillingen kan avse mer än en fastighet</strong> eller en andel. Den speglar inte alltid
+        marknadsvärdet.</li>
+      <li><strong>Bolagsaffärer syns inte.</strong> När ett fastighetsägande bolag säljs (paketering) byts ingen
+        lagfart, så köpet syns inte i fastighetsregistret. Lagfaren ägare kan då vara ett dotterbolag vars
+        moderbolag har bytt ägare.</li>
+      <li><strong>Uppgifterna har ett datum.</strong> Horos uppdateras när nya uttag görs från myndigheterna, inte
+        i realtid. Datum för senaste uppdatering står överst på sidan.</li>
+    </ul>
+
+    <h2 id="data">Ladda ner datan</h2>
+    <p>Hela den publicerade datan kan laddas ner fritt. Ange källorna ovan när du använder den.</p>
+    <div class="downloads">
+      <a class="btn" href="data/horos-fastigheter-stockholm.csv" download>Fastigheter (CSV)</a>
+      <a class="btn" id="dl-geojson" href="data/horos-fastigheter-stockholm.geojson" download aria-disabled="true">Fastigheter med gränser (GeoJSON)</a>
+    </div>
+    <p class="muted small" id="dl-note">CSV-filen är semikolonseparerad och öppnas direkt i Excel. En rad per
+      fastighet; flera ägare skiljs med <code>|</code>. Taxeringsvärden anges i tusentals kronor.
+      Fastighetsgränserna (GeoJSON) kan laddas ner när Lantmäteriets villkor tillåter det.</p>
+
+    <h2>Hittar du ett fel?</h2>
+    <p>Uppgifterna kommer från myndigheternas register. Är en uppgift fel i registret behöver den rättas där,
+      men hör gärna av dig så att vi kan kontrollera och uppdatera: <span id="kontakt">kontaktuppgift kommer</span>.</p>
+
+    <h2>Integritet</h2>
+    <p>Sidan använder inga kakor och sparar inte besökarnas IP-adresser. Bakgrundskartan hämtas från
+      OpenFreeMap, vilket innebär att din webbläsare kontaktar deras servrar.</p>
+  </main>
+  <script src="metod.js"></script>
+</body>
+</html>
