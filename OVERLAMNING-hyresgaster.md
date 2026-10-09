@@ -97,8 +97,8 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
   kvarvarande (även utan fastighet, `beteckning` null); `--dry` räknar bara. `--fil`/`--sni` för sparade svar.
 - API: `hyresgaster` i `/api/fastighet/:bet`, `arbetsstallen` i `/api/bolag/:orgnr`.
 - Ruta "Användning" (under Ägare/Senaste köp): taxeringstyp + uppskattad fördelning på 7 lokaltyper med
-  stapel och uppskattad LOA (anställda × m²/anställd i `LOKALTYPER` i server.mjs, räknas i SQL och skickas som
-  `anvandning`; tumregler, även på metodsidan). Samma SQL ger kartfiltren Lokalslag (`lok`) och LOA (`loamin`/`loamax`).
+  stapel och uppskattad LOA (anställda × m²/anställd i `LOKALTYPER` i lib/lokaltyp.mjs, sparas per arbetsställe vid
+  importen och summeras som `anvandning`; tumregler, även på metodsidan). Samma kolumner ger kartfiltren Lokalslag (`lok`) och LOA (`loamin`/`loamax`).
 - Panel: "Företag på adressen" per adress med bransch och storleksklass, "Uppskattad användning från
   branscherna" (SNI-avdelning → lokaltyp, viktat med anställda), "Arbetsställen i Horos" i bolagspanelen.
   Källa i Om-panelen och på metodsidan.
@@ -111,7 +111,7 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
    eller kör skriptet utan variabel så frågar det dolt.
 2. `npm run import:arbetsstallen -- --dry` först. Kontrollera att fältnamnen stämmer (antal "utan koordinater"
    ska vara litet, branscher ska ha klartext). Ändra i `rad()` om svaret skiljer sig från specen.
-3. Kontrollera SNI 2025-avdelningarna i `AVDELNINGAR` (server.mjs) mot `avdelningText` i kodtabellen.
+3. Kontrollera SNI 2025-avdelningarna i `AVDELNINGAR` (lib/lokaltyp.mjs) mot `avdelningText` i kodtabellen.
 4. Läs SCB:s villkor med användaren; först därefter `build-public --scb-villkor`.
 
 ## Föreslagen lösning (ursprunglig plan)

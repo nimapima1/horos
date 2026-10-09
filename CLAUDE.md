@@ -16,8 +16,11 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   har exempeldata, fastigheter utan juridisk ägare eller tabellen `har_privat_agare`.
 - `lib/db.mjs` (schema, `normOrgnr` som avvisar personnummer, FTS-index för bolag och adresser),
   `lib/geo.mjs` (SWEREF99 TM → WGS84, GPKG, punkt-i-polygon), `lib/csv.mjs`,
-  `lib/typkoder.mjs` (Skatteverkets typkoder → klartext per taxeringsår; används av import-taxering).
-- `public/`: `index.html` + `app.js` (karta, sök, panel), `metod.html`, `style.css`
+  `lib/typkoder.mjs` (Skatteverkets typkoder → klartext per taxeringsår; används av import-taxering),
+  `lib/lokaltyp.mjs` (arbetsställe → lokaltyp och uppskattad LOA; sparas i `arbetsstalle` vid importen).
+- Kartfiltren: `FILTER` i `server.mjs`, `[parameter, omvandling, SQL-villkor]`; WHERE-delen byggs ur listan.
+- `public/`: `index.html` + `panel.js` (panelvyerna, bara deklarationer, laddas först) + `app.js` (karta,
+  filter, sök, status och all inkoppling), `metod.html`, `style.css`
   (ui-ux-pro-max: Swiss/minimalism + glas, Lexend/Source Sans 3, slate/#0369A1). CSP tillåter
   inga inline-skript.
 - Importskript i `scripts/`: `import-bolag`, `import-fastigheter` (GPKG), `import-taxering`,

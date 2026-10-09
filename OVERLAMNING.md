@@ -7,7 +7,7 @@ det som ska kommas ihåg när data kommer. Detaljer om SCB:s arbetsställen stå
 
 - Allt är committat på `master`, inget är pushat till GitHub och inget nytt är publicerat. Live
   (http://37.27.152.172) går till och med d7585fa; allt därefter är bara lokalt.
-- `npm test`: 18 gröna tester (`test/server.test.mjs`, `arbetsstallen`, `typkoder`, `db`, `geo`, `import-planer`).
+- `npm test`: 19 gröna tester (`test/server.test.mjs`, `arbetsstallen`, `lokaltyp`, `typkoder`, `db`, `geo`, `import-planer`).
 - Prova lokalt: `preview_start {name: "horos-3005"}`. Exempeldata: `node scripts/demo-data.mjs` (hämtar
   byggnader från Overpass, påhittade ägare, arbetsställen och tomträtter).
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172` i användarens
@@ -18,7 +18,8 @@ det som ska kommas ihåg när data kommer. Detaljer om SCB:s arbetsställen stå
 - **Företag på adressen** (SCB:s företagsregister, arbetsställen): import `scripts/import-arbetsstallen.mjs`,
   tabell `arbetsstalle`, panel per adress, "Arbetsställen i Horos" i bolagspanelen. Se `OVERLAMNING-hyresgaster.md`.
 - **Rutan Användning** i fastighetspanelen: taxeringstyp + uppskattad fördelning på sju lokaltyper med stapel
-  och uppskattad LOA (anställda × m² per anställd, `LOKALTYPER`/`AVDELNINGAR` i `server.mjs`, räknas i SQL).
+  och uppskattad LOA (anställda × m² per anställd, `lib/lokaltyp.mjs`; räknas vid importen och sparas i
+  `arbetsstalle.lokaltyp`/`.loa_m2`, så ändrade tumregler kräver ny import eller `demo-data`).
 - **Nyckeltal**: Tomtareal (tidigare "Areal"), LOA/BOA (uppskattad LOA, BOA saknas), exploateringstal
   (uppskattad LOA / tomtareal, utan BOA), Upplåtelseform.
 - **Upplåtelseform**: kolumn `agande.tomtratt` (1 tomträtt, 0 lagfart, null okänt; läggs till automatiskt i

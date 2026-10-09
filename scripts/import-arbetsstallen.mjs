@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import { openDb, normOrgnr, rebuildRtree } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 import { pointInGeom, sweref99tmToWgs84 } from '../lib/geo.mjs';
+import { lokaltyp, loaM2 } from '../lib/lokaltyp.mjs';
 import { promptHidden } from '../lib/prompt.mjs';
 
 const args = parseArgs(process.argv.slice(2));
@@ -64,8 +65,8 @@ const fastighetVid = (lon, lat) =>
   kandidater.all(lon, lon, lat, lat).find((f) => pointInGeom([lon, lat], JSON.parse(f.geojson)))?.beteckning ?? null;
 
 const ins = db.prepare(`INSERT OR REPLACE INTO arbetsstalle
-  (cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, postnr, ort, lon, lat, beteckning)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  (cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, postnr, ort, lon, lat, beteckning, lokaltyp, loa_m2)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
 const n = { lasta: 0, person: 0, ejVerksam: 0, fiktiv: 0, reklamsparr: 0, utanKoord: 0, sparade: 0, kopplade: 0 };
 const tom = (s) => (s && String(s).trim()) || null;
@@ -89,8 +90,10 @@ function rad(a) {
   n.sparade++;
   if (bet) n.kopplade++;
   if (!args.dry) {
-    ins.run(a.cfarNr, orgnr, tom(a.ben), sni, tom(ng?.avdelningsKod), BRANSCH.get(sni) ?? null, a.anstKl == null ? null : Number(a.anstKl),
-      tom(b.bGatuAdress), tom(b.bPostNr), tom(b.bPostOrt), Math.round(lon * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6, bet);
+    const ae = { sni, avdelning: tom(ng?.avdelningsKod), anstkl: a.anstKl == null ? null : Number(a.anstKl) };
+    ins.run(a.cfarNr, orgnr, tom(a.ben), sni, ae.avdelning, BRANSCH.get(sni) ?? null, ae.anstkl,
+      tom(b.bGatuAdress), tom(b.bPostNr), tom(b.bPostOrt), Math.round(lon * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6, bet,
+      lokaltyp(ae), loaM2(ae));
   }
 }
 

@@ -5,6 +5,7 @@ import { dirname, extname, join, normalize, sep } from 'node:path';
 import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, rebuildRtree } from './lib/db.mjs';
 import { innerPoints, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN } from './lib/kommuner.mjs';
+import { LOKALTYPER } from './lib/lokaltyp.mjs';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -160,30 +161,15 @@ const harTyp = (alias) => `EXISTS (SELECT 1 FROM taxering t WHERE t.beteckning =
 const SENASTE_TYP = `(SELECT t.typ FROM taxering t WHERE t.beteckning = f.beteckning
   ORDER BY t.ar DESC, t.varde_tkr DESC LIMIT 1)`;
 
-// Lokaltyp och uppskattad LOA från arbetsställena (SCB): bransch (SNI 2025-avdelning) -> lokaltyp,
-// antal anställda (mitten av storleksklassen, minst 1) gånger yta per anställd. Används av kartfiltren
-// och av rutan Användning i panelen, så att båda räknar likadant.
-// shortcut: grova tumregler för yta per anställd; ersätts av taxeringens lokalyta och byggnadernas ändamål.
-const LOKALTYPER = [['Kontor', 20], ['Butik', 40], ['Lager och logistik', 150], ['Industri', 100],
-  ['Hotell och restaurang', 30], ['Vård och skola', 40], ['Övrigt', 30]];
-const AVDELNINGAR = { Industri: 'BCDEF', 'Lager och logistik': 'H', 'Hotell och restaurang': 'I', Kontor: 'JKLMNOP', 'Vård och skola': 'QR' };
-const ANSTKL_MITT = [0, 0, 2.5, 7, 14.5, 34.5, 74.5, 150, 350, 750, 1250, 1750, 2500, 3500, 4500, 7500, 10000];
-// SQL för arbetsstället a: lokaltyp (handeln delas på detaljhandel 47 och partihandel) och uppskattad LOA.
-const LOKALTYP_SQL = `CASE WHEN a.avdelning = 'G' THEN (CASE WHEN a.sni LIKE '47%' THEN 'Butik' ELSE 'Lager och logistik' END)
-  ${Object.entries(AVDELNINGAR).map(([typ, avd]) => `WHEN a.avdelning IN (${[...avd].map((x) => `'${x}'`).join(', ')}) THEN '${typ}'`).join(' ')}
-  ELSE 'Övrigt' END`;
-const LOA_SQL = `max(1, coalesce(json_extract('${JSON.stringify(ANSTKL_MITT)}', '$[' || a.anstkl || ']'), 0))
-  * (CASE ${LOKALTYP_SQL} ${LOKALTYPER.map(([typ, m2]) => `WHEN '${typ}' THEN ${m2}`).join(' ')} END)`;
-// Fastighetens (alias f) uppskattade LOA, null utan arbetsställen.
-const FASTIGHET_LOA = HAS_AE ? `(SELECT sum(${LOA_SQL}) FROM arbetsstalle a WHERE a.beteckning = f.beteckning)` : 'NULL';
+// Fastighetens (alias f) uppskattade LOA från arbetsställena (se lib/lokaltyp.mjs), null utan arbetsställen.
+const FASTIGHET_LOA = HAS_AE ? '(SELECT sum(a.loa_m2) FROM arbetsstalle a WHERE a.beteckning = f.beteckning)' : 'NULL';
 
-// Upplåtelseform för fastigheten f: 'tomtratt' om någon har tomträtt, 'aganderatt' om alla kända
-// innehav är lagfarter, annars null (inga ägare, eller källan säger inget om tomträtt).
-const UPPLATELSE = HAS_TOMTRATT ? `(CASE
-    WHEN EXISTS (SELECT 1 FROM agande k WHERE k.beteckning = f.beteckning AND k.tomtratt = 1) THEN 'tomtratt'
-    WHEN EXISTS (SELECT 1 FROM agande k WHERE k.beteckning = f.beteckning)
-      AND NOT EXISTS (SELECT 1 FROM agande k WHERE k.beteckning = f.beteckning AND k.tomtratt IS NULL) THEN 'aganderatt' END)`
-  : 'NULL';
+// Upplåtelseform för fastigheten f: 'tomtratt' om någon har tomträtt, 'aganderatt' om alla innehav är
+// kända lagfarter (count(kolumn) räknar bara kända värden), annars null (inga ägare eller okänt).
+const UPPLATELSE = HAS_TOMTRATT ? `(SELECT CASE WHEN max(k.tomtratt) = 1 THEN 'tomtratt'
+    WHEN count(*) > 0 AND count(k.tomtratt) = count(*) THEN 'aganderatt' END
+  FROM agande k WHERE k.beteckning = f.beteckning)` : 'NULL';
+const UPPLATELSEFORMER = [['aganderatt', 'Äganderätt'], ['tomtratt', 'Tomträtt']];
 
 // Ägarkategori för bolaget b. Kommunalt och statligt ägda aktiebolag räknas som fastighetsbolag (eller
 // övriga): ägarkontrollen finns inte i datan än.
@@ -194,7 +180,44 @@ const AGARKATEGORI_SQL = `CASE
     WHEN b.jurform IN ('Bostadsrättsförening', 'Bostadsförening', 'Kooperativ hyresrättsförening') THEN 'brf'
     WHEN b.sni LIKE '68%' THEN 'fastighetsbolag'
     ELSE 'ovriga' END`;
-const AGARKATEGORIER = ['stat', 'kommun', 'region', 'brf', 'fastighetsbolag', 'ovriga'];
+const AGARKATEGORIER = [['stat', 'Staten'], ['kommun', 'Kommun'], ['region', 'Region (landsting)'],
+  ['fastighetsbolag', 'Fastighetsbolag'], ['brf', 'Bostadsrättsförening'], ['ovriga', 'Övriga bolag och organisationer']];
+const ettAv = (lista) => (v) => (lista.some(([k]) => k === v) ? v : NaN);
+
+// Kartfiltren i /api/fastigheter: [parameter, omvandling till databasens värde, villkor på raden v med ett ?].
+// Ogiltiga värden (NaN) och tomma fält stänger av filtret. Villkor och parametrar byggs ur samma lista.
+const ar4 = (v) => (/^\d{4}$/.test(v) ? v : NaN);
+const FILTER = [
+  ['anv', (v) => v, harTyp('v')],
+  ['jur', (v) => v, 'EXISTS (SELECT 1 FROM agande a JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = v.beteckning AND b.jurform = ?)'],
+  ['vmin', (v) => +v * 1000, 'v.varde_tkr >= ?'],   // Mkr -> tkr
+  ['vmax', (v) => +v * 1000, 'v.varde_tkr <= ?'],
+  ['kmin', (v) => +v * 1e6, 'v.kop_kr >= ?'],       // Mkr -> kr
+  ['kar', ar4, 'v.kop_dag >= ?'],                    // köpt år v eller senare (jämförs med ÅÅÅÅ-MM-DD)
+  ['ktill', ar4, 'substr(v.kop_dag, 1, 4) <= ?'],   // köpt år v eller tidigare
+  ['amin', (v) => +v, 'v.areal_m2 >= ?'],           // tomtyta, m²
+  ['amax', (v) => +v, 'v.areal_m2 <= ?'],
+  ['rf', ettAv(UPPLATELSEFORMER), 'v.upplatelse = ?'],
+  ['kommun', (v) => v, 'v.kommun = ?'],
+  ['lan', (v) => (LAN[v] ? JSON.stringify(KOMMUNER.filter((k) => LAN_FOR_KOMMUN.get(k) === v)) : NaN),   // länskod
+    'v.kommun IN (SELECT value FROM json_each(?))'],
+  ['agare', (v) => JSON.stringify(normOrgnr(v) ? [normOrgnr(v)] : agareMed(v).map((b) => b.orgnr)),   // namn eller org.nr
+    'EXISTS (SELECT 1 FROM agande a WHERE a.beteckning = v.beteckning AND a.orgnr IN (SELECT value FROM json_each(?)))'],
+  ['agkat', ettAv(AGARKATEGORIER),
+    `EXISTS (SELECT 1 FROM agande a JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = v.beteckning AND ${AGARKATEGORI_SQL} = ?)`],
+  // Uppskattad LOA och lokaltyp finns bara med arbetsställen (SCB).
+  ...(HAS_AE ? [
+    ['loamin', (v) => +v, 'v.loa_m2 >= ?'],
+    ['loamax', (v) => +v, 'v.loa_m2 <= ?'],
+    ['lok', (v) => v, 'EXISTS (SELECT 1 FROM arbetsstalle a WHERE a.beteckning = v.beteckning AND a.lokaltyp = ?)'],
+  ] : []),
+];
+// Varje filter blir "? IS NULL OR villkor": värdet skickas två gånger, null = av.
+const filterParams = (url) => FILTER.flatMap(([k, f]) => {
+  const raw = url.searchParams.get(k)?.trim();
+  const v = raw ? f(raw) : null;
+  return Number.isNaN(v) ? [null, null] : [v, v];
+});
 
 // Totalt minus exempeldata: count(*) utan filter går på det lilla primärindexet och
 // demo = 1 på det partiella indexet, i stället för att läsa alla 2,2 miljoner bolagsrader.
@@ -221,22 +244,7 @@ const inBboxSql = (geometri, limit) => db.prepare(`
     FROM fastighet f
     WHERE ${overlapar('fastighet', 'f')}
       AND (? IS NULL OR f.beteckning IN (SELECT beteckning FROM agande WHERE orgnr = ?))) v
-    WHERE (? IS NULL OR ${harTyp('v')})
-      AND (? IS NULL OR EXISTS (SELECT 1 FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
-        WHERE a.beteckning = v.beteckning AND b.jurform = ?))
-      AND (? IS NULL OR v.varde_tkr >= ?) AND (? IS NULL OR v.varde_tkr <= ?)
-      AND (? IS NULL OR v.kop_kr >= ?) AND (? IS NULL OR v.kop_dag >= ?)
-      AND (? IS NULL OR substr(v.kop_dag, 1, 4) <= ?)
-      AND (? IS NULL OR v.areal_m2 >= ?) AND (? IS NULL OR v.areal_m2 <= ?)
-      AND (? IS NULL OR v.loa_m2 >= ?) AND (? IS NULL OR v.loa_m2 <= ?)
-      AND (? IS NULL OR v.upplatelse = ?)
-      AND (? IS NULL OR v.kommun = ?)
-      AND (? IS NULL OR v.kommun IN (SELECT value FROM json_each(?)))
-      AND (? IS NULL OR EXISTS (SELECT 1 FROM agande a WHERE a.beteckning = v.beteckning
-        AND a.orgnr IN (SELECT value FROM json_each(?))))
-      AND (? IS NULL OR EXISTS (SELECT 1 FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
-        WHERE a.beteckning = v.beteckning AND ${AGARKATEGORI_SQL} = ?))
-      AND (? IS NULL OR ${HAS_AE ? `EXISTS (SELECT 1 FROM arbetsstalle a WHERE a.beteckning = v.beteckning AND ${LOKALTYP_SQL} = ?)` : '? IS NULL'})
+    WHERE 1 ${FILTER.map(([, , villkor]) => `AND (? IS NULL OR ${villkor})`).join('\n      ')}
     LIMIT ${limit}`);
 
 // Bolagets fastigheter: lagfaren ägare eller ägare i taxeringen (parametrar: orgnr, orgnr).
@@ -245,7 +253,6 @@ const BOLAGETS = `f.beteckning IN (SELECT beteckning FROM agande WHERE orgnr = ?
 const BOLAG_LISTA = 500;   // fastigheter i bolagspanelens lista
 
 const q = {
-  // Filtren (se FILTER) är "? IS NULL OR ...": varje värde skickas två gånger, null = av.
   inBbox: inBboxSql(true, MAX_FEATURES + 1),
   punkter: inBboxSql(false, MAX_PUNKTER + 1),
   typer: db.prepare('SELECT DISTINCT typ FROM taxering WHERE typ IS NOT NULL ORDER BY typ'),
@@ -276,8 +283,8 @@ const q = {
     FROM arbetsstalle a LEFT JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = ?
     ORDER BY a.anstkl DESC NULLS LAST, coalesce(b.namn, a.benamning) LIMIT 300`),
   // Uppskattad användning per lokaltyp (se LOKALTYPER), störst först.
-  anvandning: HAS_AE && db.prepare(`SELECT ${LOKALTYP_SQL} AS typ, sum(${LOA_SQL}) AS loa_m2
-    FROM arbetsstalle a WHERE a.beteckning = ? GROUP BY typ ORDER BY loa_m2 DESC`),
+  anvandning: HAS_AE && db.prepare(`SELECT lokaltyp AS typ, sum(loa_m2) AS loa_m2
+    FROM arbetsstalle WHERE beteckning = ? GROUP BY lokaltyp ORDER BY loa_m2 DESC`),
   // Bolagets arbetsställen på fastigheter i Horos.
   arbetsstallen: HAS_AE && db.prepare(`SELECT a.benamning, a.bransch, a.anstkl, a.adress, a.beteckning,
       f.minx, f.miny, f.maxx, f.maxy
@@ -356,33 +363,6 @@ const KOMMUNER = q.kommuner.all().map((r) => r.kommun);
 const KOMMUN_BBOX = db.prepare(`SELECT kommun AS namn, min(minx) AS minx, min(miny) AS miny, max(maxx) AS maxx, max(maxy) AS maxy
   FROM fastighet WHERE kommun IS NOT NULL GROUP BY kommun ORDER BY kommun`).all()
   .map((k) => ({ ...k, lan: LAN_FOR_KOMMUN.get(k.namn) ?? null }));
-
-const ar4 = (v) => (/^\d{4}$/.test(v) ? v : NaN);
-// Kartfiltren i /api/fastigheter, i inBbox-ordning: [parameter, omvandling till databasens enhet].
-const FILTER = [
-  ['anv', (v) => v],
-  ['jur', (v) => v],            // ägarens juridiska form
-  ['vmin', (v) => +v * 1000],   // Mkr -> tkr
-  ['vmax', (v) => +v * 1000],
-  ['kmin', (v) => +v * 1e6],    // Mkr -> kr
-  ['kar', ar4],                 // köpt år v eller senare (jämförs med ÅÅÅÅ-MM-DD)
-  ['ktill', ar4],               // köpt år v eller tidigare
-  ['amin', (v) => +v],          // tomtyta, m²
-  ['amax', (v) => +v],
-  ['loamin', (v) => +v],        // uppskattad LOA, m²
-  ['loamax', (v) => +v],
-  ['rf', (v) => (['tomtratt', 'aganderatt'].includes(v) ? v : NaN)],   // upplåtelseform
-  ['kommun', (v) => v],
-  ['lan', (v) => (LAN[v] ? JSON.stringify(KOMMUNER.filter((k) => LAN_FOR_KOMMUN.get(k) === v)) : NaN)],   // länskod
-  ['agare', (v) => JSON.stringify(normOrgnr(v) ? [normOrgnr(v)] : agareMed(v).map((b) => b.orgnr))],   // namn eller org.nr
-  ['agkat', (v) => (AGARKATEGORIER.includes(v) ? v : NaN)],
-  ['lok', (v) => v],            // lokaltyp (se LOKALTYPER)
-];
-const filterParams = (url) => FILTER.flatMap(([k, f]) => {
-  const raw = url.searchParams.get(k)?.trim();
-  const v = raw ? f(raw) : null;
-  return Number.isNaN(v) ? [null, null] : [v, v];
-});
 
 // Fastigheterna i kartutsnittet (bbox) med filtren, eller null om bbox saknas.
 function traffar(url, stmt = q.inBbox) {
@@ -650,7 +630,10 @@ const routes = [
     // Län och kommuner med fastigheter, med kommunens utbredning för att kunna zooma dit.
     lan: [...new Set(KOMMUNER.map((k) => LAN_FOR_KOMMUN.get(k)).filter(Boolean))].sort().map((kod) => ({ kod, namn: LAN[kod] })),
     kommunInfo: KOMMUN_BBOX,
-    lokaltyper: HAS_AE ? LOKALTYPER.map(([typ]) => typ) : [],
+    foretag: HAS_AE,   // företagsuppgifter (SCB) finns
+    lokaltyper: LOKALTYPER.map(([typ]) => typ),
+    agarkategorier: AGARKATEGORIER,
+    upplatelseformer: UPPLATELSEFORMER,
     historiska: HIST_AUTH ? Object.keys(HIST_LAYERS).map(Number) : [],
   }]],
 
@@ -677,8 +660,7 @@ const routes = [
     const f = q.fastighet.get(bet);
     if (!f) return [404, { error: 'Fastigheten finns inte' }];
     return [200, { ...f, upplatelse: q.upplatelse.get(bet).u, adresser: adresserPa(bet), planer: planerPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet),
-      // null = inga företagsuppgifter inlästa (skiljer sig från [] = inga företag på fastigheten).
-      hyresgaster: q.hyresgaster ? q.hyresgaster.all(bet) : null, anvandning: q.anvandning ? q.anvandning.all(bet) : [],
+      hyresgaster: q.hyresgaster ? q.hyresgaster.all(bet) : [], anvandning: q.anvandning ? q.anvandning.all(bet) : [],
       ...omgivning(bet) }];
   }],
 

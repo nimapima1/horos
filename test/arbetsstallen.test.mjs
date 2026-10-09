@@ -57,13 +57,13 @@ test('import-arbetsstallen utesluter fysiska personer, reklamspärr och ej verks
   assert.equal(r.status, 0, r.stderr);
 
   const ro = openDb({ path: DB, readOnly: true });
-  const rows = ro.prepare('SELECT cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, beteckning FROM arbetsstalle ORDER BY cfar').all();
+  const rows = ro.prepare('SELECT cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, beteckning, lokaltyp, loa_m2 FROM arbetsstalle ORDER BY cfar').all();
   ro.close();
   assert.deepEqual(rows.map((x) => ({ ...x })), [
     { cfar: 10000001, orgnr: '5560000001', benamning: 'Butiken', sni: '62100', avdelning: 'K', bransch: 'Dataprogrammering',
-      anstkl: 3, adress: 'Testgatan 1', beteckning: 'T 1:1' },
+      anstkl: 3, adress: 'Testgatan 1', beteckning: 'T 1:1', lokaltyp: 'Kontor', loa_m2: 140 },
     { cfar: 10000007, orgnr: '5560000007', benamning: null, sni: '62100', avdelning: 'K', bransch: 'Dataprogrammering',
-      anstkl: 3, adress: 'Testgatan 1', beteckning: null },
+      anstkl: 3, adress: 'Testgatan 1', beteckning: null, lokaltyp: 'Kontor', loa_m2: 140 },
   ]);
 });
 

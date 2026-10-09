@@ -8,6 +8,7 @@
 //   node scripts/demo-data.mjs --clear  ta bort all exempeldata
 import { openDb, geomBbox, withTransaction, DATA_TABLES, rebuildBolagFts } from '../lib/db.mjs';
 import { innerPoints, mapCoords, planarArea } from '../lib/geo.mjs';
+import { lokaltyp, loaM2 } from '../lib/lokaltyp.mjs';
 
 const db = openDb();
 
@@ -75,8 +76,8 @@ const FORETAG = [
   ['0030000007', 'Demovårdcentralen AB', '86211', 'R', 'Allmän öppen läkarvård'],
   ['0030000008', 'Påhittade Banken AB', '64190', 'L', 'Övrig monetär finansförmedling'],
 ];
-const insAE = db.prepare(`INSERT INTO arbetsstalle (cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, postnr, ort, lon, lat, beteckning, demo)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, '11111', 'STOCKHOLM', ?, ?, ?, 1)`);
+const insAE = db.prepare(`INSERT INTO arbetsstalle (cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, postnr, ort, lon, lat, beteckning, lokaltyp, loa_m2, demo)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, '11111', 'STOCKHOLM', ?, ?, ?, ?, ?, 1)`);
 
 const insP = db.prepare(`INSERT INTO plan (id, typ, planid, namn, datum, kommun, geojson, minx, miny, maxx, maxy, demo)
   VALUES (?, ?, ?, ?, ?, 'Stockholm', ?, ?, ?, ?, ?, 1)`);
@@ -115,8 +116,9 @@ withTransaction(db, () => {
       const pt = innerPoints(geom, 3)[0], gata = `Exempelgatan ${n + 1}`;
       for (let i = Math.floor(1 + rnd() * 4); i > 0; i--) {
         const [orgnr, namn, sni, avd, bransch] = pick(FORETAG);
+        const ae = { sni, avdelning: avd, anstkl: Math.floor(1 + rnd() * 7) };
         insAE.run(cfar++, orgnr, rnd() < 0.2 ? `${namn.replace(/ AB$/, '')} City` : null, sni, avd, bransch,
-          Math.floor(1 + rnd() * 7), rnd() < 0.3 ? `${gata}A` : gata, pt[0], pt[1], bet);
+          ae.anstkl, rnd() < 0.3 ? `${gata}A` : gata, pt[0], pt[1], bet, lokaltyp(ae), loaM2(ae));
       }
     }
     if (rnd() < 0.15) insX.run(bet, date(1995, 2000), Math.round(varde * 1000 * (0.4 + rnd() * 0.3)), pick(BOLAG)[0]);

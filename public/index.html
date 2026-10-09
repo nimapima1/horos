@@ -47,9 +47,7 @@
           <label>Kommun<select name="kommun"><option value="">Alla kommuner</option></select></label>
           <label class="wide">Ägare<input name="agare" type="search" placeholder="Namn eller organisationsnummer" autocomplete="off"></label>
           <label class="wide">Ägarkategori
-            <select name="agkat"><option value="">Alla</option><option value="stat">Staten</option><option value="kommun">Kommun</option>
-              <option value="region">Region (landsting)</option><option value="fastighetsbolag">Fastighetsbolag</option>
-              <option value="brf">Bostadsrättsförening</option><option value="ovriga">Övriga bolag och organisationer</option></select>
+            <select name="agkat"><option value="">Alla</option></select>
           </label>
           <label class="wide">Användning
             <select name="anv"><option value="">Alla</option></select>
@@ -58,7 +56,7 @@
             <select name="lok"><option value="">Alla</option></select>
           </label>
           <label class="wide">Upplåtelseform
-            <select name="rf"><option value="">Alla</option><option value="aganderatt">Äganderätt</option><option value="tomtratt">Tomträtt</option></select>
+            <select name="rf"><option value="">Alla</option></select>
           </label>
           <label class="wide">Juridisk form
             <select name="jur"><option value="">Alla</option></select>
@@ -108,6 +106,7 @@
   </div>
 
   <script src="vendor/maplibre-gl-csp.js"></script>
+  <script src="panel.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
