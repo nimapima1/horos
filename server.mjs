@@ -9,6 +9,7 @@ const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '127.0.0.1';
 const PUBLIC = join(ROOT, 'public');
 const MAX_FEATURES = 5000;
+const MAX_PUNKTER = 30000;   // prickar vid låg zoom
 // PUBLIC_MODE=1 i produktion: databasen öppnas skrivskyddad och kontrolleras vid start.
 const PUBLIC_MODE = process.env.PUBLIC_MODE === '1';
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';   // bakom Caddy: läs klient-IP från X-Forwarded-For
@@ -155,10 +156,12 @@ const counts = db.prepare(`SELECT ${countReal('bolag')} AS bolag, ${countReal('f
   ${countReal('taxering')} AS taxeringar, ${countReal('agande')} AS agande,
   ${countReal('transaktion')} AS transaktioner, (SELECT count(*) FROM fastighet WHERE demo = 1) AS demo`);
 
-const q = {
-  // Filtren (se FILTER) är "? IS NULL OR ...": varje värde skickas två gånger, null = av.
-  inBbox: db.prepare(`
-    SELECT * FROM (SELECT f.beteckning, f.geojson, f.demo, f.areal_m2, ${SENASTE_VARDE} AS varde_tkr,
+// Fastigheter i en bbox med kartfiltren (se FILTER): med geometri för kartan, annars bara
+// mittpunkten (bboxens mitt) för prickarna vid låg zoom.
+const inBboxSql = (geometri, limit) => db.prepare(`
+    SELECT * FROM (SELECT f.beteckning,
+      ${geometri ? 'f.geojson' : '(f.minx + f.maxx) / 2 AS lon, (f.miny + f.maxy) / 2 AS lat'},
+      f.demo, f.areal_m2, ${SENASTE_VARDE} AS varde_tkr,
       (SELECT b.namn FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
          WHERE a.beteckning = f.beteckning LIMIT 1) AS agare,
       (SELECT kopeskilling_kr FROM transaktion x WHERE x.beteckning = f.beteckning
@@ -177,7 +180,12 @@ const q = {
       AND (? IS NULL OR v.kop_kr >= ?) AND (? IS NULL OR v.kop_dag >= ?)
       AND (? IS NULL OR substr(v.kop_dag, 1, 4) <= ?)
       AND (? IS NULL OR v.areal_m2 >= ?)
-    LIMIT ${MAX_FEATURES + 1}`),
+    LIMIT ${limit}`);
+
+const q = {
+  // Filtren (se FILTER) är "? IS NULL OR ...": varje värde skickas två gånger, null = av.
+  inBbox: inBboxSql(true, MAX_FEATURES + 1),
+  punkter: inBboxSql(false, MAX_PUNKTER + 1),
   typer: db.prepare('SELECT DISTINCT typ FROM taxering WHERE typ IS NOT NULL ORDER BY typ'),
   agartyper: db.prepare(`SELECT DISTINCT b.jurform FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
     WHERE b.jurform IS NOT NULL ORDER BY b.jurform`),
@@ -273,12 +281,12 @@ const filterParams = (url) => FILTER.flatMap(([k, f]) => {
 });
 
 // Fastigheterna i kartutsnittet (bbox) med filtren, eller null om bbox saknas.
-function traffar(url) {
+function traffar(url, stmt = q.inBbox) {
   const bbox = (url.searchParams.get('bbox') ?? '').split(',').map(Number);
   if (bbox.length !== 4 || bbox.some(Number.isNaN)) return null;
   const [minx, miny, maxx, maxy] = bbox;
   const org = normOrgnr(url.searchParams.get('org') ?? '') || null;   // bara ett bolags fastigheter
-  return q.inBbox.all(minx, maxx, miny, maxy, org, org, ...filterParams(url));
+  return stmt.all(minx, maxx, miny, maxy, org, org, ...filterParams(url));
 }
 // Kolumnerna i träff-exporten (utan geometri, se EXPORT_GEOMETRI).
 const TRAFF_COLS = ['beteckning', 'agare', 'agartyp', 'typ', 'varde_tkr', 'areal_m2', 'kop_dag', 'kop_kr'];
@@ -511,6 +519,15 @@ const routes = [
       featureJson(r.geojson, { beteckning: r.beteckning, varde_tkr: r.varde_tkr, agare: r.agare, demo: r.demo,
         typ: r.typ, agartyp: r.agartyp, kop_ar: r.kop_dag ? Number(r.kop_dag.slice(0, 4)) : null }));
     return [200, `{"type":"FeatureCollection","truncated":${rows.length > MAX_FEATURES},"features":[${features.join(',')}]}`];
+  }],
+
+  // Prickar vid låg zoom: [lon, lat, beteckning, värde (tkr), typ, ägartyp, köpår, demo] per fastighet.
+  [/^\/api\/punkter$/, 'api', (_m, url) => {
+    const rows = traffar(url, q.punkter);
+    if (!rows) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
+    const p = rows.slice(0, MAX_PUNKTER).map((r) => [+r.lon.toFixed(5), +r.lat.toFixed(5), r.beteckning, r.varde_tkr,
+      r.typ, r.agartyp, r.kop_dag ? Number(r.kop_dag.slice(0, 4)) : null, r.demo]);
+    return [200, { truncated: rows.length > MAX_PUNKTER, p }];
   }],
 
   [/^\/api\/fastighet\/(.+)$/, 'api', (m) => {

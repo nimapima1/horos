@@ -11,6 +11,7 @@ const api = (path) => fetch(path).then((r) => (r.ok ? r.json() : r.json().then((
 maplibregl.setWorkerUrl('vendor/maplibre-gl-csp-worker.js');
 
 const MIN_ZOOM = 14;
+const PUNKT_ZOOM = 10;
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
 // Delbar adress: ?l=zoom/lat/lon&f=beteckning&farg=läge och filtren. Vyerna (#om, #affarer, #agare) ligger i hashen.
@@ -181,6 +182,7 @@ colorBy.addEventListener('change', () => {
   renderLegend();
   applyBasemap(basemap.select.value);   // sätter fyll- och linjefärg på nytt
   map.setPaintProperty('fastighet-fill', 'fill-color', valueColor());
+  map.setPaintProperty('punkt', 'circle-color', valueColor());
 });
 
 // På kartan fylls fastigheterna med färg. Över satellitbilden är de osynliga (men klickbara)
@@ -219,6 +221,31 @@ map.on('load', () => {
   const { 'fill-opacity': fillOp, ...linePaint } = fastighetPaint(basemap.imagery);
   map.addLayer({ id: 'fastighet-fill', type: 'fill', source: 'fastigheter', paint: { 'fill-color': valueColor(), 'fill-opacity': fillOp } });
   map.addLayer({ id: 'fastighet-line', type: 'line', source: 'fastigheter', paint: linePaint });
+  // Prickar vid låg zoom, klustrade (se loadVisible).
+  map.addSource('punkter', { type: 'geojson', data: EMPTY, cluster: true, clusterMaxZoom: 13, clusterRadius: 44 });
+  map.addLayer({ id: 'punkt-kluster', type: 'circle', source: 'punkter', filter: ['has', 'point_count'],
+    paint: { 'circle-color': css('--accent'), 'circle-opacity': 0.85, 'circle-stroke-width': 2, 'circle-stroke-color': css('--surface-solid'),
+      'circle-radius': ['step', ['get', 'point_count'], 13, 20, 17, 100, 22, 1000, 28] } });
+  map.addLayer({ id: 'punkt-antal', type: 'symbol', source: 'punkter', filter: ['has', 'point_count'],
+    layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Regular'], 'text-size': 12 },
+    paint: { 'text-color': css('--surface-solid') } });
+  map.addLayer({ id: 'punkt', type: 'circle', source: 'punkter', filter: ['!', ['has', 'point_count']],
+    paint: { 'circle-color': valueColor(), 'circle-radius': 6, 'circle-stroke-width': 1.5, 'circle-stroke-color': css('--surface-solid') } });
+  map.on('click', 'punkt-kluster', async (e) => {
+    const f = e.features[0];
+    const zoom = await map.getSource('punkter').getClusterExpansionZoom(f.properties.cluster_id);
+    map.easeTo({ center: f.geometry.coordinates, zoom });
+  });
+  map.on('click', 'punkt', (e) => {
+    const f = e.features[0];
+    map.easeTo({ center: f.geometry.coordinates, zoom: 16 });
+    openFastighet(f.properties.beteckning);
+  });
+  for (const id of ['punkt', 'punkt-kluster']) {
+    map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
+  }
+
   // Markerade fastigheter (ett bolags innehav), se markera().
   map.addLayer({ id: 'markerad-line', type: 'line', source: 'fastigheter', filter: ['in', ['get', 'beteckning'], ['literal', []]],
     paint: { 'line-color': css('--c2'), 'line-width': 3 } });
@@ -275,28 +302,36 @@ if ([...START.keys()].some((k) => filterForm.elements[k])) filterForm.closest('d
 let loadSeq = 0;
 // Orgnr för det markerade bolaget: utzoomat visas då bara dess fastigheter (se markera()).
 let markeradOrg = null;
+// Från zoom 14 visas fastighetsgränser, från PUNKT_ZOOM prickar (kluster), annars inget
+// (utom ett markerat bolags fastigheter, som visas som prickar på alla nivåer).
 async function loadVisible() {
-  const utzoomat = map.getZoom() < MIN_ZOOM;
-  const tooFar = utzoomat && !markeradOrg;
-  $('#zoom-hint').hidden = !utzoomat;
-  $('#zoom-hint').textContent = markeradOrg ? 'Visar bara bolagets fastigheter. Zooma in för att se alla.' : 'Zooma in för att se fastigheter';
+  const z = map.getZoom();
+  const lage = z >= MIN_ZOOM ? 'granser' : z >= PUNKT_ZOOM || markeradOrg ? 'punkter' : 'inget';
+  $('#zoom-hint').hidden = lage === 'granser';
+  $('#zoom-hint').textContent = lage === 'inget' ? 'Zooma in för att se fastigheter'
+    : markeradOrg && z < PUNKT_ZOOM ? 'Visar bara bolagets fastigheter. Zooma in för att se alla.'
+      : 'Zooma in för att se fastighetsgränser';
   const seq = ++loadSeq;
   updateUrl();
   if (agareUtsnitt && !$('#panel').hidden && $('#panel form[data-view=agare]')) openAgare(agareUtsnitt);
-  if (tooFar) {
-    $('#filter-hits').textContent = 'Zooma in för att se träffar';
-    map.getSource('fastigheter').setData(EMPTY);
-    return map.getSource('planer').setData(EMPTY);
-  }
   const b = map.getBounds();
   const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((n) => n.toFixed(5)).join(',');
-  const [fc, planer] = await Promise.all([api(`/api/fastigheter?bbox=${bbox}${filterQuery()}${utzoomat ? `&org=${markeradOrg}` : ''}`), planToggle.on && !utzoomat ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
+  const urval = `bbox=${bbox}${filterQuery()}${lage === 'punkter' && z < PUNKT_ZOOM ? `&org=${markeradOrg}` : ''}`;
+  const [fc, pkt, planer] = await Promise.all([
+    lage === 'granser' ? api(`/api/fastigheter?${urval}`) : EMPTY,
+    lage === 'punkter' ? api(`/api/punkter?${urval}`) : { p: [] },
+    planToggle.on && lage === 'granser' ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
   if (seq !== loadSeq) return;
   for (const { properties: p } of fc.features) { p.anv_kat = anvKat(p.typ); p.agar_kat = agarKat(p.agartyp); }
-  const n = fc.features.length;
-  $('#filter-hits').textContent = `${fc.truncated ? 'Minst ' : ''}${n.toLocaleString('sv-SE')} ${n === 1 ? 'fastighet' : 'fastigheter'} i kartutsnittet`;
-  $('#filter-csv').href = `data/horos-traffar.csv?bbox=${bbox}${filterQuery()}${utzoomat ? `&org=${markeradOrg}` : ''}`;
+  const punkter = { type: 'FeatureCollection', features: pkt.p.map(([lon, lat, beteckning, varde_tkr, typ, agartyp, kop_ar, demo]) => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] },
+    properties: { beteckning, varde_tkr, kop_ar, demo, anv_kat: anvKat(typ), agar_kat: agarKat(agartyp) } })) };
+  const n = fc.features.length + punkter.features.length;
+  $('#filter-hits').textContent = lage === 'inget' ? 'Zooma in för att se träffar'
+    : `${fc.truncated || pkt.truncated ? 'Minst ' : ''}${n.toLocaleString('sv-SE')} ${n === 1 ? 'fastighet' : 'fastigheter'} i kartutsnittet`;
+  $('#filter-csv').href = `data/horos-traffar.csv?${urval}`;
   map.getSource('fastigheter').setData(fc);
+  map.getSource('punkter').setData(punkter);
   map.getSource('planer').setData(planer);
   if (selected) map.setFeatureState({ source: 'fastigheter', id: selected }, { selected: true });
 }

@@ -97,7 +97,8 @@ bygg med `build-public` och publicera.
 
 ## Att göra
 
-- Rikstäckning: vid många fastigheter behövs lägsta zoom med prickar/kluster eller vektorrutor;
+- Rikstäckning: prickar/kluster finns från zoom 10 (`/api/punkter`, högst 30 000); under zoom 10 visas
+  inget (behöver förberäknade kluster eller vektorrutor för hela landet);
   historiska flygfoton och OSM-adresserna är fortfarande avgränsade till Stockholm; texter säger
   "i Stockholm" (stämmer tills annan data finns).
 - Planer: länk till kommunens plandokument (insynsbk för Stockholm) när kolumnerna i filen är kända.
