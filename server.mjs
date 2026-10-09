@@ -183,6 +183,11 @@ const inBboxSql = (geometri, limit) => db.prepare(`
       AND (? IS NULL OR v.areal_m2 >= ?)
     LIMIT ${limit}`);
 
+// Bolagets fastigheter: lagfaren ägare eller ägare i taxeringen (parametrar: orgnr, orgnr).
+const BOLAGETS = `f.beteckning IN (SELECT beteckning FROM agande WHERE orgnr = ?
+  UNION SELECT beteckning FROM taxering WHERE agare_orgnr = ?)`;
+const BOLAG_LISTA = 500;   // fastigheter i bolagspanelens lista
+
 const q = {
   // Filtren (se FILTER) är "? IS NULL OR ...": varje värde skickas två gånger, null = av.
   inBbox: inBboxSql(true, MAX_FEATURES + 1),
@@ -224,11 +229,14 @@ const q = {
     WHERE x.forvarvare_orgnr = ? AND y.forvarvare_orgnr IS NOT x.forvarvare_orgnr
     GROUP BY x.beteckning, x.inskrivningsdag, y.inskrivningsdag ORDER BY y.inskrivningsdag DESC LIMIT 50`),
   bolagFastigheter: db.prepare(`
-    SELECT DISTINCT f.beteckning, f.areal_m2, f.minx, f.miny, f.maxx, f.maxy, ${SENASTE_VARDE} AS varde_tkr
-    FROM fastighet f
-    WHERE f.beteckning IN (SELECT beteckning FROM agande WHERE orgnr = ?
-                           UNION SELECT beteckning FROM taxering WHERE agare_orgnr = ?)
-    ORDER BY varde_tkr DESC NULLS LAST LIMIT 500`),
+    SELECT f.beteckning, f.areal_m2, f.minx, f.miny, f.maxx, f.maxy, ${SENASTE_VARDE} AS varde_tkr
+    FROM fastighet f WHERE ${BOLAGETS}
+    ORDER BY varde_tkr DESC NULLS LAST LIMIT ${BOLAG_LISTA}`),
+  // Summor över alla bolagets fastigheter (listan ovan är kapad), och alla beteckningar för inramningen.
+  bolagSumma: db.prepare(`SELECT count(*) AS antal, sum(f.areal_m2) AS areal_m2, sum(${SENASTE_VARDE}) AS varde_tkr,
+      min(f.minx) AS minx, min(f.miny) AS miny, max(f.maxx) AS maxx, max(f.maxy) AS maxy,
+      json_group_array(f.beteckning) AS beteckningar
+    FROM fastighet f WHERE ${BOLAGETS}`),
   // Fulltext via bolag_fts (byggs av import:bolag, build-public och demo-data).
   sokBolag: HAS_FTS
     ? db.prepare(`SELECT b.orgnr, b.namn, b.postort, b.demo, b.avregistrerad
@@ -403,6 +411,11 @@ const META = hasTable('meta')
 // Fastighetsgränserna kommer från Lantmäteriet och får bara delas vidare som fil om beslutet
 // tillåter det; slås på med build-public --export-geometri (eller EXPORT_GEOMETRI=1).
 const EXPORT_GEOMETRI = META.export_geometri === '1' || process.env.EXPORT_GEOMETRI === '1';
+
+const bolagSumma = (orgnr) => {
+  const r = q.bolagSumma.get(orgnr, orgnr);
+  return { ...r, beteckningar: JSON.parse(r.beteckningar) };
+};
 
 // Fritext -> FTS5-fråga med prefixmatchning per ord: "vasa kron" -> "vasa"* "kron"*
 const ftsQuery = (term) => term.split(/\s+/).filter(Boolean).map((w) => `"${w.replace(/"/g, '')}"*`).join(' ');
@@ -593,7 +606,7 @@ const routes = [
     const orgnr = normOrgnr(m[1]);
     const b = orgnr && q.bolag.get(orgnr);
     if (!b) return [404, { error: 'Bolaget finns inte bland importerade juridiska personer' }];
-    return [200, { ...b, fastigheter: q.bolagFastigheter.all(orgnr, orgnr), kop: q.bolagKop.all(orgnr), salt: q.bolagSalt.all(orgnr) }];
+    return [200, { ...b, fastigheter: q.bolagFastigheter.all(orgnr, orgnr), summa: bolagSumma(orgnr), kop: q.bolagKop.all(orgnr), salt: q.bolagSalt.all(orgnr) }];
   }],
 
   [/^\/api\/sok$/, 'api', (_m, url) => {

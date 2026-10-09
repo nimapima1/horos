@@ -184,6 +184,7 @@ colorBy.addEventListener('change', () => {
   store.set('horos.farg', colorBy.value);
   updateUrl();
   renderLegend();
+  if (!map.getLayer('punkt')) return;   // kartan laddas fortfarande; lagren skapas med valet
   applyBasemap(basemap.select.value);   // sätter fyll- och linjefärg på nytt
   map.setPaintProperty('fastighet-fill', 'fill-color', valueColor());
   map.setPaintProperty('punkt', 'circle-color', valueColor());
@@ -336,6 +337,7 @@ async function loadVisible() {
     : `${fc.truncated || pkt.truncated ? 'Minst ' : ''}${n.toLocaleString('sv-SE')} ${n === 1 ? 'fastighet' : 'fastigheter'} i kartutsnittet`
       + (sumTkr ? `, taxerade till ${mkr(sumTkr)}` : '');
   $('#filter-csv').href = `data/horos-traffar.csv?${urval}`;
+  $('#filter-csv').hidden = lage === 'inget';   // kartan visar inga träffar då
   map.getSource('fastigheter').setData(fc);
   map.getSource('punkter').setData(punkter);
   map.getSource('planer').setData(planer);
@@ -501,16 +503,15 @@ async function openBolag(orgnr) {
   if (!b) return;
   rensaVy();
   select(null);
-  const sumTkr = b.fastigheter.reduce((s, f) => s + (f.varde_tkr ?? 0), 0);
-  const sumM2 = b.fastigheter.reduce((s, f) => s + (f.areal_m2 ?? 0), 0);
-  markera(b.fastigheter.map((f) => f.beteckning), b.fastigheter.length ? b.orgnr : null);
-  const ram = b.fastigheter.length && [Math.min(...b.fastigheter.map((f) => f.minx)), Math.min(...b.fastigheter.map((f) => f.miny)),
-    Math.max(...b.fastigheter.map((f) => f.maxx)), Math.max(...b.fastigheter.map((f) => f.maxy))].join(',');
+  // Summor, inramning och markering gäller alla fastigheter; listan nedan är kapad (b.summa.antal).
+  const s = b.summa;
+  markera(s.beteckningar, s.antal ? b.orgnr : null);
+  const ram = s.antal && [s.minx, s.miny, s.maxx, s.maxy].join(',');
   showPanel(`
     <h2>${esc(b.namn)}${demoTag(b.demo)}</h2>
     <div class="meta">${fmtOrgnr(b.orgnr)}${b.avregistrerad ? ` · <strong>avregistrerad ${esc(b.avregistrerad)}</strong>` : ''}</div>
-    ${stats([['Fastigheter', b.fastigheter.length.toLocaleString('sv-SE')], ['Taxeringsvärde', sumTkr ? mkr(sumTkr) : '–'],
-      ['Tomtareal', sumM2 ? `${Math.round(sumM2).toLocaleString('sv-SE')} m²` : '–']])}
+    ${stats([['Fastigheter', s.antal.toLocaleString('sv-SE')], ['Taxeringsvärde', s.varde_tkr ? mkr(s.varde_tkr) : '–'],
+      ['Tomtareal', s.areal_m2 ? `${Math.round(s.areal_m2).toLocaleString('sv-SE')} m²` : '–']])}
     ${ram ? `<button type="button" class="copy" data-ram="${ram}">Visa alla på kartan</button>
       <div class="meta small">Bolagets fastigheter är inramade i orange.</div>` : ''}
     <dl>
@@ -526,6 +527,7 @@ async function openBolag(orgnr) {
       (bokslut, koncern)</p>`}
     ${b.verksamhet ? `<h3>Verksamhet</h3><p class="small">${esc(b.verksamhet)}</p>` : ''}
     <h3>Fastigheter</h3>
+    ${s.antal > b.fastigheter.length ? `<div class="meta small">Visar de ${b.fastigheter.length.toLocaleString('sv-SE')} med högst taxeringsvärde av ${s.antal.toLocaleString('sv-SE')}.</div>` : ''}
     ${table('<th>Beteckning</th><th class="num">Taxeringsvärde</th>', b.fastigheter.map((f) =>
       `<tr><td><a data-fastighet="${esc(f.beteckning)}" ${bboxAttr(f)}>${esc(f.beteckning)}</a></td>
         <td class="num">${mkr(f.varde_tkr)}</td></tr>`),

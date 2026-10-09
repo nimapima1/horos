@@ -140,3 +140,20 @@ test('sök: bolag med fastigheter först och med antal', async () => {
   const r = await json(`/api/sok?q=${encodeURIComponent('Alfa')}`);
   assert.deepEqual(r.bolag.map((b) => [b.namn, b.fastigheter]), [['Alfa AB', 2]]);
 });
+
+test('bolag: summor och inramning över alla fastigheter, även när listan är kapad', async () => {
+  const db = openDb({ path: DB });
+  // 501 fastigheter långt från de andra (påverkar inga bbox-tester), alla ägda av Gamma AB.
+  db.exec(`INSERT INTO bolag (orgnr, namn, jurform) VALUES ('5560000003', 'Gamma AB', 'Aktiebolag');
+    WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 501)
+    INSERT INTO fastighet (beteckning, kommun, areal_m2, geojson, minx, miny, maxx, maxy, kalla)
+      SELECT 'G ' || i, 'Testkommun', 10, '{"type":"Polygon","coordinates":[]}', 20 + i * 0.001, 65, 20.0005 + i * 0.001, 65.0005, 'lantmateriet' FROM n;
+    INSERT INTO agande (beteckning, orgnr) SELECT beteckning, '5560000003' FROM fastighet WHERE beteckning LIKE 'G %';`);
+  db.close();
+  const g = await json('/api/bolag/5560000003');
+  assert.equal(g.fastigheter.length, 500);
+  assert.equal(g.summa.antal, 501);
+  assert.equal(g.summa.areal_m2, 5010);
+  assert.equal(g.summa.beteckningar.length, 501);
+  assert.equal(g.summa.maxx, 20.5015);
+});
