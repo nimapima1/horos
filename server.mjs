@@ -164,9 +164,10 @@ const inBboxSql = (geometri, limit) => db.prepare(`
       f.demo, f.areal_m2, ${SENASTE_VARDE} AS varde_tkr,
       (SELECT b.namn FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
          WHERE a.beteckning = f.beteckning LIMIT 1) AS agare,
-      (SELECT kopeskilling_kr FROM transaktion x WHERE x.beteckning = f.beteckning
+      -- Senaste köp = senaste överlåtelse med köpeskilling (en gåva utan pris räknas inte), som i panelen.
+      (SELECT kopeskilling_kr FROM transaktion x WHERE x.beteckning = f.beteckning AND x.kopeskilling_kr IS NOT NULL
          ORDER BY inskrivningsdag DESC LIMIT 1) AS kop_kr,
-      (SELECT max(inskrivningsdag) FROM transaktion x WHERE x.beteckning = f.beteckning) AS kop_dag,
+      (SELECT max(inskrivningsdag) FROM transaktion x WHERE x.beteckning = f.beteckning AND x.kopeskilling_kr IS NOT NULL) AS kop_dag,
       ${SENASTE_TYP} AS typ,
       (SELECT b.jurform FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
          WHERE a.beteckning = f.beteckning LIMIT 1) AS agartyp
@@ -206,22 +207,22 @@ const q = {
     LEFT JOIN bolag b ON b.orgnr = x.forvarvare_orgnr
     WHERE x.beteckning = ? ORDER BY x.inskrivningsdag DESC`),
   bolag: db.prepare('SELECT * FROM bolag WHERE orgnr = ?'),
-  antalAgda: db.prepare('SELECT count(DISTINCT beteckning) AS n FROM agande WHERE orgnr = ?'),
   // Bolagets köp; en paketaffär (se AFFAR) blir en rad med antal fastigheter.
   bolagKop: db.prepare(`SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, min(x.beteckning) AS beteckning,
       count(*) AS antal, f.minx, f.miny, f.maxx, f.maxy
     FROM transaktion x JOIN fastighet f ON f.beteckning = x.beteckning
     WHERE x.forvarvare_orgnr = ? GROUP BY x.inskrivningsdag, x.kopeskilling_kr ORDER BY dag DESC LIMIT 50`),
   // Sålt: bolagets förvärv som följs av en överlåtelse till någon annan (nästa förvärv av fastigheten).
-  bolagSalt: db.prepare(`SELECT x.beteckning, x.inskrivningsdag AS kopt, x.kopeskilling_kr AS kop_kr,
-      y.inskrivningsdag AS salt, y.kopeskilling_kr AS salt_kr, y.forvarvare_orgnr AS kopare_orgnr, b.namn AS kopare,
+  // GROUP BY: köp eller försäljning i flera andelar samma dag blir en rad.
+  bolagSalt: db.prepare(`SELECT x.beteckning, x.inskrivningsdag AS kopt, max(x.kopeskilling_kr) AS kop_kr,
+      y.inskrivningsdag AS salt, max(y.kopeskilling_kr) AS salt_kr, y.forvarvare_orgnr AS kopare_orgnr, b.namn AS kopare,
       f.minx, f.miny, f.maxx, f.maxy
     FROM transaktion x
     JOIN transaktion y ON y.beteckning = x.beteckning AND y.inskrivningsdag = (SELECT min(z.inskrivningsdag)
       FROM transaktion z WHERE z.beteckning = x.beteckning AND z.inskrivningsdag > x.inskrivningsdag)
     JOIN fastighet f ON f.beteckning = x.beteckning LEFT JOIN bolag b ON b.orgnr = y.forvarvare_orgnr
     WHERE x.forvarvare_orgnr = ? AND y.forvarvare_orgnr IS NOT x.forvarvare_orgnr
-    ORDER BY y.inskrivningsdag DESC LIMIT 50`),
+    GROUP BY x.beteckning, x.inskrivningsdag, y.inskrivningsdag ORDER BY y.inskrivningsdag DESC LIMIT 50`),
   bolagFastigheter: db.prepare(`
     SELECT DISTINCT f.beteckning, f.areal_m2, f.minx, f.miny, f.maxx, f.maxy, ${SENASTE_VARDE} AS varde_tkr
     FROM fastighet f
@@ -244,11 +245,10 @@ const q = {
   adresserIBbox: HAS_ADRESS && db.prepare(`SELECT gata, nummer, lon, lat FROM adress
     WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? LIMIT 2000`),
   fastighetGeom: db.prepare('SELECT geojson, minx, miny, maxx, maxy FROM fastighet WHERE beteckning = ?'),
-  grannar: db.prepare(`SELECT f.beteckning, f.minx, f.miny, f.maxx, f.maxy,
-      (SELECT a.orgnr FROM agande a WHERE a.beteckning = f.beteckning LIMIT 1) AS orgnr,
-      (SELECT b.namn FROM agande a JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = f.beteckning LIMIT 1) AS agare,
-      (SELECT b.demo FROM agande a JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = f.beteckning LIMIT 1) AS demo
-    FROM fastighet f WHERE ${overlapar('fastighet', 'f')} AND f.beteckning != ? LIMIT 30`),
+  // En rad per granne med (första) ägaren.
+  grannar: db.prepare(`SELECT f.beteckning, f.minx, f.miny, f.maxx, f.maxy, min(a.orgnr) AS orgnr, b.namn AS agare, b.demo
+    FROM fastighet f LEFT JOIN agande a ON a.beteckning = f.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr
+    WHERE ${overlapar('fastighet', 'f')} AND f.beteckning != ? GROUP BY f.beteckning LIMIT 30`),
   narKop: db.prepare(`SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, x.forvarvare_orgnr AS orgnr, x.andel,
       b.namn, b.demo, f.beteckning, f.areal_m2, f.minx, f.miny, f.maxx, f.maxy
     FROM fastighet f JOIN transaktion x ON x.beteckning = f.beteckning LEFT JOIN bolag b ON b.orgnr = x.forvarvare_orgnr
@@ -317,12 +317,11 @@ const AFFAR = `WITH affar AS (
   GROUP BY 1, 2, 3)`;
 // Säljaren = förvärvaren i fastighetens föregående överlåtelse (om den finns).
 const AFFAR_RAD = `SELECT a.dag, a.kr, a.orgnr, a.beteckning, a.antal, a.demo, b.namn, f.kommun,
-    f.minx, f.miny, f.maxx, f.maxy, s.orgnr AS saljare_orgnr, sb.namn AS saljare
+    f.minx, f.miny, f.maxx, f.maxy, sb.orgnr AS saljare_orgnr, sb.namn AS saljare
   FROM affar a
-  LEFT JOIN (SELECT p.beteckning, p.inskrivningsdag, p.forvarvare_orgnr AS orgnr FROM transaktion p) s
-    ON s.beteckning = a.beteckning AND s.inskrivningsdag = (SELECT max(p2.inskrivningsdag) FROM transaktion p2
-      WHERE p2.beteckning = a.beteckning AND p2.inskrivningsdag < a.dag)
-  LEFT JOIN bolag sb ON sb.orgnr = s.orgnr JOIN fastighet f ON f.beteckning = a.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr`;
+  LEFT JOIN bolag sb ON sb.orgnr = (SELECT p.forvarvare_orgnr FROM transaktion p
+    WHERE p.beteckning = a.beteckning AND p.inskrivningsdag < a.dag ORDER BY p.inskrivningsdag DESC LIMIT 1)
+  JOIN fastighet f ON f.beteckning = a.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr`;
 const qa = {
   ar: db.prepare(`${AFFAR} SELECT DISTINCT substr(dag, 1, 4) AS ar FROM affar WHERE dag IS NOT NULL ORDER BY ar DESC`),
   summa: db.prepare(`${AFFAR} SELECT count(*) AS antal, sum(kr) AS kr FROM affar WHERE substr(dag, 1, 4) = ?`),
@@ -407,11 +406,12 @@ const EXPORT_GEOMETRI = META.export_geometri === '1' || process.env.EXPORT_GEOME
 
 // Fritext -> FTS5-fråga med prefixmatchning per ord: "vasa kron" -> "vasa"* "kron"*
 const ftsQuery = (term) => term.split(/\s+/).filter(Boolean).map((w) => `"${w.replace(/"/g, '')}"*`).join(' ');
-const bolagTraff = ({ orgnr, namn, postort, demo, n }) => ({ orgnr, namn, postort, demo, fastigheter: n ?? q.antalAgda.get(orgnr).n });
 
 // Bolag som äger fastigheter, i minnet: de ska inte försvinna bland fulltextsökningens 300 första
 // träffar bland 2,2 miljoner bolag. shortcut: läses vid start, som TYPER.
 const AGARE = q.agareLista.all().map((b) => ({ ...b, sok: b.namn.toLocaleLowerCase('sv') }));
+const ANTAL_AGDA = new Map(AGARE.map((b) => [b.orgnr, b.n]));
+const bolagTraff = ({ orgnr, namn, postort, demo }) => ({ orgnr, namn, postort, demo, fastigheter: ANTAL_AGDA.get(orgnr) ?? 0 });
 const sokAgare = (term) => {
   const ord = term.toLocaleLowerCase('sv').split(/\s+/).filter(Boolean);
   return AGARE.filter((b) => ord.every((o) => b.sok.includes(o))).slice(0, 50);
@@ -419,10 +419,8 @@ const sokAgare = (term) => {
 
 function sokBolag(term) {
   const fraga = HAS_FTS ? ftsQuery(term) : `%${term}%`;
-  // Ägarträffarna sist, så att de (med antal fastigheter, n) vinner vid dubbletter.
-  const unika = new Map([...q.sokBolag.all(fraga), ...sokAgare(term)].map((b) => [b.orgnr, b]));
+  const unika = new Map([...q.sokBolag.all(fraga), ...sokAgare(term)].map((b) => [b.orgnr, { ...b, n: ANTAL_AGDA.get(b.orgnr) ?? 0 }]));
   return [...unika.values()]
-    .map((b) => ({ ...b, n: b.n ?? q.antalAgda.get(b.orgnr).n }))
     // Bolag med fastigheter först, sedan aktiva före avregistrerade, kortare namn (närmare träff) först.
     .sort((x, y) => (y.n > 0) - (x.n > 0) || (x.avregistrerad ? 1 : 0) - (y.avregistrerad ? 1 : 0) || x.namn.length - y.namn.length)
     .slice(0, 15)
@@ -448,13 +446,13 @@ function omgivning(bet) {
   // En paketaffär (se AFFAR) visas en gång och märks, eftersom priset gäller flera fastigheter.
   // shortcut: paketet känns bara igen om flera av dess fastigheter ligger inom NARA_M.
   const key = (x) => `${x.dag}|${x.kr}|${x.orgnr}`;
-  const affarer = new Map();
+  const perAffar = new Map();
   for (const x of q.narKop.all(...runt(f, NARA_M), bet)) {
-    const a = affarer.get(key(x));
+    const a = perAffar.get(key(x));
     if (a) a.paket = true;
-    else affarer.set(key(x), { ...x, paket: false });
+    else perAffar.set(key(x), { ...x, paket: false });
   }
-  const narKop = [...affarer.values()].slice(0, 10);
+  const narKop = [...perAffar.values()].slice(0, 10);
   return { grannar: q.grannar.all(...runt(f, GRANNE_M), bet), narKop };
 }
 

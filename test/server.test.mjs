@@ -64,6 +64,19 @@ test('kartfiltren', async () => {
   assert.equal((await get('/api/fastigheter')).status, 400);
 });
 
+test('senaste köp räknar bara överlåtelser med pris', async () => {
+  const db = openDb({ path: DB });
+  // En gåva utan pris efter paketköpet 2024: senaste köp är fortfarande 2024 för 300 Mkr.
+  db.exec("INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr) VALUES ('T 1:3', '2025-01-01', NULL, '5560000001')");
+  try {
+    assert.equal(await antal('&kmin=250'), 2);
+    assert.equal(await antal('&ktill=2024'), 3);
+  } finally {
+    db.exec("DELETE FROM transaktion WHERE beteckning = 'T 1:3' AND inskrivningsdag = '2025-01-01'");
+    db.close();
+  }
+});
+
 test('prickar och bolagsurval', async () => {
   assert.equal((await json(`/api/punkter?${BBOX}`)).p.length, 3);
   assert.equal((await json(`/api/punkter?${BBOX}&org=556000-0001`)).p.length, 2);
@@ -109,7 +122,8 @@ test('träff-export som CSV', async () => {
 test('bolag: köp och sålt (körs sist, lägger till en försäljning)', async () => {
   const db = openDb({ path: DB });
   db.exec(`INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr)
-    VALUES ('T 1:2', '2023-03-01', 35000000, '5560000001')`);
+    VALUES ('T 1:2', '2023-03-01', 35000000, '5560000001'),
+      ('T 1:2', '2020-01-01', NULL, '7690000002')`);   // Beta köpte 2020 i två andelar samma dag
   db.close();
   const beta = await json('/api/bolag/7690000002');
   assert.deepEqual(beta.salt.map((x) => [x.beteckning, x.kopt, x.salt, x.kopare, x.salt_kr]),
@@ -119,6 +133,7 @@ test('bolag: köp och sålt (körs sist, lägger till en försäljning)', async 
   assert.deepEqual(alfa.salt, []);
   const affar = (await json('/api/affarer?ar=2023')).senaste[0];
   assert.deepEqual([affar.namn, affar.saljare], ['Alfa AB', 'Brf Beta']);
+  assert.equal((await json('/api/affarer?ar=2023')).senaste.length, 1);   // två andelar före ger ingen dubblett
 });
 
 test('sök: bolag med fastigheter först och med antal', async () => {
