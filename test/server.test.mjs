@@ -26,12 +26,19 @@ before(async () => {
   db.exec(`INSERT INTO taxering (beteckning, typ, ar, varde_tkr) VALUES
     ('T 1:1', 'Hyreshusenhet, lokaler', 2025, 50000), ('T 1:1', 'Hyreshusenhet, lokaler', 2022, 40000),
     ('T 1:2', 'Hyreshusenhet, bostäder', 2025, 10000), ('T 1:3', 'Hyreshusenhet, lokaler', 2025, 200000)`);
-  db.exec(`INSERT INTO agande (beteckning, orgnr, inskrivningsdag) VALUES
-    ('T 1:1', '5560000001', '2024-05-01'), ('T 1:2', '7690000002', '2020-01-01'), ('T 1:3', '5560000001', '2024-05-01')`);
+  // Upplåtelseform: 1:1 tomträtt, 1:2 äganderätt, 1:3 okänd (källan säger inget).
+  db.exec(`INSERT INTO agande (beteckning, orgnr, inskrivningsdag, tomtratt) VALUES
+    ('T 1:1', '5560000001', '2024-05-01', 1), ('T 1:2', '7690000002', '2020-01-01', 0), ('T 1:3', '5560000001', '2024-05-01', NULL)`);
   // Paketaffär: Alfa köper 1:1 och 1:3 för 300 Mkr; köpeskillingen står på båda.
   db.exec(`INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr) VALUES
     ('T 1:1', '2024-05-01', 300000000, '5560000001'), ('T 1:3', '2024-05-01', 300000000, '5560000001'),
     ('T 1:2', '2020-01-01', 20000000, '7690000002')`);
+  // Arbetsställen: två på 1:1 (Alfa är störst), ett utan fastighet. Uppskattad LOA på 1:1:
+  // kontor 34,5 anställda × 20 m² = 690, butik 2,5 × 40 = 100.
+  db.exec(`INSERT INTO arbetsstalle (cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, beteckning) VALUES
+    (1, '7690000002', NULL, '47110', 'G', 'Livsmedelsbutik', 2, 'Testgatan 2', 'T 1:1'),
+    (2, '5560000001', 'Alfa City', '62100', 'K', 'Dataprogrammering', 5, 'Testgatan 1', 'T 1:1'),
+    (3, '5560000001', NULL, NULL, NULL, NULL, 3, 'Annangatan 9', NULL)`);
   db.close();
 
   server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(ROOT, 'server.mjs')], {
@@ -59,6 +66,25 @@ test('kartfiltren', async () => {
   assert.equal(await antal('&ktill=2020'), 1);
   assert.equal(await antal('&anv=Hyreshusenhet%2C%20lokaler'), 2);
   assert.equal(await antal('&amin=2000'), 1);
+  assert.equal(await antal('&amax=600'), 1);
+  assert.equal(await antal('&lok=Kontor'), 1);
+  assert.equal(await antal('&rf=tomtratt'), 1);
+  assert.equal(await antal('&rf=aganderatt'), 1);   // 1:3 är okänd och räknas inte som äganderätt
+  assert.equal(await antal('&rf=nagot'), 3);
+  assert.equal(await antal('&kommun=Testkommun'), 3);
+  assert.equal(await antal('&kommun=Solna'), 0);
+  assert.equal(await antal('&lan=01'), 0);           // Testkommun ligger inte i Stockholms län
+  assert.equal(await antal('&lan=99'), 3);           // okänd länskod ignoreras
+  assert.equal(await antal('&agare=ALFA'), 2);
+  assert.equal(await antal('&agare=556000-0001'), 2);
+  assert.equal(await antal('&agare=gamma%20beta'), 0);
+  assert.equal(await antal('&agkat=brf'), 1);
+  assert.equal(await antal('&agkat=ovriga'), 2);      // Alfa AB saknar SNI 68
+  assert.equal(await antal('&agkat=kommun'), 0);
+  assert.equal(await antal('&lok=Industri'), 0);
+  assert.equal(await antal('&loamin=700'), 1);
+  assert.equal(await antal('&loamin=800'), 0);
+  assert.equal(await antal('&loamax=800'), 1);       // fastigheter utan uppskattad LOA räknas inte
   assert.equal(await antal('&vmin=abc&kar=20x'), 3);    // ogiltiga värden ignoreras
   assert.equal(await antal('&kar=2021&vmin=100'), 1);
   assert.equal((await get('/api/fastigheter')).status, 400);
@@ -109,6 +135,18 @@ test('fastighet: grannar, paketaffär och köp i närheten', async () => {
   assert.deepEqual(f.grannar.map((g) => g.beteckning), ['T 1:2']);
   assert.equal(f.transaktioner[0].i_affar, 2);
   assert.deepEqual(f.narKop.map((x) => [x.beteckning, x.paket]), [['T 1:2', false]]);   // 1:3 ligger ca 560 m bort
+});
+
+test('företag på adressen och bolagets arbetsställen', async () => {
+  const f = await json(`/api/fastighet/${encodeURIComponent('T 1:1')}`);
+  assert.deepEqual(f.hyresgaster.map((h) => [h.namn, h.benamning, h.anstkl, h.adress]),
+    [['Alfa AB', 'Alfa City', 5, 'Testgatan 1'], ['Brf Beta', null, 2, 'Testgatan 2']]);
+  assert.equal(f.upplatelse, 'tomtratt');
+  assert.equal(f.agare[0].tomtratt, 1);
+  assert.deepEqual(f.anvandning, [{ typ: 'Kontor', loa_m2: 690 }, { typ: 'Butik', loa_m2: 100 }]);
+  assert.deepEqual((await json(`/api/fastighet/${encodeURIComponent('T 1:2')}`)).hyresgaster, []);
+  const alfa = await json('/api/bolag/5560000001');
+  assert.deepEqual(alfa.arbetsstallen.map((a) => [a.adress, a.beteckning]), [['Testgatan 1', 'T 1:1']]);   // bara på fastigheter i Horos
 });
 
 test('träff-export som CSV', async () => {

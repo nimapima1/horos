@@ -16,6 +16,7 @@
     "import:taxering": "node --disable-warning=ExperimentalWarning scripts/import-taxering.mjs",
     "import:lagfarter": "node --disable-warning=ExperimentalWarning scripts/import-lagfarter.mjs",
     "import:adresser": "node --disable-warning=ExperimentalWarning scripts/import-adresser.mjs",
+    "import:arbetsstallen": "node --disable-warning=ExperimentalWarning scripts/import-arbetsstallen.mjs",
     "demo": "node --disable-warning=ExperimentalWarning scripts/demo-data.mjs",
     "vendor": "node scripts/vendor.mjs",
     "postinstall": "node scripts/vendor.mjs",

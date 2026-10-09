@@ -4,7 +4,8 @@
 //   node scripts/import-lagfarter.mjs <fil.csv> --som agare           nuvarande lagfarna ägare
 //   flaggor: [--dry] [--append] [--map fält=kolumn ...]
 //
-// Fält: beteckning, orgnr, andel, datum, kopeskilling, art
+// Fält: beteckning, orgnr, andel, datum, kopeskilling, art, tomtratt (agare: tomträttsinnehav eller lagfart;
+// saknas kolumnen sparas upplåtelseformen som okänd, aldrig som äganderätt)
 // Rader med personnummer hoppas alltid över.
 import { openDb, normOrgnr, normBeteckning, withTransaction, markPrivata } from '../lib/db.mjs';
 import { loadMapped, parseArgs, num, isoDate } from '../lib/csv.mjs';
@@ -25,9 +26,10 @@ const FIELDS = {
   datum: ['inskrivningsdag', 'inskrivningsdatum', 'beviljad', 'datum', 'forvarvsdatum'],
   kopeskilling: ['kopeskilling', 'kopesumma', 'pris', 'kopeskillingkr'],
   art: ['overlatelseform', 'forvarvsart', 'fangesart', 'art', 'fang'],
+  tomtratt: ['tomtratt', 'tomtrattsinnehav', 'upplatelseform', 'inskrivningstyp', 'innehavstyp'],
 };
 
-const { rows, get } = loadMapped(file, FIELDS, args.map, ['beteckning', 'orgnr']);
+const { rows, get, col } = loadMapped(file, FIELDS, args.map, ['beteckning', 'orgnr']);
 
 let personer = 0;
 const recs = [];
@@ -40,7 +42,8 @@ for (const r of rows) {
     continue;
   }
   recs.push({ bet: normBeteckning(get(r, 'beteckning')), orgnr, andel: get(r, 'andel'), datum: isoDate(get(r, 'datum')),
-    pris: num(get(r, 'kopeskilling')), art: get(r, 'art') });
+    pris: num(get(r, 'kopeskilling')), art: get(r, 'art'),
+    tomtratt: col.tomtratt == null ? null : /tomtr|^(1|j|ja|true)$/i.test(get(r, 'tomtratt') ?? '') ? 1 : 0 });
 }
 console.log(`${recs.length} rader att importera, ${personer} hoppade över (fysiska personer eller saknat org.nr).`);
 if (args.dry) { console.log('Exempel:', recs.slice(0, 3)); process.exit(0); }
@@ -49,8 +52,8 @@ const db = openDb();
 withTransaction(db, () => {
   if (som === 'agare') {
     if (!args.append) db.exec('DELETE FROM agande WHERE demo = 0');
-    const ins = db.prepare('INSERT INTO agande (beteckning, orgnr, andel, inskrivningsdag, demo) VALUES (?, ?, ?, ?, 0)');
-    for (const r of recs) ins.run(r.bet, r.orgnr, r.andel, r.datum);
+    const ins = db.prepare('INSERT INTO agande (beteckning, orgnr, andel, inskrivningsdag, tomtratt, demo) VALUES (?, ?, ?, ?, ?, 0)');
+    for (const r of recs) ins.run(r.bet, r.orgnr, r.andel, r.datum, r.tomtratt);
     markPrivata(db, privata);
   } else {
     if (!args.append) db.exec('DELETE FROM transaktion WHERE demo = 0');

@@ -269,7 +269,7 @@ map.on('load', () => {
   };
   // Snabbinfo vid hovring (bara med mus): beteckning, ägare, värde och det kartan färgas efter.
   const tip = matchMedia('(hover: hover)').matches
-    && new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'tip', offset: 12, maxWidth: '260px' });
+    ? new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'tip', offset: 12, maxWidth: '260px' }) : null;
   map.on('mousemove', 'fastighet-fill', (e) => {
     map.getCanvas().style.cursor = 'pointer';
     const p = e.features[0].properties;
@@ -298,7 +298,23 @@ function filterQuery() {
   return p.size ? `&${p}` : '';
 }
 filterForm.addEventListener('input', () => { clearTimeout(filterTimer); filterTimer = setTimeout(loadVisible, 300); });
-filterForm.addEventListener('reset', () => setTimeout(loadVisible));   // efter att fälten tömts
+filterForm.addEventListener('reset', () => setTimeout(() => { fyllKommuner(); loadVisible(); }));   // efter att fälten tömts
+// Län och kommun: kommunlistan visar länets kommuner, och kartan zoomar till det valda området.
+let kommunInfo = [];
+function fyllKommuner() {
+  const lan = filterForm.lan.value, vald = filterForm.kommun.value;
+  filterForm.kommun.length = 1;
+  for (const k of kommunInfo.filter((k) => !lan || k.lan === lan)) filterForm.kommun.add(new Option(k.namn, k.namn));
+  filterForm.kommun.value = [...filterForm.kommun.options].some((o) => o.value === vald) ? vald : '';
+}
+function zoomaTillOmrade() {
+  const lan = filterForm.lan.value, kommun = filterForm.kommun.value;
+  const k = kommunInfo.filter((x) => (kommun ? x.namn === kommun : lan && x.lan === lan));
+  if (k.length) flyToBbox([Math.min(...k.map((x) => x.minx)), Math.min(...k.map((x) => x.miny)),
+    Math.max(...k.map((x) => x.maxx)), Math.max(...k.map((x) => x.maxy))].join(','));
+}
+filterForm.lan.addEventListener('change', () => { fyllKommuner(); zoomaTillOmrade(); });
+filterForm.kommun.addEventListener('change', zoomaTillOmrade);
 filterForm.addEventListener('submit', (e) => e.preventDefault());
 // Filter från en delad länk. Användning och ägartyp sätts när listorna har laddats (se status).
 for (const el of filterForm.querySelectorAll('input[name]')) el.value = START.get(el.name) ?? '';
@@ -394,9 +410,9 @@ const bboxAttr = (f) => `data-bbox="${[f.minx, f.miny, f.maxx, f.maxy].join(',')
 const table = (head, rows, empty) => (rows.length
   ? `<table><tr>${head}</tr>${rows.join('')}</table>`
   : `<p class="empty">${empty}</p>`);
-// Nyckeltal överst i panelen: [[etikett, värde], ...]
-const stats = (items) => `<div class="stats">${items.map(([label, value]) =>
-  `<div class="stat"><div class="stat-label">${label}</div><div class="stat-value">${value}</div></div>`).join('')}</div>`;
+// Nyckeltal överst i panelen: [[etikett, värde, undertext], ...]
+const stats = (items) => `<div class="stats">${items.map(([label, value, sub]) =>
+  `<div class="stat"><div class="stat-label">${label}</div><div class="stat-value">${value}</div>${sub ? `<div class="fact-sub">${sub}</div>` : ''}</div>`).join('')}</div>`;
 
 // Hämtar från API:t; vid fel visas felet i panelen och null returneras.
 async function apiPanel(path) {
@@ -407,6 +423,63 @@ async function apiPanel(path) {
 // Det de flesta letar efter, överst: [[etikett, värde, undertext], ...]
 const facts = (items) => `<div class="facts">${items.map(([label, value, sub]) =>
   `<div class="fact"><div class="stat-label">${label}</div><div class="fact-value">${value}</div>${sub ? `<div class="fact-sub">${sub}</div>` : ''}</div>`).join('')}</div>`;
+
+// SCB:s storleksklasser för antal anställda (kod 0–16) och ett mittvärde per klass för viktningen.
+const ANSTKL = ['okänt', 'inga', '1–4', '5–9', '10–19', '20–49', '50–99', '100–199', '200–499',
+  '500–999', '1 000–1 499', '1 500–1 999', '2 000–2 999', '3 000–3 999', '4 000–4 999', '5 000–9 999', '10 000–'];
+// Färg per lokaltyp; typerna, andelarna och den uppskattade LOA:n räknas av servern (LOKALTYPER i server.mjs).
+const LOKALFARG = { Kontor: '--c1', Butik: '--c2', 'Lager och logistik': '--c3', Industri: '--c4',
+  'Hotell och restaurang': '--c6', 'Vård och skola': '--c5' };
+// [{typ, loa_m2}] från API:t -> med färg och andel av den totala ytan.
+function uppskattadAnvandning(anvandning) {
+  const summa = anvandning.reduce((s, r) => s + r.loa_m2, 0);
+  return anvandning.map((r) => ({ typ: r.typ, farg: LOKALFARG[r.typ] ?? '--v0', loa: r.loa_m2, andel: r.loa_m2 / summa }));
+}
+const ungefarM2 = (m2) => `≈ ${(Math.round(m2 / (m2 < 1000 ? 10 : 100)) * (m2 < 1000 ? 10 : 100)).toLocaleString('sv-SE')} m²`;
+const procent = (x) => `${Math.round(x * 100)} %`;
+
+// Rutan Användning: taxeringstypen och uppskattad fördelning på lokaltyper med LOA.
+function anvandningRuta(typer, ar, anvandning) {
+  const rader = uppskattadAnvandning(anvandning);
+  const loa = rader.reduce((s, r) => s + r.loa, 0);
+  return `<section class="anv" aria-labelledby="anv-rubrik">
+    <div class="stat-label" id="anv-rubrik">Användning</div>
+    <div class="fact-value">${rader.length ? `${esc(rader[0].typ)} ${procent(rader[0].andel)}` : typer.length ? esc(typer.join(' · ')) : '–'}</div>
+    <div class="fact-sub">${!typer.length ? 'Taxering: väntar på uppgifter från Skatteverket'
+      : rader.length ? `Taxering ${ar}: ${esc(typer.join(' · '))}` : `Enligt taxeringen ${ar}`}</div>
+    ${rader.length ? `
+      <div class="anv-bar" aria-hidden="true">${rader.map((r) => `<span style="flex:${r.andel};background:var(${r.farg})"></span>`).join('')}</div>
+      <table class="anv-tab">
+        <tr><th>Lokaltyp</th><th class="num">Andel av yta</th><th class="num">Uppskattad LOA</th></tr>
+        ${rader.map((r) => `<tr><td><i style="background:var(${r.farg})"></i>${esc(r.typ)}</td>
+          <td class="num">${procent(r.andel)}</td><td class="num">${ungefarM2(r.loa)}</td></tr>`).join('')}
+        <tr class="anv-summa"><td>Totalt</td><td></td><td class="num">${ungefarM2(loa)}</td></tr>
+      </table>
+      <div class="fact-sub">Uppskattat från branscher och antal anställda hos företagen på fastigheten (SCB).
+        Grov indikation, inte uppmätt yta.</div>` : `<div class="fact-sub">Ingen uppskattning: inga företag registrerade på fastigheten.</div>`}
+  </section>`;
+}
+
+// Företag på fastigheten, en grupp per adress som hos SCB.
+function hyresgastTabell(hyresgaster) {
+  const perAdress = new Map();
+  for (const h of hyresgaster) {
+    const k = h.adress ?? 'Adress saknas';
+    perAdress.set(k, [...(perAdress.get(k) ?? []), h]);
+  }
+  // Adresserna i gatuordning (92 före 92A före 94), "Adress saknas" sist; företagen störst först.
+  const adresser = [...perAdress].sort(([x], [y]) => (x === 'Adress saknas') - (y === 'Adress saknas')
+    || x.localeCompare(y, 'sv', { numeric: true }));
+  const rader = adresser.flatMap(([adress, lista]) => [
+    ...(perAdress.size > 1 ? [`<tr><td colspan="2"><strong>${esc(adress)}</strong></td></tr>`] : []),
+    ...lista.map((h) => `<tr><td>${bolagLink(h.orgnr, h.namn ?? h.benamning, h.demo)}${h.benamning && h.namn && h.benamning !== h.namn ? ` · ${esc(h.benamning)}` : ''}
+      <div class="muted small">${esc(h.bransch ?? (h.sni ? `SNI ${h.sni}` : ''))}</div></td>
+      <td class="num">${esc(ANSTKL[h.anstkl] ?? '–')}</td></tr>`),
+  ]);
+  return table('<th>Företag</th><th class="num">Anställda</th>', rader, 'Inga uppgifter om företag på fastigheten.');
+}
+
+const UPPLATELSE = { tomtratt: 'Tomträtt', aganderatt: 'Äganderätt' };
 
 // adress: söktexten när fastigheten öppnades från en adressträff.
 async function openFastighet(bet, adress) {
@@ -430,6 +503,7 @@ async function openFastighet(bet, adress) {
   const agare = f.agare.length ? f.agare
     : [...new Map(senaste.filter((t) => t.agare_orgnr).map((t) => [t.agare_orgnr, { orgnr: t.agare_orgnr, namn: t.agare_namn }])).values()];
   const anvandning = [...new Set(senaste.map((t) => t.typ).filter(Boolean))];
+  const loa = f.anvandning.reduce((s, r) => s + r.loa_m2, 0);
   const rubrik = adress ?? f.adresser[0] ?? f.beteckning;
   const ovriga = f.adresser.filter((a) => a !== rubrik);
   showPanel(`
@@ -437,31 +511,40 @@ async function openFastighet(bet, adress) {
     <div class="meta">${rubrik === f.beteckning ? '' : `${esc(f.beteckning)} · `}${esc(f.kommun ?? '')}</div>
     ${ovriga.length ? `<div class="meta small">Även ${esc(ovriga.join(', '))}</div>` : ''}
     ${facts([
-      ['Ägare', agare.length ? bolagLink(agare[0].orgnr, agare[0].namn, agare[0].demo) : '–',
+      [agare[0]?.tomtratt ? 'Tomträttshavare' : 'Ägare', agare.length ? bolagLink(agare[0].orgnr, agare[0].namn, agare[0].demo) : '–',
         [agare.length > 1 ? `och ${agare.length - 1} till, se nedan` : agare.length ? fmtOrgnr(agare[0].orgnr) : 'Väntar på uppgifter från Lantmäteriet',
-          agare[0]?.inskrivningsdag ? `ägare sedan ${esc(agare[0].inskrivningsdag)}` : ''].filter(Boolean).join(' · ')],
-      ['Användning', anvandning.length ? esc(anvandning.join(' · ')) : '–', anvandning.length ? `Enligt taxeringen ${ar}` : 'Väntar på uppgifter från Skatteverket'],
+          agare[0]?.inskrivningsdag ? `${agare[0].tomtratt ? "tomträttshavare" : "ägare"} sedan ${esc(agare[0].inskrivningsdag)}` : ''].filter(Boolean).join(' · ')],
       ['Senaste köp', kop ? mkr(kop.kopeskilling_kr / 1000) : '–',
         kop ? `${esc(kop.inskrivningsdag ?? '')}${kop.forvarvare_namn ? ` · ${esc(kop.forvarvare_namn)}` : ''}${paket ? ` · paketaffär, ${kop.i_affar} fastigheter` : ''}` : 'Inga registrerade köp'],
     ])}
+    ${anvandningRuta(anvandning, ar, f.anvandning)}
     ${stats([
       [`Taxeringsvärde${ar ? ` ${ar}` : ''}`, f.taxering.length ? mkr(varde) : '–'],
+      ['Upplåtelseform', UPPLATELSE[f.upplatelse] ?? '–', f.upplatelse ? 'Enligt Lantmäteriet' : 'Uppgift saknas'],
       ...(andring != null ? [[`Ändring sedan ${forraAr}`, `${andring > 0 ? '+' : ''}${(andring * 100).toLocaleString('sv-SE', { maximumFractionDigits: 0 })} %`]] : []),
-      ['Areal', f.areal_m2 ? `${Math.round(f.areal_m2).toLocaleString('sv-SE')} m²` : '–'],
+      ['Tomtareal', f.areal_m2 ? `${Math.round(f.areal_m2).toLocaleString('sv-SE')} m²` : '–'],
+      // shortcut: BOA och uppmätt LOA finns i taxeringen (Skatteverket) men saknas i data än; tills dess uppskattad LOA.
+      ['LOA / BOA', loa ? ungefarM2(loa) : '–', `${loa ? 'LOA uppskattad' : 'LOA saknas'} · BOA saknas`],
+      // Exploateringstal: (LOA + BOA) delat med tomtarealen.
+      ['Exploateringstal', loa && f.areal_m2 ? `≈ ${(loa / f.areal_m2).toLocaleString('sv-SE', { maximumFractionDigits: 1 })}` : '–',
+        loa && f.areal_m2 ? 'Uppskattat, utan BOA' : ''],
       ...(helKop ? [
         ['Köp per m² tomt', f.areal_m2 ? kr(kop.kopeskilling_kr / f.areal_m2) : '–'],
         // K/T: köpeskilling delad med taxeringsvärde.
         ['K/T-kvot', varde ? (kop.kopeskilling_kr / (varde * 1000)).toLocaleString('sv-SE', { maximumFractionDigits: 2 }) : '–'],
       ] : []),
     ])}
+    <h3>Företag på adressen</h3>
+    <div class="meta small">Företag med arbetsställe på fastigheten enligt SCB:s företagsregister. Det säger inget om hyresavtal.</div>
+    ${hyresgastTabell(f.hyresgaster)}
     <h3>Detaljplan</h3>
     ${table('<th>Plan</th><th class="num">Laga kraft</th>', f.planer.map((p) =>
       `<tr><td><strong>${esc(PLANTYP[p.typ] ?? p.typ)}</strong>${p.namn ? ` · ${esc(p.namn)}` : ''}${demoTag(p.demo)}
         <div class="muted small">${esc(p.planid ?? '')}</div></td><td class="num">${esc(p.datum ?? '')}</td></tr>`),
       'Väntar på uppgifter från Lantmäteriet.')}
-    <h3>Lagfarna ägare</h3>
+    <h3>${f.agare.some((a) => a.tomtratt) ? 'Ägare och tomträttshavare' : 'Lagfarna ägare'}</h3>
     ${table('<th>Ägare</th><th>Andel</th><th class="num">Sedan</th>', f.agare.map((a) =>
-      `<tr><td>${bolagLink(a.orgnr, a.namn, a.demo)}<div class="muted small">${fmtOrgnr(a.orgnr)}</div></td>
+      `<tr><td>${bolagLink(a.orgnr, a.namn, a.demo)}<div class="muted small">${fmtOrgnr(a.orgnr)}${a.tomtratt ? ' · tomträttshavare' : ''}</div></td>
         <td>${esc(a.andel ?? '')}</td><td class="num">${esc(a.inskrivningsdag ?? '')}</td></tr>`),
       'Väntar på uppgifter från Lantmäteriet.')}
     <h3>Grannfastigheter i Horos</h3>
@@ -494,7 +577,7 @@ async function openFastighet(bet, adress) {
           : x.areal_m2 && (!x.andel || x.andel === '1/1') ? `${kr(x.kr / x.areal_m2)}/m²` : ''}</div></td></tr>`),
       'Inga registrerade köp i närheten.')}
     <button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>
-    <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.planer.length ? ` · planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}` : ''}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}</p>
+    <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.planer.length ? ` · planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}` : ''}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}${f.hyresgaster.length ? ` · företag: ${f.hyresgaster.some((h) => h.demo) ? 'påhittade (exempel)' : 'SCB'}` : ''}</p>
   `);
 }
 
@@ -532,6 +615,11 @@ async function openBolag(orgnr) {
       `<tr><td><a data-fastighet="${esc(f.beteckning)}" ${bboxAttr(f)}>${esc(f.beteckning)}</a></td>
         <td class="num">${mkr(f.varde_tkr)}</td></tr>`),
       'Inga kända fastigheter ännu. Ägaruppgifter läses in när Lantmäteriet har svarat.')}
+    ${b.arbetsstallen.length ? `<h3>Arbetsställen i Horos</h3>
+    ${table('<th>Adress</th><th class="num">Anställda</th>', b.arbetsstallen.map((a) =>
+      `<tr><td>${esc(a.adress ?? 'Adress saknas')}${a.benamning ? ` · ${esc(a.benamning)}` : ''}
+        <div class="muted small">${fastighetLink(a)}${a.bransch ? ` · ${esc(a.bransch)}` : ''}</div></td>
+        <td class="num">${esc(ANSTKL[a.anstkl] ?? '–')}</td></tr>`), '')}` : ''}
     <h3>Köp</h3>
     ${table('<th class="num">Datum</th><th>Fastighet</th><th class="num">Pris</th>', b.kop.map((x) =>
       `<tr><td class="num">${esc(x.dag ?? '')}</td><td>${fastighetLink(x)}</td><td class="num">${x.kr == null ? '–' : mkr(x.kr / 1000)}</td></tr>`),
@@ -543,7 +631,7 @@ async function openBolag(orgnr) {
         <td class="num">${esc(x.kopt ?? '')}<div class="muted small">${x.kop_kr == null ? '–' : mkr(x.kop_kr / 1000)}</div></td>
         <td class="num">${esc(x.salt ?? '')}<div class="muted small">${x.salt_kr == null ? '–' : mkr(x.salt_kr / 1000)}</div></td></tr>`;
     }), 'Inga registrerade försäljningar.')}
-    <p class="muted small" style="margin-top:16px">Källa: Bolagsverket och SCB, värdefulla datamängder. Köp och försäljningar: Lantmäteriet.</p>
+    <p class="muted small" style="margin-top:16px">Källa: Bolagsverket och SCB, värdefulla datamängder. Köp och försäljningar: Lantmäteriet.${b.arbetsstallen.length ? ' Arbetsställen: SCB, företagsregistret.' : ''}</p>
   `);
 }
 
@@ -655,6 +743,7 @@ function openOm() {
       <dt>Taxering</dt><dd>Skatteverket, allmänna handlingar</dd>
       <dt>Ägare, köp</dt><dd>Lantmäteriet, allmänna handlingar</dd>
       <dt>Planer</dt><dd>Lantmäteriet, Markreglerande bestämmelse</dd>
+      <dt>Företag</dt><dd>SCB, företagsregistret (arbetsställen)</dd>
       <dt>Adresser</dt><dd>© OpenStreetMap-bidragsgivare (ODbL)</dd>
       <dt>Karta</dt><dd>OpenFreeMap, © OpenStreetMap-bidragsgivare</dd>
       <dt>Satellit</dt><dd>EOxCloudless 2025 (Copernicus Sentinel-2)</dd>
@@ -678,7 +767,12 @@ statusP.then((s) => {
   basemap.addHistoriska(s.historiska ?? []);
   for (const t of s.typer ?? []) filterForm.anv.add(new Option(t, t));
   for (const t of s.agartyper ?? []) filterForm.jur.add(new Option(t, t));
-  const valda = ['anv', 'jur'].filter((k) => START.get(k));
+  for (const t of s.lokaltyper ?? []) filterForm.lok.add(new Option(t, t));
+  for (const l of s.lan ?? []) filterForm.lan.add(new Option(l.namn, l.kod));
+  kommunInfo = s.kommunInfo ?? [];
+  if (START.get('lan')) filterForm.lan.value = START.get('lan');
+  fyllKommuner();
+  const valda = ['anv', 'jur', 'lok', 'rf', 'kommun', 'agkat', 'lan'].filter((k) => START.get(k));
   for (const k of valda) filterForm[k].value = START.get(k);
   if (valda.length && map.getSource('fastigheter')) loadVisible();   // annars gör kartans load det
 });
@@ -758,7 +852,7 @@ async function openAgare(p = {}) {
       ${field('Användning', 'anv', options(s.typer ?? [], r.anv, 'Alla'))}
       ${field('Rangordna efter', 'efter', options([['antal', 'Antal fastigheter'], ['areal', 'Tomtareal'], ['varde', 'Taxeringsvärde']], r.efter))}
     </form>
-    ${table(`<th>Ägare</th><th class="num">Antal</th><th class="num">${areal ? 'Areal' : 'Värde'}</th>`, r.agare.map((a, i) =>
+    ${table(`<th>Ägare</th><th class="num">Antal</th><th class="num">${areal ? 'Tomtareal' : 'Värde'}</th>`, r.agare.map((a, i) =>
       `<tr><td><span class="muted small">${i + 1}.</span> ${bolagLink(a.orgnr, a.namn, a.demo)}<div class="muted small">${esc(a.jurform ?? '')}</div></td>
         <td class="num">${n(a.antal)}</td><td class="num">${areal ? `${n(a.areal_m2)} m²` : mkr(a.varde_tkr)}</td></tr>`),
       'Inga kända ägare ännu. Ägaruppgifter läses in när Lantmäteriet har svarat.')}

@@ -5,9 +5,11 @@
 //   node scripts/import-taxering.mjs data/raw/taxering.csv [--dry] [--enhet kr|tkr] [--map fält=kolumn ...]
 //
 // Fält: beteckning, taxeringsenhet, typ, ar, varde, markvarde, byggvarde, orgnr, andel
-// Rader där ägaren inte är en juridisk person (personnummer) hoppas över.
+// Rader där ägaren inte är en juridisk person (personnummer) hoppas över. Typkoder (t.ex. 325)
+// sparas som Skatteverkets klartext för taxeringsåret, se lib/typkoder.mjs.
 import { openDb, normOrgnr, normBeteckning, withTransaction, markPrivata } from '../lib/db.mjs';
 import { loadMapped, parseArgs, num } from '../lib/csv.mjs';
+import { typText, okandKod } from '../lib/typkoder.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const file = args._[0];
@@ -34,6 +36,7 @@ const toTkr = (v) => (v == null ? null : Math.round(enhet === 'kr' ? v / 1000 : 
 console.log(`Värden tolkas som ${enhet}.`);
 
 let personer = 0;
+const okanda = new Set();
 const recs = [];
 const privata = new Set();
 for (const r of rows) {
@@ -44,10 +47,13 @@ for (const r of rows) {
     privata.add(normBeteckning(get(r, 'beteckning')));   // bara beteckningen, för uteslutning
     continue;
   }
-  recs.push([normBeteckning(get(r, 'beteckning')), get(r, 'taxeringsenhet'), get(r, 'typ'), num(get(r, 'ar')),
+  const ar = num(get(r, 'ar'));
+  if (okandKod(get(r, 'typ'), ar)) okanda.add(String(get(r, 'typ')).trim());
+  recs.push([normBeteckning(get(r, 'beteckning')), get(r, 'taxeringsenhet'), typText(get(r, 'typ'), ar), ar,
     toTkr(num(get(r, 'varde'))), toTkr(num(get(r, 'markvarde'))), toTkr(num(get(r, 'byggvarde'))), orgnr, get(r, 'andel')]);
 }
 console.log(`${recs.length} rader att importera, ${personer} hoppade över (fysiska personer).`);
+if (okanda.size) console.log(`Okända typkoder (sparas som kod, lägg till i lib/typkoder.mjs): ${[...okanda].sort().join(', ')}`);
 if (args.dry) { console.log('Exempel:', recs.slice(0, 3)); process.exit(0); }
 
 const db = openDb();

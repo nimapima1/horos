@@ -46,6 +46,9 @@
           <td>Lantmäteriet, fastighetsregistret</td><td>Allmän handling</td></tr>
       <tr><td>Detaljplaner och äldre planer</td>
           <td>Lantmäteriet, Markreglerande bestämmelse</td><td>Licens för icke-kommersiell användning</td></tr>
+      <tr><td>Företag på adressen: namn, bransch (SNI 2025), antal anställda i storleksklass</td>
+          <td>SCB, företagsregistret (arbetsställen)</td>
+          <td>SCB:s avgiftsfria API. Bara juridiska personer; enskilda firmor och arbetsställen med reklamspärr tas inte med.</td></tr>
       <tr><td>Adresser i sökningen</td>
           <td>© OpenStreetMap-bidragsgivare. Ersätts av Lantmäteriets belägenhetsadresser när den ansökan är beviljad.</td>
           <td>Öppna kartdata (ODbL), hämtade via Overpass</td></tr>
@@ -74,6 +77,23 @@
         översiktlig redovisning; den exakta gränsen avgörs av förrättningshandlingarna.</li>
       <li><strong>Taxering gäller taxeringsenheter, inte fastigheter.</strong> En fastighet kan bestå av flera
         taxeringsenheter och tvärtom. Horos summerar taxeringsvärdet för fastighetens enheter det senaste året.</li>
+      <li><strong>Ägarkategori</strong> räknas fram från ägarens juridiska form och bransch: staten (statliga enheter
+        och myndigheter), kommun (kommuner och kommunalförbund), region, bostadsrättsförening, fastighetsbolag
+        (bransch SNI 68, fastighetsverksamhet) och övriga. Kommunalt och statligt ägda aktiebolag, till exempel
+        allmännyttiga bostadsbolag, räknas i dag som fastighetsbolag eftersom uppgiften om vem som äger bolaget
+        saknas. Privatpersoner finns inte i Horos.</li>
+      <li><strong>Upplåtelseform.</strong> En fastighet visas som tomträtt när någon innehavare enligt Lantmäteriet har
+        tomträtt, och som äganderätt bara när alla innehav är lagfarter. Säger källan inget om tomträtt visas
+        "uppgift saknas", aldrig äganderätt. Vid tomträtt visas tomträttshavaren först.</li>
+      <li><strong>"Företag på adressen" är inte hyresgäster.</strong> Det är företag som enligt SCB har ett
+        arbetsställe vars adresspunkt ligger på fastigheten. Hyresavtal är inte offentliga. Den uppskattade
+        användningen räknas fram från företagens branscher (SNI 2025) och antal anställda (mitten av SCB:s
+        storleksklass, minst en per arbetsställe). Uppskattad LOA (lokalarea) är antal anställda gånger en tumregel
+        för yta per anställd, och andelen är lokaltypens del av den uppskattade ytan:
+        kontor 20 m², butik 40 m², lager och logistik 150 m², industri 100 m², hotell och restaurang 30 m²,
+        vård och skola 40 m², övrigt 30 m². Det är en grov indikation, inte uppmätt yta, och ersätts av
+        taxeringens och byggnadsregistrets uppgifter när de finns. Exploateringstalet är (LOA + BOA)
+        delat med tomtarealen; tills taxeringens ytor finns räknas det bara på uppskattad LOA, utan bostäder.</li>
       <li><strong>Köpeskillingen kan avse mer än en fastighet</strong> eller en andel. Den speglar inte alltid
         marknadsvärdet. Överlåtelser med samma datum, köpeskilling och köpare räknas som en affär
         (paketaffär). Köpeskilling per m² tomt och K/T-kvot (köpeskilling delad med senaste taxeringsvärdet)

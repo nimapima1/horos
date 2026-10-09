@@ -7,7 +7,7 @@
 //   node scripts/demo-data.mjs          lägg in exempeldata
 //   node scripts/demo-data.mjs --clear  ta bort all exempeldata
 import { openDb, geomBbox, withTransaction, DATA_TABLES, rebuildBolagFts } from '../lib/db.mjs';
-import { mapCoords, planarArea } from '../lib/geo.mjs';
+import { innerPoints, mapCoords, planarArea } from '../lib/geo.mjs';
 
 const db = openDb();
 
@@ -60,9 +60,23 @@ const insF = db.prepare(`INSERT OR REPLACE INTO fastighet (beteckning, kommun, a
   VALUES (?, 'Stockholm', ?, ?, ?, ?, ?, ?, 'demo', 1)`);
 const insT = db.prepare(`INSERT INTO taxering (beteckning, taxeringsenhet, typ, ar, varde_tkr, markvarde_tkr, byggvarde_tkr, agare_orgnr, andel, demo)
   VALUES (?, ?, ?, 2025, ?, ?, ?, ?, '1/1', 1)`);
-const insA = db.prepare(`INSERT INTO agande (beteckning, orgnr, andel, inskrivningsdag, demo) VALUES (?, ?, '1/1', ?, 1)`);
+const insA = db.prepare(`INSERT INTO agande (beteckning, orgnr, andel, inskrivningsdag, tomtratt, demo) VALUES (?, ?, '1/1', ?, ?, 1)`);
 const insX = db.prepare(`INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr, art, andel, demo)
   VALUES (?, ?, ?, ?, 'Köp', '1/1', 1)`);
+
+// Påhittade företag med arbetsställen i husen (som SCB:s företagsregister) och deras branscher.
+const FORETAG = [
+  ['0030000001', 'Exempel Konsult AB', '70220', 'N', 'Konsultverksamhet avseende företags organisation'],
+  ['0030000002', 'Demo Data AB', '62100', 'K', 'Dataprogrammering'],
+  ['0030000003', 'Påhittat Mode AB', '47710', 'G', 'Detaljhandel med kläder'],
+  ['0030000004', 'Testkrogen AB', '56110', 'I', 'Restaurangverksamhet'],
+  ['0030000005', 'Fiktiv Redovisning AB', '69201', 'N', 'Redovisning och bokföring'],
+  ['0030000006', 'Exempelgrossisten AB', '46900', 'G', 'Icke specialiserad partihandel'],
+  ['0030000007', 'Demovårdcentralen AB', '86211', 'R', 'Allmän öppen läkarvård'],
+  ['0030000008', 'Påhittade Banken AB', '64190', 'L', 'Övrig monetär finansförmedling'],
+];
+const insAE = db.prepare(`INSERT INTO arbetsstalle (cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, postnr, ort, lon, lat, beteckning, demo)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, '11111', 'STOCKHOLM', ?, ?, ?, 1)`);
 
 const insP = db.prepare(`INSERT INTO plan (id, typ, planid, namn, datum, kommun, geojson, minx, miny, maxx, maxy, demo)
   VALUES (?, ?, ?, ?, ?, 'Stockholm', ?, ?, ?, ?, ?, 1)`);
@@ -76,6 +90,8 @@ let n = 0;
 withTransaction(db, () => {
   clearDemo();
   for (const [orgnr, namn, form, sni] of BOLAG) insBolag.run(orgnr, namn, form, sni);
+  for (const [orgnr, namn, sni] of FORETAG) insBolag.run(orgnr, namn, 'Aktiebolag', sni);
+  let cfar = 90000000;
   for (const el of osm.elements) {
     if (el.type !== 'way' || !el.geometry || el.geometry.length < 4) continue;
     const ring = el.geometry.map((p) => [p.lon, p.lat]);
@@ -92,8 +108,17 @@ withTransaction(db, () => {
     insT.run(bet, `9${String(100000 + n).slice(1)}`, pick(['Hyreshusenhet, lokaler', 'Hyreshusenhet, bostäder och lokaler', 'Hyreshusenhet, bostäder']),
       varde, mark, varde - mark, agare);
     const forvarv = date(2001, 2025);
-    insA.run(bet, agare, forvarv);
+    insA.run(bet, agare, forvarv, rnd() < 0.2 ? 1 : 0);   // ungefär var femte med tomträtt
     if (rnd() < 0.35) insX.run(bet, forvarv, Math.round(varde * 1000 * (1.1 + rnd() * 0.6)), agare);
+    // Ungefär två av tre hus har 1–4 företag, på en eller två adresser.
+    if (rnd() < 0.65) {
+      const pt = innerPoints(geom, 3)[0], gata = `Exempelgatan ${n + 1}`;
+      for (let i = Math.floor(1 + rnd() * 4); i > 0; i--) {
+        const [orgnr, namn, sni, avd, bransch] = pick(FORETAG);
+        insAE.run(cfar++, orgnr, rnd() < 0.2 ? `${namn.replace(/ AB$/, '')} City` : null, sni, avd, bransch,
+          Math.floor(1 + rnd() * 7), rnd() < 0.3 ? `${gata}A` : gata, pt[0], pt[1], bet);
+      }
+    }
     if (rnd() < 0.15) insX.run(bet, date(1995, 2000), Math.round(varde * 1000 * (0.4 + rnd() * 0.3)), pick(BOLAG)[0]);
     n++;
   }

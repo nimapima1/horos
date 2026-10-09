@@ -6,13 +6,8 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
 
 ## Läget
 
-- Allt från 2026-10-09 är committat på `master`. Publicerat (http://37.27.152.172) till och med commit
-  d7585fa; rättningarna efter granskningarna (2639294 och aaa718c) är **inte publicerade** än. Den publika databasen
-  har fortfarande 0 fastigheter.
-- `npm test` ska ge 13 gröna tester, varav 10 i `test/server.test.mjs`. De startar servern mot en
-  liten testdatabas i `data/_test/`. Följ samma mönster för nya API:er.
-- Lokal server för att prova i webbläsarpanelen: `preview_start {name: "horos-3005"}`
-  (`.claude/launch.json`), med exempeldata i `data/fastighetskarta.sqlite`.
+- Aktuellt läge (commits, tester, publicering): se `OVERLAMNING.md` (2026-10-10). Det som är byggt för
+  arbetsställena står under "Byggt 2026-10-10" nedan.
 
 ## Vad Datscha visar (bara gränssnittet tittat på, ingen data sparad)
 
@@ -46,31 +41,80 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
   variabelbeskrivning (PDF): <https://www.scb.se/contentassets/8a8eb5c3d45f461ea93482f8e8d4de4f/variabelbeskrivning-api.pdf>,
   postbeskrivning arbetsställen (postbeskrivning-ae.pdf, länkas från samma sida).
 
-## Öppna frågor (reds ut först)
+## Öppna frågor (1 kvar)
 
 1. **Användarvillkoren** i Registreringsportalen: får uppgifterna publiceras per adress på en öppen
    sajt? SCB:s sida nämner varken licens eller publicering (CC0 gäller SCB:s övriga öppna data).
    Läs villkoren tillsammans med användaren innan något publiceras.
-2. **Variablerna**: finns reklamspärr som fält i API:et? Hur ser besöksadressen ut (gata, nummer,
-   postnr, ort, ev. koordinater)? Finns organisationsnummer för företaget på varje arbetsställe?
-   PDF:erna kunde inte läsas i förra sessionen (ingen PDF-läsare på datorn): hämta dem igen och läs
-   med Read-verktyget, eller be användaren klistra in texten.
-3. **Endpoints och format**: läs SCB:s API-dokumentation; gissa inte.
+   Registreringen sker med BankID på https://registreraafr.scb.se/; villkoren syns först efter inloggning.
+2. **Variablerna – besvarad 2026-10-10** (postbeskrivning-ae.pdf, variabelbeskrivning-afr_261009.pdf):
+   - `peOrgNr`: 12 siffror. Juridisk person = `16` + orgnr; enskild firma = personnummer (börjar 19/20).
+     `normOrgnr` avvisar redan personnumren (tredje siffran efter sekelsiffrorna < 2).
+   - `reklamSparrTyp`: 3 = tar emot reklam, **4 = har frånsagt sig reklam** (uteslut). Även
+     `telefonSparrTyp` (1 ej, 2 telemarketing, 3 Nix) och `epostSparrTyp` (1 ej, 2 spärrat); de gäller
+     kontaktvägar vi ändå inte sparar.
+   - `aeStat`: 0 aldrig verksam, 1 verksam, 9 ej längre verksam. `aeTyp` 3 = fiktivt arbetsställe
+     (rörlig personal i kommuner) – uteslut. `hjVerksJE` 2 = hjälparbetsställe (t.ex. eget lager/huvudkontor).
+   - `anstKl`: 0 uppgift saknas, 1 = 0, 2 = 1–4, 3 = 5–9, 4 = 10–19, 5 = 20–49, 6 = 50–99, 7 = 100–199,
+     8 = 200–499, 9 = 500–999, 10 = 1000–1499, 11 = 1500–1999, 12 = 2000–2999, 13 = 3000–3999,
+     14 = 4000–4999, 15 = 5000–9999, 16 = 10000–.
+   - `belagenhetsadress`: `bGatuAdress` (gatunamn+nummer+bokstav+ev. "trappor" i ett fält), `bPostNr`,
+     `bPostOrt`, `kommun` (4 siffror), `lan`. `ben` = arbetsställets populärnamn (kan vara tomt).
+   - `geografiskInformation` (bara i `/full`): `nord/ostKoordinatSW` = **fastighetens mittpunkt**,
+     `nord/ostKoordinatAdressSW` = adressens läge, båda SWEREF 99 (TM, heltal meter), uppdateras årligen.
+     Använd adresskoordinaten med punkt-i-polygon; ingen adressmatchning behövs.
+   - `naringsgrenar[]` (`naringsgren` 5 siffror, `rangordning`, `andelProcent`, `avdelningsKod`):
+     **SNI 2025**, högst 5 per arbetsställe. Klartexter: `/v1/kodtabeller/naringsgrenkoder`.
+   - Övrigt i posten som inte ska sparas: `tel`, `epost`, `postAdress`, `startDat`/`slutDat`.
+3. **Endpoints – besvarad 2026-10-10** (öppen spec: https://apiafr.scb.se/swagger/v1/swagger.json):
+   - Bas `https://apiafr.scb.se/v1/`, header `X-API-Key`. Sidor: `limit` (≤ 5000) + `cursorId` =
+     föregående `pagination.nextCursorId`, tills `pagination.hasMore` är false. 429 vid för många anrop;
+     otillgängligt 04:00–04:30.
+   - `arbetsstallen/kommun/{kod}` och `/lan/{kod}` ger bara **partial** (inga koordinater, bara
+     primär näringsgren). Koordinater finns bara i `arbetsstallen/full` (hela landet, svar
+     `{pagination, arbetsstallen: [...]}`) och `arbetsstallen/{cfarNr}/full`.
+     Väg: hämta `/full` för hela landet (några hundra anrop) och filtrera lokalt.
+   - Kodtabeller under `/v1/kodtabeller/...` (naringsgrenkoder, anstklkoder, reklamsparrtypkoder …).
 
 ## Regler som gäller (från CLAUDE.md, tillämpade här)
 
 - Visa **bara arbetsställen som tillhör juridiska personer**. Enskilda firmor (personnummer) läses
   aldrig in: använd `normOrgnr` i `lib/db.mjs`, som avvisar personnummer, och hoppa över raden.
-- **Uteslut arbetsställen med reklamspärr**, om fältet finns. Annars: fråga användaren.
+- **Uteslut arbetsställen med reklamspärr** (`reklamSparrTyp` = 4).
 - Visa bara hyresgäster på fastigheter som finns i Horos (juridisk ägare). `build-public.mjs` ska bara
   ta med arbetsställen på tillåtna fastigheter, och `PUBLIC_MODE`-kontrollen i `server.mjs` bör vägra
   starta om ett arbetsställe tillhör en fysisk person.
 - Det är ett API avsett för nedladdning, inte en e-tjänst, så hämtningen bryter inte mot regeln om
-  bulkhämtning från e-tjänster. Håll ändå hastighetsgränsen och hämta per kommun.
+  bulkhämtning från e-tjänster. Håll ändå hastighetsgränsen (högst 5 anrop/s). Koordinater kräver `/full` för hela landet; spara bara rader på fastigheter i Horos.
 - Texten på sajten ska säga vad det är: "Företag med arbetsställe på adressen (SCB)". Det är inget
   hyresavtal. Lägg till källan på metodsidan och i Om-panelen.
 
-## Föreslagen lösning (minsta som räcker)
+## Byggt 2026-10-10 (påhittade data, inte publicerat)
+
+- Tabell `arbetsstalle` (lib/db.mjs), `scripts/import-arbetsstallen.mjs` (`npm run import:arbetsstallen`):
+  hämtar `/v1/arbetsstallen/full` för hela landet sida för sida, utesluter personnummer, aeStat ≠ 1,
+  aeTyp 3, reklamspärr 4 och rader utan koordinater, kopplar adresskoordinaten till fastighet. Sparar alla
+  kvarvarande (även utan fastighet, `beteckning` null); `--dry` räknar bara. `--fil`/`--sni` för sparade svar.
+- API: `hyresgaster` i `/api/fastighet/:bet`, `arbetsstallen` i `/api/bolag/:orgnr`.
+- Ruta "Användning" (under Ägare/Senaste köp): taxeringstyp + uppskattad fördelning på 7 lokaltyper med
+  stapel och uppskattad LOA (anställda × m²/anställd i `LOKALTYPER` i server.mjs, räknas i SQL och skickas som
+  `anvandning`; tumregler, även på metodsidan). Samma SQL ger kartfiltren Lokalslag (`lok`) och LOA (`loamin`/`loamax`).
+- Panel: "Företag på adressen" per adress med bransch och storleksklass, "Uppskattad användning från
+  branscherna" (SNI-avdelning → lokaltyp, viktat med anställda), "Arbetsställen i Horos" i bolagspanelen.
+  Källa i Om-panelen och på metodsidan.
+- build-public tar bara med arbetsställen med `--scb-villkor`, bara på tillåtna fastigheter, aldrig personnummer.
+  PUBLIC_MODE vägrar starta med arbetsställen med personnummer eller utan fastighet i Horos.
+- Påhittade arbetsställen i demo-data. Tester: `test/arbetsstallen.test.mjs` + ett i `test/server.test.mjs` (16 totalt).
+
+### När nyckeln finns
+1. Användaren sätter nyckeln i sin terminal (skrivs aldrig i chatten): `$env:SCB_API_KEY = Read-Host -MaskInput`,
+   eller kör skriptet utan variabel så frågar det dolt.
+2. `npm run import:arbetsstallen -- --dry` först. Kontrollera att fältnamnen stämmer (antal "utan koordinater"
+   ska vara litet, branscher ska ha klartext). Ändra i `rad()` om svaret skiljer sig från specen.
+3. Kontrollera SNI 2025-avdelningarna i `AVDELNINGAR` (server.mjs) mot `avdelningText` i kodtabellen.
+4. Läs SCB:s villkor med användaren; först därefter `build-public --scb-villkor`.
+
+## Föreslagen lösning (ursprunglig plan)
 
 1. **Schema** (`lib/db.mjs`): tabellen `arbetsstalle` (cfar PRIMARY KEY, orgnr, namn, sni, storleksklass,
    gata, nummer, postnr, ort, lon, lat, beteckning, demo). Index på beteckning och orgnr.

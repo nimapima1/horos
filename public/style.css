@@ -164,7 +164,10 @@ button { font: inherit; color: inherit; }
 }
 .filters summary:hover { background: var(--accent-soft); color: var(--accent-strong); }
 .filters[open] summary { color: var(--text); }
-#filter { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-top: 8px; }
+/* Formuläret scrollar själv: sidan är låst (kartan) och filtret kan vara högre än fönstret. Padding så
+   att fokusringen inte klipps. */
+#filter { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin: 4px -4px 0; padding: 4px;
+  max-height: calc(100dvh - 250px); overflow-y: auto; overscroll-behavior: contain; }
 #filter label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 #filter .wide { grid-column: 1 / -1; }
 #filter input, #filter select {
@@ -208,6 +211,15 @@ button { font: inherit; color: inherit; }
 .fact + .fact { border-top: 1px solid var(--border); }
 .fact-value { font-family: var(--font-head); font-size: 18px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .fact-sub { margin-top: 1px; font-size: 13px; color: var(--muted); }
+
+/* Användning: egen ruta med fördelning på lokaltyper och uppskattad LOA. */
+.anv { margin-top: 10px; padding: 11px 12px; border-radius: var(--radius-sm); background: var(--surface-sunken);
+  border-left: 3px solid var(--accent); }
+.anv-bar { display: flex; gap: 2px; height: 10px; margin: 12px 0 4px; border-radius: 5px; overflow: hidden; }
+.anv-bar span { min-width: 3px; }
+.panel .anv-tab { margin: 6px 0 8px; }
+.anv-tab i { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 3px; vertical-align: -1px; }
+.anv-summa td { font-weight: 700; border-top: 1px solid var(--border); }
 
 .panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 14px 0 0; }
 .panel dt { color: var(--subtle); }
