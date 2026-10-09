@@ -13,13 +13,18 @@ maplibregl.setWorkerUrl('vendor/maplibre-gl-csp-worker.js');
 const MIN_ZOOM = 14;
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
+// Delbar adress: ?l=zoom/lat/lon&f=beteckning&farg=läge och filtren. Vyerna (#om, #affarer, #agare) ligger i hashen.
+const START = new URLSearchParams(location.search);
+const startLage = (START.get('l') ?? '').split('/').map(Number);
+const harStartLage = startLage.length === 3 && startLage.every(Number.isFinite);
+
 const map = new maplibregl.Map({
   container: 'map',
   style: matchMedia('(prefers-color-scheme: dark)').matches
     ? 'https://tiles.openfreemap.org/styles/dark'
     : 'https://tiles.openfreemap.org/styles/positron',
-  center: [18.064, 59.334],
-  zoom: 15,
+  center: harStartLage ? [startLage[2], startLage[1]] : [18.064, 59.334],
+  zoom: harStartLage ? startLage[0] : 15,
   attributionControl: { compact: true },
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
@@ -163,7 +168,7 @@ function kategoriFarg(prop, kat) {
     [...kat.map((k, i) => [KAT_FARG[i], k]), ['--v0', 'Saknas']]];
 }
 const colorBy = $('#color-by');
-colorBy.value = COLOR_BY[store.get('horos.farg')] ? store.get('horos.farg') : 'varde';
+colorBy.value = [START.get('farg'), store.get('horos.farg')].find((v) => COLOR_BY[v]) ?? 'varde';
 const valueColor = () => COLOR_BY[colorBy.value]()[0];
 function renderLegend() {
   $('#legend-scale').innerHTML = COLOR_BY[colorBy.value]()[1]
@@ -172,6 +177,7 @@ function renderLegend() {
 renderLegend();
 colorBy.addEventListener('change', () => {
   store.set('horos.farg', colorBy.value);
+  updateUrl();
   renderLegend();
   applyBasemap(basemap.select.value);   // sätter fyll- och linjefärg på nytt
   map.setPaintProperty('fastighet-fill', 'fill-color', valueColor());
@@ -213,6 +219,9 @@ map.on('load', () => {
   const { 'fill-opacity': fillOp, ...linePaint } = fastighetPaint(basemap.imagery);
   map.addLayer({ id: 'fastighet-fill', type: 'fill', source: 'fastigheter', paint: { 'fill-color': valueColor(), 'fill-opacity': fillOp } });
   map.addLayer({ id: 'fastighet-line', type: 'line', source: 'fastigheter', paint: linePaint });
+  // Markerade fastigheter (ett bolags innehav), se markera().
+  map.addLayer({ id: 'markerad-line', type: 'line', source: 'fastigheter', filter: ['in', ['get', 'beteckning'], ['literal', []]],
+    paint: { 'line-color': css('--c2'), 'line-width': 3 } });
   // Plangränser ovanpå fastigheterna, streckade så att de inte förväxlas med fastighetsgränser.
   map.addSource('planer', { type: 'geojson', data: EMPTY });
   map.addLayer({ id: 'plan-line', type: 'line', source: 'planer',
@@ -234,6 +243,7 @@ map.on('load', () => {
   map.on('moveend', loadVisible);
   applyBasemap(basemap.select.value);
   loadVisible();
+  if (START.get('f') && !VIEWS[location.hash]) openFastighet(START.get('f'));
 });
 
 // Kartfiltren: formulärets ifyllda fält skickas som parametrar till /api/fastigheter.
@@ -247,12 +257,20 @@ function filterQuery() {
 filterForm.addEventListener('input', () => { clearTimeout(filterTimer); filterTimer = setTimeout(loadVisible, 300); });
 filterForm.addEventListener('reset', () => setTimeout(loadVisible));   // efter att fälten tömts
 filterForm.addEventListener('submit', (e) => e.preventDefault());
+// Filter från en delad länk. Användning och ägartyp sätts när listorna har laddats (se status).
+for (const el of filterForm.querySelectorAll('input[name]')) el.value = START.get(el.name) ?? '';
+if ([...START.keys()].some((k) => filterForm.elements[k])) filterForm.closest('details').open = true;
 
 let loadSeq = 0;
+// Orgnr för det markerade bolaget: utzoomat visas då bara dess fastigheter (se markera()).
+let markeradOrg = null;
 async function loadVisible() {
-  const tooFar = map.getZoom() < MIN_ZOOM;
-  $('#zoom-hint').hidden = !tooFar;
+  const utzoomat = map.getZoom() < MIN_ZOOM;
+  const tooFar = utzoomat && !markeradOrg;
+  $('#zoom-hint').hidden = !utzoomat;
+  $('#zoom-hint').textContent = markeradOrg ? 'Visar bara bolagets fastigheter. Zooma in för att se alla.' : 'Zooma in för att se fastigheter';
   const seq = ++loadSeq;
+  updateUrl();
   if (tooFar) {
     $('#filter-hits').textContent = 'Zooma in för att se träffar';
     map.getSource('fastigheter').setData(EMPTY);
@@ -260,7 +278,7 @@ async function loadVisible() {
   }
   const b = map.getBounds();
   const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((n) => n.toFixed(5)).join(',');
-  const [fc, planer] = await Promise.all([api(`/api/fastigheter?bbox=${bbox}${filterQuery()}`), planToggle.on ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
+  const [fc, planer] = await Promise.all([api(`/api/fastigheter?bbox=${bbox}${filterQuery()}${utzoomat ? `&org=${markeradOrg}` : ''}`), planToggle.on && !utzoomat ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
   if (seq !== loadSeq) return;
   for (const { properties: p } of fc.features) { p.anv_kat = anvKat(p.typ); p.agar_kat = agarKat(p.agartyp); }
   const n = fc.features.length;
@@ -270,10 +288,20 @@ async function loadVisible() {
   if (selected) map.setFeatureState({ source: 'fastigheter', id: selected }, { selected: true });
 }
 
+function updateUrl() {
+  const p = new URLSearchParams([...new FormData(filterForm)].filter(([, v]) => v.trim()));
+  const c = map.getCenter();
+  p.set('l', `${map.getZoom().toFixed(2)}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}`);
+  if (selected) p.set('f', selected);
+  if (colorBy.value !== 'varde') p.set('farg', colorBy.value);
+  history.replaceState(null, '', `?${p.toString().replaceAll('%2F', '/')}${location.hash}`);
+}
+
 function select(beteckning) {
   if (selected) map.setFeatureState({ source: 'fastigheter', id: selected }, { selected: false });
   selected = beteckning;
   if (selected) map.setFeatureState({ source: 'fastigheter', id: selected }, { selected: true });
+  updateUrl();
 }
 
 function showPanel(html) {
@@ -281,7 +309,15 @@ function showPanel(html) {
   $('#panel').hidden = false;
   $('#panel').scrollTop = 0;
 }
-$('#close').addEventListener('click', () => { $('#panel').hidden = true; select(null); adressMarker?.remove(); });
+$('#close').addEventListener('click', () => { $('#panel').hidden = true; select(null); markera([]); adressMarker?.remove(); });
+
+// Ramar in fastigheterna med beteckningarna i lista (tom lista = ingen markering).
+function markera(lista, orgnr = null) {
+  const andrad = markeradOrg !== orgnr;
+  markeradOrg = orgnr;
+  if (andrad && map.getSource('fastigheter')) loadVisible();
+  if (map.getLayer('markerad-line')) map.setFilter('markerad-line', ['in', ['get', 'beteckning'], ['literal', lista]]);
+}
 
 const demoTag = (d) => (d ? '<span class="tag">exempel</span>' : '');
 const bolagLink = (orgnr, namn, demo) =>
@@ -355,6 +391,11 @@ async function openFastighet(bet, adress) {
       `<tr><td>${bolagLink(a.orgnr, a.namn, a.demo)}<div class="muted small">${fmtOrgnr(a.orgnr)}</div></td>
         <td>${esc(a.andel ?? '')}</td><td class="num">${esc(a.inskrivningsdag ?? '')}</td></tr>`),
       'Väntar på uppgifter från Lantmäteriet.')}
+    <h3>Grannfastigheter i Horos</h3>
+    ${table('<th>Fastighet</th><th>Ägare</th>', f.grannar.map((g) =>
+      `<tr><td><a data-fastighet="${esc(g.beteckning)}" ${bboxAttr(g)}>${esc(g.beteckning)}</a></td>
+        <td>${g.orgnr ? bolagLink(g.orgnr, g.agare, g.demo) : '–'}</td></tr>`),
+      'Inga bolagsägda grannfastigheter.')}
     <h3>Taxering</h3>
     ${table('<th>År</th><th>Typ</th><th class="num">Värde</th>', f.taxering.map((t) =>
       `<tr><td>${t.ar ?? ''}</td><td>${esc(t.typ ?? '')}</td><td class="num">${mkr(t.varde_tkr)}</td></tr>
@@ -366,6 +407,16 @@ async function openFastighet(bet, adress) {
         <td>${x.forvarvare_orgnr ? bolagLink(x.forvarvare_orgnr, x.forvarvare_namn) : '–'}<div class="muted small">${esc(x.art ?? '')}</div></td>
         <td class="num">${kr(x.kopeskilling_kr)}</td></tr>`),
       'Inga registrerade överlåtelser.')}
+    <h3>Köp i närheten</h3>
+    <div class="meta small">Inom cirka 300 meter, senaste först.</div>
+    ${table('<th class="num">Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', f.narKop.map((x) =>
+      `<tr><td class="num">${esc(x.dag ?? '')}</td>
+        <td><a data-fastighet="${esc(x.beteckning)}" ${bboxAttr(x)}>${esc(x.beteckning)}</a>
+          <div class="muted small">${x.orgnr ? bolagLink(x.orgnr, x.namn, x.demo) : '–'}</div></td>
+        <td class="num">${mkr(x.kr / 1000)}<div class="muted small">${x.paket ? 'paketaffär'
+          : x.areal_m2 && (!x.andel || x.andel === '1/1') ? `${kr(x.kr / x.areal_m2)}/m²` : ''}</div></td></tr>`),
+      'Inga registrerade köp i närheten.')}
+    <button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>
     <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.planer.length ? ` · planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}` : ''}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}</p>
   `);
 }
@@ -375,10 +426,17 @@ async function openBolag(orgnr) {
   if (!b) return;
   select(null);
   const sumTkr = b.fastigheter.reduce((s, f) => s + (f.varde_tkr ?? 0), 0);
+  const sumM2 = b.fastigheter.reduce((s, f) => s + (f.areal_m2 ?? 0), 0);
+  markera(b.fastigheter.map((f) => f.beteckning), b.fastigheter.length ? b.orgnr : null);
+  const ram = b.fastigheter.length && [Math.min(...b.fastigheter.map((f) => f.minx)), Math.min(...b.fastigheter.map((f) => f.miny)),
+    Math.max(...b.fastigheter.map((f) => f.maxx)), Math.max(...b.fastigheter.map((f) => f.maxy))].join(',');
   showPanel(`
     <h2>${esc(b.namn)}${demoTag(b.demo)}</h2>
     <div class="meta">${fmtOrgnr(b.orgnr)}${b.avregistrerad ? ` · <strong>avregistrerad ${esc(b.avregistrerad)}</strong>` : ''}</div>
-    ${stats([['Fastigheter', b.fastigheter.length.toLocaleString('sv-SE')], ['Taxeringsvärde', sumTkr ? mkr(sumTkr) : '–']])}
+    ${stats([['Fastigheter', b.fastigheter.length.toLocaleString('sv-SE')], ['Taxeringsvärde', sumTkr ? mkr(sumTkr) : '–'],
+      ['Tomtareal', sumM2 ? `${Math.round(sumM2).toLocaleString('sv-SE')} m²` : '–']])}
+    ${ram ? `<button type="button" class="copy" data-ram="${ram}">Visa alla på kartan</button>
+      <div class="meta small">Bolagets fastigheter är inramade i orange.</div>` : ''}
     <dl>
       <dt>Form</dt><dd>${esc(b.jurform ?? '–')}</dd>
       <dt>SNI</dt><dd>${esc(b.sni ?? '–')}</dd>
@@ -391,17 +449,31 @@ async function openBolag(orgnr) {
       `<tr><td><a data-fastighet="${esc(f.beteckning)}" ${bboxAttr(f)}>${esc(f.beteckning)}</a></td>
         <td class="num">${mkr(f.varde_tkr)}</td></tr>`),
       'Inga kända fastigheter ännu. Ägaruppgifter läses in när Lantmäteriet har svarat.')}
+    <h3>Köp</h3>
+    ${table('<th class="num">Datum</th><th>Fastighet</th><th class="num">Pris</th>', b.kop.map((x) =>
+      `<tr><td class="num">${esc(x.dag ?? '')}</td><td>${fastighetLink(x)}</td><td class="num">${x.kr == null ? '–' : mkr(x.kr / 1000)}</td></tr>`),
+      'Inga registrerade köp.')}
     <p class="muted small" style="margin-top:16px">Källa: Bolagsverket och SCB, värdefulla datamängder.</p>
   `);
 }
 
 function flyToBbox(bbox) {
   const [a, b, c, d] = bbox.split(',').map(Number);
-  map.fitBounds([[a, b], [c, d]], { padding: 120, maxZoom: 17 });
+  // Lämna plats för vänsterkolumnen (på mobil: panelen nedtill).
+  const smal = innerWidth <= 640, sida = $('.sidebar').offsetWidth;
+  const padding = smal ? { top: 140, bottom: innerHeight * 0.45, left: 30, right: 30 } : { top: 80, bottom: 80, left: sida + 60, right: 80 };
+  map.fitBounds([[a, b], [c, d]], { padding, maxZoom: 17 });
 }
 
 // Länkar i panelen.
 $('#panel').addEventListener('click', (e) => {
+  const ram = e.target.closest('[data-ram]');
+  if (ram) flyToBbox(ram.dataset.ram);
+  const copy = e.target.closest('[data-copy]');
+  if (copy) {
+    navigator.clipboard.writeText(location.href).then(() => { copy.textContent = 'Länken är kopierad'; },
+      () => { copy.textContent = 'Kunde inte kopiera, kopiera adressfältet'; });
+  }
   const a = e.target.closest('a');
   if (!a) return;
   if (a.dataset.bolag) openBolag(a.dataset.bolag);
@@ -506,6 +578,9 @@ statusP.then((s) => {
   basemap.addHistoriska(s.historiska ?? []);
   for (const t of s.typer ?? []) filterForm.anv.add(new Option(t, t));
   for (const t of s.agartyper ?? []) filterForm.jur.add(new Option(t, t));
+  const valda = ['anv', 'jur'].filter((k) => START.get(k));
+  for (const k of valda) filterForm[k].value = START.get(k);
+  if (valda.length && map.getSource('fastigheter')) loadVisible();   // annars gör kartans load det
 });
 
 // Väljare i panelvyerna: <select> med tomt värde = alla.

@@ -168,7 +168,8 @@ const q = {
       (SELECT b.jurform FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
          WHERE a.beteckning = f.beteckning LIMIT 1) AS agartyp
     FROM fastighet f
-    WHERE ${overlapar('fastighet', 'f')}) v
+    WHERE ${overlapar('fastighet', 'f')}
+      AND (? IS NULL OR f.beteckning IN (SELECT beteckning FROM agande WHERE orgnr = ?))) v
     WHERE (? IS NULL OR ${harTyp('v')})
       AND (? IS NULL OR EXISTS (SELECT 1 FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
         WHERE a.beteckning = v.beteckning AND b.jurform = ?))
@@ -197,6 +198,11 @@ const q = {
     LEFT JOIN bolag b ON b.orgnr = x.forvarvare_orgnr
     WHERE x.beteckning = ? ORDER BY x.inskrivningsdag DESC`),
   bolag: db.prepare('SELECT * FROM bolag WHERE orgnr = ?'),
+  // Bolagets köp; en paketaffär (se AFFAR) blir en rad med antal fastigheter.
+  bolagKop: db.prepare(`SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, min(x.beteckning) AS beteckning,
+      count(*) AS antal, f.minx, f.miny, f.maxx, f.maxy
+    FROM transaktion x JOIN fastighet f ON f.beteckning = x.beteckning
+    WHERE x.forvarvare_orgnr = ? GROUP BY x.inskrivningsdag, x.kopeskilling_kr ORDER BY dag DESC LIMIT 50`),
   bolagFastigheter: db.prepare(`
     SELECT DISTINCT f.beteckning, f.areal_m2, f.minx, f.miny, f.maxx, f.maxy, ${SENASTE_VARDE} AS varde_tkr
     FROM fastighet f
@@ -217,6 +223,16 @@ const q = {
   adresserIBbox: HAS_ADRESS && db.prepare(`SELECT gata, nummer, lon, lat FROM adress
     WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? LIMIT 2000`),
   fastighetGeom: db.prepare('SELECT geojson, minx, miny, maxx, maxy FROM fastighet WHERE beteckning = ?'),
+  grannar: db.prepare(`SELECT f.beteckning, f.minx, f.miny, f.maxx, f.maxy,
+      (SELECT a.orgnr FROM agande a WHERE a.beteckning = f.beteckning LIMIT 1) AS orgnr,
+      (SELECT b.namn FROM agande a JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = f.beteckning LIMIT 1) AS agare,
+      (SELECT b.demo FROM agande a JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = f.beteckning LIMIT 1) AS demo
+    FROM fastighet f WHERE ${overlapar('fastighet', 'f')} AND f.beteckning != ? LIMIT 30`),
+  narKop: db.prepare(`SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, x.forvarvare_orgnr AS orgnr, x.andel,
+      b.namn, b.demo, f.beteckning, f.areal_m2, f.minx, f.miny, f.maxx, f.maxy
+    FROM fastighet f JOIN transaktion x ON x.beteckning = f.beteckning LEFT JOIN bolag b ON b.orgnr = x.forvarvare_orgnr
+    WHERE ${overlapar('fastighet', 'f')} AND f.beteckning != ? AND x.kopeskilling_kr IS NOT NULL
+    ORDER BY x.inskrivningsdag DESC LIMIT 40`),
   export: db.prepare(`
     SELECT f.beteckning, f.kommun, f.areal_m2, f.geojson,
       (SELECT group_concat(a.orgnr, '|') FROM agande a WHERE a.beteckning = f.beteckning) AS agare_orgnr,
@@ -350,6 +366,29 @@ const fastighetVid = (lon, lat) =>
 
 // Adresserna som ligger på fastigheten, t.ex. ["Drottninggatan 53", "Drottninggatan 55"].
 // Planerna som gäller någon del av fastigheten, nyaste först.
+// Fastighetens bbox utvidgad med m meter, som [minx, maxx, miny, maxy] för overlapar().
+const runt = (f, m) => {
+  const dy = m / 111_320, dx = dy / Math.cos(((f.miny + f.maxy) / 2) * Math.PI / 180);
+  return [f.minx - dx, f.maxx + dx, f.miny - dy, f.maxy + dy];
+};
+// shortcut: grannar = bbox inom 10 m, inte delad gräns; byt mot polygontest om listan blir för lång.
+const GRANNE_M = 10, NARA_M = 300;
+function omgivning(bet) {
+  const f = q.fastighetGeom.get(bet);
+  if (!f) return { grannar: [], narKop: [] };
+  // En paketaffär (se AFFAR) visas en gång och märks, eftersom priset gäller flera fastigheter.
+  // shortcut: paketet känns bara igen om flera av dess fastigheter ligger inom NARA_M.
+  const key = (x) => `${x.dag}|${x.kr}|${x.orgnr}`;
+  const affarer = new Map();
+  for (const x of q.narKop.all(...runt(f, NARA_M), bet)) {
+    const a = affarer.get(key(x));
+    if (a) a.paket = true;
+    else affarer.set(key(x), { ...x, paket: false });
+  }
+  const narKop = [...affarer.values()].slice(0, 10);
+  return { grannar: q.grannar.all(...runt(f, GRANNE_M), bet), narKop };
+}
+
 function planerPa(bet) {
   const f = q.planerIBbox && q.fastighetGeom.get(bet);
   if (!f) return [];
@@ -448,7 +487,8 @@ const routes = [
     const bbox = (url.searchParams.get('bbox') ?? '').split(',').map(Number);
     if (bbox.length !== 4 || bbox.some(Number.isNaN)) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
     const [minx, miny, maxx, maxy] = bbox;
-    const rows = q.inBbox.all(minx, maxx, miny, maxy, ...filterParams(url));
+    const org = normOrgnr(url.searchParams.get('org') ?? '') || null;   // bara ett bolags fastigheter
+    const rows = q.inBbox.all(minx, maxx, miny, maxy, org, org, ...filterParams(url));
     const features = rows.slice(0, MAX_FEATURES).map((r) =>
       featureJson(r.geojson, { beteckning: r.beteckning, varde_tkr: r.varde_tkr, agare: r.agare, demo: r.demo,
         typ: r.typ, agartyp: r.agartyp, kop_ar: r.kop_dag ? Number(r.kop_dag.slice(0, 4)) : null }));
@@ -459,7 +499,7 @@ const routes = [
     const bet = normBeteckning(decodeURIComponent(m[1]));
     const f = q.fastighet.get(bet);
     if (!f) return [404, { error: 'Fastigheten finns inte' }];
-    return [200, { ...f, adresser: adresserPa(bet), planer: planerPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet) }];
+    return [200, { ...f, adresser: adresserPa(bet), planer: planerPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet), ...omgivning(bet) }];
   }],
 
   [/^\/api\/planer$/, 'api', (_m, url) => {
@@ -478,7 +518,7 @@ const routes = [
     const orgnr = normOrgnr(m[1]);
     const b = orgnr && q.bolag.get(orgnr);
     if (!b) return [404, { error: 'Bolaget finns inte bland importerade juridiska personer' }];
-    return [200, { ...b, fastigheter: q.bolagFastigheter.all(orgnr, orgnr) }];
+    return [200, { ...b, fastigheter: q.bolagFastigheter.all(orgnr, orgnr), kop: q.bolagKop.all(orgnr) }];
   }],
 
   [/^\/api\/sok$/, 'api', (_m, url) => {
