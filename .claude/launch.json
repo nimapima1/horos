@@ -4,8 +4,23 @@
     {
       "name": "fastighetskarta",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["--disable-warning=ExperimentalWarning", "server.mjs"],
+      "runtimeArgs": [
+        "--disable-warning=ExperimentalWarning",
+        "server.mjs"
+      ],
       "port": 3000
+    },
+    {
+      "name": "horos-3005",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--disable-warning=ExperimentalWarning",
+        "server.mjs"
+      ],
+      "env": {
+        "PORT": "3005"
+      },
+      "port": 3005
     }
   ]
 }

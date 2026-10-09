@@ -34,6 +34,8 @@
   /* Taxeringsvärde: ljus till mörk = lågt till högt */
   --v0: #CBD5E1; --v1: #BAE6FD; --v2: #38BDF8; --v3: #0284C7; --v4: #075985;
   --plan: #C026D3;     /* plangränser: skiljer sig från de blå värdefärgerna */
+  /* Kategorier (användning, ägartyp) */
+  --c1: #0369A1; --c2: #EA580C; --c3: #059669; --c4: #CA8A04; --c5: #7C3AED; --c6: #E11D48;
 
   --radius: 14px;
   --radius-sm: 9px;
@@ -60,6 +62,7 @@
     /* Mot mörk karta: mörk till ljus = lågt till högt */
     --v0: #475569; --v1: #0C4A6E; --v2: #0369A1; --v3: #0EA5E9; --v4: #7DD3FC;
     --plan: #F0ABFC;
+    --c1: #38BDF8; --c2: #FB923C; --c3: #34D399; --c4: #FACC15; --c5: #A78BFA; --c6: #FB7185;
     color-scheme: dark;
   }
 }
@@ -120,9 +123,9 @@ button { font: inherit; color: inherit; }
 .wm-text { fill: var(--text); font: 600 44px var(--font-head); letter-spacing: -0.5px; }
 .wm-line { stroke: var(--line); stroke-width: 2.5; stroke-linecap: round; }
 .wm-node { fill: var(--line); }
-.links { display: flex; gap: 2px; }
+.links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0; }
 .links a {
-  padding: 6px 10px; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--muted);
+  padding: 6px 7px; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--muted);
 }
 .links a:hover { background: var(--accent-soft); color: var(--accent-strong); text-decoration: none; }
 .tagline { margin: 6px 0 12px; font-size: 14px; color: var(--muted); }
@@ -154,6 +157,28 @@ button { font: inherit; color: inherit; }
   min-height: 0; padding: 10px 10px 4px; cursor: default;
   font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle);
 }
+
+.filters { margin-top: 10px; }
+.filters summary {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 6px 10px; margin-left: -10px;
+  border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted);
+}
+.filters summary:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.filters[open] summary { color: var(--text); }
+#filter { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-top: 8px; }
+#filter label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+#filter .wide { grid-column: 1 / -1; }
+#filter input, #filter select {
+  width: 100%; height: 40px; padding: 0 10px; font: inherit; font-size: 15px; color: var(--text);
+  background: var(--surface-sunken); border: 1px solid transparent; border-radius: var(--radius-sm);
+}
+#filter input:focus, #filter select:focus { outline: none; border-color: var(--accent); background: var(--surface-solid); box-shadow: 0 0 0 4px var(--accent-soft); }
+#filter .hits { align-self: end; font-size: 13px; color: var(--subtle); padding-bottom: 10px; }
+#filter button {
+  align-self: end; height: 40px; border: 0; border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--surface-sunken); font-weight: 600; color: var(--muted);
+}
+#filter button:hover { background: var(--accent-soft); color: var(--accent-strong); }
 
 .notice { padding: 11px 14px; font-size: 14px; background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
 
@@ -188,6 +213,12 @@ button { font: inherit; color: inherit; }
 .panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 14px 0 0; }
 .panel dt { color: var(--subtle); }
 .panel dd { margin: 0; }
+.view-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 10px; margin-top: 14px; }
+.view-form label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.view-form select { width: 100%; height: 40px; padding: 0 8px; font: inherit; font-size: 14px; color: var(--text); background: var(--surface-sunken); border: 1px solid transparent; border-radius: var(--radius-sm); }
+.view-form select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.bar { height: 5px; margin-top: 5px; border-radius: 3px; background: var(--surface-sunken); }
+.bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
 .panel table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .panel th { text-align: left; font-weight: 600; font-size: 13px; color: var(--subtle); padding: 0 6px 6px 0; }
 .panel td { padding: 9px 6px 9px 0; border-top: 1px solid var(--border); vertical-align: top; }
@@ -233,7 +264,8 @@ button { font: inherit; color: inherit; }
   position: fixed; z-index: 1; right: 16px; bottom: 38px;
   padding: 12px 14px; max-width: 300px; font-size: 13px;
 }
-.legend-title { font-family: var(--font-head); font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+.legend-title { display: flex; align-items: center; gap: 8px; font-family: var(--font-head); font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+.legend-title select { flex: 1; min-height: 32px; font: inherit; font-size: 13px; color: var(--text); background: var(--surface-sunken); border: 1px solid transparent; border-radius: 7px; padding: 0 6px; }
 .legend-scale { display: grid; grid-template-columns: repeat(2, auto); gap: 5px 14px; }
 .legend-scale span { display: flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--muted); }
 .legend i { width: 14px; height: 14px; border-radius: 4px; flex: none; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08); }
@@ -254,7 +286,8 @@ button { font: inherit; color: inherit; }
   .topbar { padding: 10px 12px 12px; }
   .tagline { display: none; }
   .brand-row { margin-bottom: 10px; }
-  .links a { padding: 10px 10px; }
+  .links a { padding: 10px 6px; }
+  .links .wide-only { display: none; }   /* samma sida som Metod; får inte plats */
   .search input { font-size: 16px; }   /* hindrar iOS från att zooma in vid fokus */
   .panel {
     position: fixed; left: 10px; right: 10px; bottom: 10px; max-height: 58vh;

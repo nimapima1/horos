@@ -27,9 +27,11 @@
           </svg>
         </a>
         <nav class="links" aria-label="Sidor">
+          <a href="#affarer">Affärer</a>
+          <a href="#agare">Ägare</a>
           <a id="om" href="#om">Om</a>
           <a href="metod.html">Metod</a>
-          <a href="metod.html#data">Data</a>
+          <a class="wide-only" href="metod.html#data">Data</a>
         </nav>
       </div>
       <p class="tagline">Bolagsägda fastigheter i Stockholm, ur offentliga källor</p>
@@ -38,6 +40,25 @@
         <input id="q" type="search" placeholder="Sök adress, bolag eller fastighet" autocomplete="off" aria-label="Sök adress, bolag, organisationsnummer eller fastighet">
         <ul id="results" class="results" hidden></ul>
       </div>
+      <details class="filters">
+        <summary>Filter <span id="filter-count"></span></summary>
+        <form id="filter">
+          <label class="wide">Användning
+            <select name="anv"><option value="">Alla</option></select>
+          </label>
+          <label class="wide">Ägartyp
+            <select name="jur"><option value="">Alla</option></select>
+          </label>
+          <label>Taxeringsvärde från, Mkr<input name="vmin" type="number" min="0" inputmode="decimal"></label>
+          <label>till, Mkr<input name="vmax" type="number" min="0" inputmode="decimal"></label>
+          <label>Senast köpt, från år<input name="kar" type="number" min="1900" max="2100" inputmode="numeric"></label>
+          <label>till år<input name="ktill" type="number" min="1900" max="2100" inputmode="numeric"></label>
+          <label>Köpeskilling minst, Mkr<input name="kmin" type="number" min="0" inputmode="decimal"></label>
+          <label>Tomtyta minst, m²<input name="amin" type="number" min="0" inputmode="numeric"></label>
+          <output id="filter-hits" class="hits" aria-live="polite"></output>
+          <button type="reset">Rensa</button>
+        </form>
+      </details>
     </header>
 
     <div id="demo-banner" class="notice glass" role="note" hidden>
@@ -54,14 +75,15 @@
   </div>
 
   <div class="legend glass">
-    <div class="legend-title">Taxeringsvärde</div>
-    <div class="legend-scale">
-      <span><i style="background:var(--v1)"></i>&lt; 25 Mkr</span>
-      <span><i style="background:var(--v2)"></i>25–100</span>
-      <span><i style="background:var(--v3)"></i>100–300</span>
-      <span><i style="background:var(--v4)"></i>&gt; 300</span>
-      <span><i style="background:var(--v0)"></i>Saknas</span>
-    </div>
+    <label class="legend-title">Färga efter
+      <select id="color-by">
+        <option value="varde">Taxeringsvärde</option>
+        <option value="anv">Användning</option>
+        <option value="agartyp">Ägartyp</option>
+        <option value="kopar">Senast köpt</option>
+      </select>
+    </label>
+    <div id="legend-scale" class="legend-scale"></div>
     <div id="zoom-hint" class="hint" hidden>Zooma in för att se fastigheter</div>
     <div id="counts" class="counts"></div>
   </div>

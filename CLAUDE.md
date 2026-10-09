@@ -64,6 +64,10 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 
 Live: ny design och logotyp, bakgrundsväljare (karta, satellit 2025, flygfoton 2005/1995/1975/1960),
 adressökning (120 177 OSM-adresser) och panel med Ägare/Användning/Senaste köp först.
+Lokalt, inte publicerat än: kartfilter (användning, ägartyp, värde, köpår, köpeskilling, tomtyta),
+"Färga efter" i teckenförklaringen, panelvyerna Affärer (`#affarer`, `/api/affarer`) och Största ägare
+(`#agare`, `/api/storsta-agare`), samt "ägare sedan", köp per m² och K/T-kvot i fastighetspanelen.
+Idéerna kommer från Datscha/Property Intel (bara gränssnittet tittat på, ingen data hämtad).
 Den publika databasen har **0 fastigheter** (bara bolag och adresser) tills riktiga data finns.
 
 Väntar på:

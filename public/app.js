@@ -117,8 +117,65 @@ map.addControl(planToggle, 'top-right');
 
 const SEL = ['boolean', ['feature-state', 'selected'], false];
 const HOVER = ['boolean', ['feature-state', 'hover'], false];
-const valueColor = () => ['step', ['coalesce', ['get', 'varde_tkr'], -1],
-  css('--v0'), 0, css('--v1'), 25000, css('--v2'), 100000, css('--v3'), 300000, css('--v4')];
+
+// Kategorier för kartfärgningen. Taxeringstyp och juridisk form finns som text i databasen.
+// shortcut: typen tolkas på ord ("bostäder", "lokaler"); kommer Skatteverkets data som
+// sifferkoder behöver de en egen tabell här.
+const anvKat = (typ) => {
+  const t = (typ ?? '').toLowerCase();
+  if (!t) return 'Saknas';
+  if (t.includes('bostäder och lokaler')) return 'Bostäder och lokaler';
+  if (t.includes('bostad') || t.includes('bostäder')) return 'Bostäder';
+  if (t.includes('lokal')) return 'Lokaler';
+  if (t.includes('industri')) return 'Industri';
+  if (t.includes('special')) return 'Special';
+  return 'Övrigt';
+};
+const agarKat = (jurform) => {
+  const j = (jurform ?? '').toLowerCase();
+  if (!j) return 'Saknas';
+  if (/aktiebolag|europabolag/.test(j)) return 'Aktiebolag';
+  if (/bostadsrätt|bostadsförening|hyresrätt/.test(j)) return 'Bostadsrättsförening';
+  if (/kommun|region|statlig|offentlig/.test(j)) return 'Kommun, region, stat';
+  if (/handelsbolag|kommanditbolag/.test(j)) return 'Handels- och kommanditbolag';
+  if (/stiftelse|förening|trossamfund/.test(j)) return 'Stiftelse, förening';
+  return 'Övrigt';
+};
+const ANV_KAT = ['Bostäder', 'Lokaler', 'Bostäder och lokaler', 'Industri', 'Special', 'Övrigt'];
+const AGAR_KAT = ['Aktiebolag', 'Bostadsrättsförening', 'Kommun, region, stat', 'Handels- och kommanditbolag', 'Stiftelse, förening', 'Övrigt'];
+const KAT_FARG = ['--c1', '--c2', '--c3', '--c4', '--c5', '--c6'];
+const thisYear = new Date().getFullYear();
+
+// Färgläge: [uttryck för fill-color, teckenförklaring [[färgvariabel, text], ...]].
+const COLOR_BY = {
+  varde: () => [['step', ['coalesce', ['get', 'varde_tkr'], -1],
+    css('--v0'), 0, css('--v1'), 25000, css('--v2'), 100000, css('--v3'), 300000, css('--v4')],
+  [['--v1', '< 25 Mkr'], ['--v2', '25–100'], ['--v3', '100–300'], ['--v4', '> 300'], ['--v0', 'Saknas']]],
+  anv: () => kategoriFarg('anv_kat', ANV_KAT),
+  agartyp: () => kategoriFarg('agar_kat', AGAR_KAT),
+  kopar: () => [['step', ['coalesce', ['get', 'kop_ar'], -1],
+    css('--v0'), 0, css('--v1'), thisYear - 9, css('--v2'), thisYear - 4, css('--v3'), thisYear - 1, css('--v4')],
+  [['--v1', `Före ${thisYear - 9}`], ['--v2', `${thisYear - 9}–${thisYear - 5}`], ['--v3', `${thisYear - 4}–${thisYear - 2}`],
+    ['--v4', `${thisYear - 1}–${thisYear}`], ['--v0', 'Inget köp']]],
+};
+function kategoriFarg(prop, kat) {
+  return [['match', ['get', prop], ...kat.flatMap((k, i) => [k, css(KAT_FARG[i])]), css('--v0')],
+    [...kat.map((k, i) => [KAT_FARG[i], k]), ['--v0', 'Saknas']]];
+}
+const colorBy = $('#color-by');
+colorBy.value = COLOR_BY[store.get('horos.farg')] ? store.get('horos.farg') : 'varde';
+const valueColor = () => COLOR_BY[colorBy.value]()[0];
+function renderLegend() {
+  $('#legend-scale').innerHTML = COLOR_BY[colorBy.value]()[1]
+    .map(([v, text]) => `<span><i style="background:var(${v})"></i>${esc(text)}</span>`).join('');
+}
+renderLegend();
+colorBy.addEventListener('change', () => {
+  store.set('horos.farg', colorBy.value);
+  renderLegend();
+  applyBasemap(basemap.select.value);   // sätter fyll- och linjefärg på nytt
+  map.setPaintProperty('fastighet-fill', 'fill-color', valueColor());
+});
 
 // På kartan fylls fastigheterna med färg. Över satellitbilden är de osynliga (men klickbara)
 // tills man hovrar eller klickar, så att bilden går att läsa.
@@ -179,19 +236,35 @@ map.on('load', () => {
   loadVisible();
 });
 
+// Kartfiltren: formulärets ifyllda fält skickas som parametrar till /api/fastigheter.
+const filterForm = $('#filter');
+let filterTimer;
+function filterQuery() {
+  const p = new URLSearchParams([...new FormData(filterForm)].filter(([, v]) => v.trim()));
+  $('#filter-count').textContent = p.size ? `(${p.size})` : '';
+  return p.size ? `&${p}` : '';
+}
+filterForm.addEventListener('input', () => { clearTimeout(filterTimer); filterTimer = setTimeout(loadVisible, 300); });
+filterForm.addEventListener('reset', () => setTimeout(loadVisible));   // efter att fälten tömts
+filterForm.addEventListener('submit', (e) => e.preventDefault());
+
 let loadSeq = 0;
 async function loadVisible() {
   const tooFar = map.getZoom() < MIN_ZOOM;
   $('#zoom-hint').hidden = !tooFar;
   const seq = ++loadSeq;
   if (tooFar) {
+    $('#filter-hits').textContent = 'Zooma in för att se träffar';
     map.getSource('fastigheter').setData(EMPTY);
     return map.getSource('planer').setData(EMPTY);
   }
   const b = map.getBounds();
   const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((n) => n.toFixed(5)).join(',');
-  const [fc, planer] = await Promise.all([api(`/api/fastigheter?bbox=${bbox}`), planToggle.on ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
+  const [fc, planer] = await Promise.all([api(`/api/fastigheter?bbox=${bbox}${filterQuery()}`), planToggle.on ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
   if (seq !== loadSeq) return;
+  for (const { properties: p } of fc.features) { p.anv_kat = anvKat(p.typ); p.agar_kat = agarKat(p.agartyp); }
+  const n = fc.features.length;
+  $('#filter-hits').textContent = `${fc.truncated ? 'Minst ' : ''}${n.toLocaleString('sv-SE')} ${n === 1 ? 'fastighet' : 'fastigheter'} i kartutsnittet`;
   map.getSource('fastigheter').setData(fc);
   map.getSource('planer').setData(planer);
   if (selected) map.setFeatureState({ source: 'fastigheter', id: selected }, { selected: true });
@@ -242,6 +315,9 @@ async function openFastighet(bet, adress) {
   const senaste = f.taxering.filter((t) => t.ar === ar);
   const varde = senaste.reduce((s, t) => s + (t.varde_tkr ?? 0), 0);
   const kop = f.transaktioner.find((x) => x.kopeskilling_kr != null);
+  // Nyckeltal bara när köpet gällde hela fastigheten och bara den (inte en andel eller en paketaffär).
+  const paket = kop?.i_affar > 1;
+  const helKop = kop && (!kop.andel || kop.andel === '1/1') && !paket;
   // Lagfarna ägare, annars ägarna i taxeringen.
   const agare = f.agare.length ? f.agare
     : [...new Map(senaste.filter((t) => t.agare_orgnr).map((t) => [t.agare_orgnr, { orgnr: t.agare_orgnr, namn: t.agare_namn }])).values()];
@@ -254,14 +330,20 @@ async function openFastighet(bet, adress) {
     ${ovriga.length ? `<div class="meta small">Även ${esc(ovriga.join(', '))}</div>` : ''}
     ${facts([
       ['Ägare', agare.length ? bolagLink(agare[0].orgnr, agare[0].namn, agare[0].demo) : '–',
-        agare.length > 1 ? `och ${agare.length - 1} till, se nedan` : agare.length ? fmtOrgnr(agare[0].orgnr) : 'Väntar på uppgifter från Lantmäteriet'],
+        [agare.length > 1 ? `och ${agare.length - 1} till, se nedan` : agare.length ? fmtOrgnr(agare[0].orgnr) : 'Väntar på uppgifter från Lantmäteriet',
+          agare[0]?.inskrivningsdag ? `ägare sedan ${esc(agare[0].inskrivningsdag)}` : ''].filter(Boolean).join(' · ')],
       ['Användning', anvandning.length ? esc(anvandning.join(' · ')) : '–', anvandning.length ? `Enligt taxeringen ${ar}` : 'Väntar på uppgifter från Skatteverket'],
       ['Senaste köp', kop ? mkr(kop.kopeskilling_kr / 1000) : '–',
-        kop ? `${esc(kop.inskrivningsdag ?? '')}${kop.forvarvare_namn ? ` · ${esc(kop.forvarvare_namn)}` : ''}` : 'Inga registrerade köp'],
+        kop ? `${esc(kop.inskrivningsdag ?? '')}${kop.forvarvare_namn ? ` · ${esc(kop.forvarvare_namn)}` : ''}${paket ? ` · paketaffär, ${kop.i_affar} fastigheter` : ''}` : 'Inga registrerade köp'],
     ])}
     ${stats([
       [`Taxeringsvärde${ar ? ` ${ar}` : ''}`, f.taxering.length ? mkr(varde) : '–'],
       ['Areal', f.areal_m2 ? `${Math.round(f.areal_m2).toLocaleString('sv-SE')} m²` : '–'],
+      ...(helKop ? [
+        ['Köp per m² tomt', f.areal_m2 ? kr(kop.kopeskilling_kr / f.areal_m2) : '–'],
+        // K/T: köpeskilling delad med taxeringsvärde.
+        ['K/T-kvot', varde ? (kop.kopeskilling_kr / (varde * 1000)).toLocaleString('sv-SE', { maximumFractionDigits: 2 }) : '–'],
+      ] : []),
     ])}
     <h3>Detaljplan</h3>
     ${table('<th>Plan</th><th class="num">Laga kraft</th>', f.planer.map((p) =>
@@ -412,16 +494,95 @@ function openOm() {
     <p><a href="metod.html">Metod, begränsningar och nedladdning av datan →</a></p>
   `);
 }
-$('#om').addEventListener('click', (e) => { e.preventDefault(); openOm(); });
-if (location.hash === '#om') openOm();
-addEventListener('hashchange', () => { if (location.hash === '#om') openOm(); });
 
 // Status och demoflagga.
-api('/api/status').then((s) => {
+const statusP = api('/api/status');
+statusP.then((s) => {
   $('#demo-banner').hidden = !s.demo;
   const n = (x) => x.toLocaleString('sv-SE');
   $('#counts').textContent = s.demo
     ? `${n(s.demo)} exempelfastigheter · ${n(s.bolag)} bolag`
     : `${n(s.fastigheter)} fastigheter · ${n(s.bolag)} bolag · ${n(s.transaktioner)} överlåtelser`;
   basemap.addHistoriska(s.historiska ?? []);
+  for (const t of s.typer ?? []) filterForm.anv.add(new Option(t, t));
+  for (const t of s.agartyper ?? []) filterForm.jur.add(new Option(t, t));
 });
+
+// Väljare i panelvyerna: <select> med tomt värde = alla.
+const options = (list, value, alla) => [alla != null ? `<option value="">${esc(alla)}</option>` : '',
+  ...list.map((o) => { const [v, text] = Array.isArray(o) ? o : [o, o];
+    return `<option value="${esc(v)}"${String(v) === String(value ?? '') ? ' selected' : ''}>${esc(text)}</option>`; })].join('');
+const field = (label, name, opts) => `<label>${label}<select name="${name}">${opts}</select></label>`;
+const bar = (andel) => `<div class="bar"><i style="width:${Math.max(1, Math.round(andel * 100))}%"></i></div>`;
+const fastighetLink = (r) => `<a data-fastighet="${esc(r.beteckning)}" ${bboxAttr(r)}>${esc(r.beteckning)}</a>`
+  + (r.antal > 1 ? ` <span class="muted small">+ ${r.antal - 1} till</span>` : '');
+const affarRad = (r) => `<tr><td class="num">${esc(r.dag ?? '')}</td>
+  <td>${fastighetLink(r)}<div class="muted small">${r.orgnr ? bolagLink(r.orgnr, r.namn, r.demo) : '–'}</div></td>
+  <td class="num">${mkr(r.kr / 1000)}</td></tr>`;
+
+// Affärer: volym, antal och de senaste och största köpen, som Datschas transaktionsöversikt.
+async function openAffarer(p = {}) {
+  const [s, a] = await Promise.all([statusP, apiPanel(`/api/affarer?${new URLSearchParams(p)}`)]);
+  if (!a) return;
+  select(null);
+  const perKat = new Map();
+  for (const t of a.perTyp) {
+    const k = anvKat(t.typ), v = perKat.get(k) ?? { antal: 0, kr: 0 };
+    perKat.set(k, { antal: v.antal + t.antal, kr: v.kr + (t.kr ?? 0) });
+  }
+  const kat = [...perKat].sort((x, y) => y[1].kr - x[1].kr);
+  const n = (x) => x.toLocaleString('sv-SE');
+  showPanel(`
+    <h2>Affärer</h2>
+    <div class="meta">Köp med köpeskilling ur lagfarterna. En paketaffär räknas en gång.</div>
+    <form class="view-form" data-view="affarer">
+      ${field('Kommun', 'kommun', options(s.kommuner ?? [], a.kommun, 'Alla kommuner'))}
+      ${field('År', 'ar', options(a.arLista, a.ar))}
+      ${field('Köpeskilling', 'min', options([[0, 'Alla affärer'], [10, 'Över 10 Mkr'], [40, 'Över 40 Mkr'], [100, 'Över 100 Mkr']], a.min))}
+    </form>
+    ${a.ar ? `
+    ${stats([[`Volym ${a.ar}`, mkr((a.summa.kr ?? 0) / 1000)], [`Affärer ${a.ar}`, n(a.summa.antal)],
+      ['Senaste 30 dagarna', `${n(a.dagar30.antal)} st · ${mkr((a.dagar30.kr ?? 0) / 1000)}`]])}
+    <h3>Per användning ${a.ar}</h3>
+    ${table('<th>Användning</th><th class="num">Affärer</th><th class="num">Volym</th>', kat.map(([k, v]) =>
+      `<tr><td>${esc(k)}${bar(v.kr / (a.summa.kr || 1))}</td><td class="num">${n(v.antal)}</td><td class="num">${mkr(v.kr / 1000)}</td></tr>`), '')}
+    <h3>Största affärerna ${a.ar}</h3>
+    ${table('<th class="num">Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.storsta.map(affarRad), '')}
+    <h3>Senaste affärerna ${a.ar}</h3>
+    ${table('<th class="num">Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.senaste.map(affarRad), '')}
+    ` : '<p class="empty">Inga registrerade köp ännu. Köpeskillingar läses in när Lantmäteriet har svarat.</p>'}
+  `);
+}
+
+// Största fastighetsägare efter antal, tomtareal eller taxeringsvärde.
+async function openAgare(p = {}) {
+  const [s, r] = await Promise.all([statusP, apiPanel(`/api/storsta-agare?${new URLSearchParams(p)}`)]);
+  if (!r) return;
+  select(null);
+  const n = (x) => (x == null ? '–' : Math.round(x).toLocaleString('sv-SE'));
+  const areal = r.efter === 'areal';   // tredje kolumnen: tomtareal, annars taxeringsvärde
+  showPanel(`
+    <h2>Största ägare</h2>
+    <div class="meta">Juridiska personer med lagfart. Samägda fastigheter räknas fullt för varje ägare.</div>
+    <form class="view-form" data-view="agare">
+      ${field('Kommun', 'kommun', options(s.kommuner ?? [], r.kommun, 'Alla kommuner'))}
+      ${field('Användning', 'anv', options(s.typer ?? [], r.anv, 'Alla'))}
+      ${field('Rangordna efter', 'efter', options([['antal', 'Antal fastigheter'], ['areal', 'Tomtareal'], ['varde', 'Taxeringsvärde']], r.efter))}
+    </form>
+    ${table(`<th>Ägare</th><th class="num">Antal</th><th class="num">${areal ? 'Areal' : 'Värde'}</th>`, r.agare.map((a, i) =>
+      `<tr><td><span class="muted small">${i + 1}.</span> ${bolagLink(a.orgnr, a.namn, a.demo)}<div class="muted small">${esc(a.jurform ?? '')}</div></td>
+        <td class="num">${n(a.antal)}</td><td class="num">${areal ? `${n(a.areal_m2)} m²` : mkr(a.varde_tkr)}</td></tr>`),
+      'Inga kända ägare ännu. Ägaruppgifter läses in när Lantmäteriet har svarat.')}
+  `);
+}
+
+const VIEWS = { '#om': openOm, '#affarer': openAffarer, '#agare': openAgare };
+$('#panel').addEventListener('change', (e) => {
+  const form = e.target.closest('form[data-view]');
+  if (form) VIEWS[`#${form.dataset.view}`](Object.fromEntries([...new FormData(form)].filter(([, v]) => v !== '')));
+});
+for (const a of document.querySelectorAll('.links a[href^="#"]')) {
+  a.addEventListener('click', (e) => { e.preventDefault(); history.replaceState(null, '', a.hash); VIEWS[a.hash](); });
+}
+VIEWS[location.hash]?.();
+addEventListener('hashchange', () => VIEWS[location.hash]?.());

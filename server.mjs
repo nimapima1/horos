@@ -141,6 +141,12 @@ async function historiskTile(res, ar, z, x, y) {
 // Summan av fastighetens taxeringsvärden det senaste taxeringsåret (alias f = fastighet).
 const SENASTE_VARDE = `(SELECT sum(t.varde_tkr) FROM taxering t WHERE t.beteckning = f.beteckning
   AND t.ar = (SELECT max(ar) FROM taxering WHERE beteckning = f.beteckning))`;
+// Fastigheten har taxeringstypen ? det senaste taxeringsåret.
+const harTyp = (alias) => `EXISTS (SELECT 1 FROM taxering t WHERE t.beteckning = ${alias}.beteckning AND t.typ = ?
+  AND t.ar = (SELECT max(ar) FROM taxering WHERE beteckning = ${alias}.beteckning))`;
+// Första taxeringstypen det senaste taxeringsåret (alias f = fastighet).
+const SENASTE_TYP = `(SELECT t.typ FROM taxering t WHERE t.beteckning = f.beteckning
+  ORDER BY t.ar DESC, t.varde_tkr DESC LIMIT 1)`;
 
 // Totalt minus exempeldata: count(*) utan filter går på det lilla primärindexet och
 // demo = 1 på det partiella indexet, i stället för att läsa alla 2,2 miljoner bolagsrader.
@@ -150,13 +156,31 @@ const counts = db.prepare(`SELECT ${countReal('bolag')} AS bolag, ${countReal('f
   ${countReal('transaktion')} AS transaktioner, (SELECT count(*) FROM fastighet WHERE demo = 1) AS demo`);
 
 const q = {
+  // Filtren (se FILTER) är "? IS NULL OR ...": varje värde skickas två gånger, null = av.
   inBbox: db.prepare(`
-    SELECT f.beteckning, f.geojson, f.demo, ${SENASTE_VARDE} AS varde_tkr,
+    SELECT * FROM (SELECT f.beteckning, f.geojson, f.demo, f.areal_m2, ${SENASTE_VARDE} AS varde_tkr,
       (SELECT b.namn FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
-         WHERE a.beteckning = f.beteckning LIMIT 1) AS agare
+         WHERE a.beteckning = f.beteckning LIMIT 1) AS agare,
+      (SELECT kopeskilling_kr FROM transaktion x WHERE x.beteckning = f.beteckning
+         ORDER BY inskrivningsdag DESC LIMIT 1) AS kop_kr,
+      (SELECT max(inskrivningsdag) FROM transaktion x WHERE x.beteckning = f.beteckning) AS kop_dag,
+      ${SENASTE_TYP} AS typ,
+      (SELECT b.jurform FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
+         WHERE a.beteckning = f.beteckning LIMIT 1) AS agartyp
     FROM fastighet f
-    WHERE ${overlapar('fastighet', 'f')}
+    WHERE ${overlapar('fastighet', 'f')}) v
+    WHERE (? IS NULL OR ${harTyp('v')})
+      AND (? IS NULL OR EXISTS (SELECT 1 FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
+        WHERE a.beteckning = v.beteckning AND b.jurform = ?))
+      AND (? IS NULL OR v.varde_tkr >= ?) AND (? IS NULL OR v.varde_tkr <= ?)
+      AND (? IS NULL OR v.kop_kr >= ?) AND (? IS NULL OR v.kop_dag >= ?)
+      AND (? IS NULL OR substr(v.kop_dag, 1, 4) <= ?)
+      AND (? IS NULL OR v.areal_m2 >= ?)
     LIMIT ${MAX_FEATURES + 1}`),
+  typer: db.prepare('SELECT DISTINCT typ FROM taxering WHERE typ IS NOT NULL ORDER BY typ'),
+  agartyper: db.prepare(`SELECT DISTINCT b.jurform FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
+    WHERE b.jurform IS NOT NULL ORDER BY b.jurform`),
+  kommuner: db.prepare('SELECT DISTINCT kommun FROM fastighet WHERE kommun IS NOT NULL ORDER BY kommun'),
   planerIBbox: HAS_PLAN && db.prepare(`SELECT p.id, p.typ, p.planid, p.namn, p.datum, p.geojson, p.demo FROM plan p
     WHERE ${overlapar('plan', 'p')} ORDER BY p.datum DESC NULLS LAST LIMIT ${MAX_FEATURES + 1}`),
   fastighet: db.prepare('SELECT beteckning, kommun, areal_m2, kalla, demo FROM fastighet WHERE beteckning = ?'),
@@ -165,7 +189,11 @@ const q = {
     WHERE t.beteckning = ? ORDER BY t.ar DESC`),
   agare: db.prepare(`SELECT a.orgnr, a.andel, a.inskrivningsdag, b.namn, b.jurform, b.demo
     FROM agande a LEFT JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = ?`),
-  transaktioner: db.prepare(`SELECT x.*, b.namn AS forvarvare_namn FROM transaktion x
+  // i_affar: antal fastigheter i samma affär (se AFFAR); > 1 är en paketaffär.
+  transaktioner: db.prepare(`SELECT x.*, b.namn AS forvarvare_namn,
+      (SELECT count(*) FROM transaktion y WHERE y.forvarvare_orgnr = x.forvarvare_orgnr
+         AND y.inskrivningsdag = x.inskrivningsdag AND y.kopeskilling_kr = x.kopeskilling_kr) AS i_affar
+    FROM transaktion x
     LEFT JOIN bolag b ON b.orgnr = x.forvarvare_orgnr
     WHERE x.beteckning = ? ORDER BY x.inskrivningsdag DESC`),
   bolag: db.prepare('SELECT * FROM bolag WHERE orgnr = ?'),
@@ -205,6 +233,96 @@ const q = {
 
 // I publikt läge är databasen skrivskyddad och byts bara ut med en omstart: räkna en gång.
 const statusCounts = PUBLIC_MODE ? counts.get() : null;
+// Användningarna i filtret. shortcut: läses vid start, så en lokal import syns först efter omstart.
+const TYPER = q.typer.all().map((r) => r.typ);
+const AGARTYPER = q.agartyper.all().map((r) => r.jurform);
+const KOMMUNER = q.kommuner.all().map((r) => r.kommun);
+
+const ar4 = (v) => (/^\d{4}$/.test(v) ? v : NaN);
+// Kartfiltren i /api/fastigheter, i inBbox-ordning: [parameter, omvandling till databasens enhet].
+const FILTER = [
+  ['anv', (v) => v],
+  ['jur', (v) => v],            // ägarens juridiska form
+  ['vmin', (v) => +v * 1000],   // Mkr -> tkr
+  ['vmax', (v) => +v * 1000],
+  ['kmin', (v) => +v * 1e6],    // Mkr -> kr
+  ['kar', ar4],                 // köpt år v eller senare (jämförs med ÅÅÅÅ-MM-DD)
+  ['ktill', ar4],               // köpt år v eller tidigare
+  ['amin', (v) => +v],          // m²
+];
+const filterParams = (url) => FILTER.flatMap(([k, f]) => {
+  const raw = url.searchParams.get(k)?.trim();
+  const v = raw ? f(raw) : null;
+  return Number.isNaN(v) ? [null, null] : [v, v];
+});
+
+// --- Affärer och största ägare -------------------------------------------------
+// En affär = överlåtelser med samma dag, köpeskilling och förvärvare: vid en paketaffär står
+// hela köpeskillingen på varje fastighet och skulle annars räknas flera gånger.
+// shortcut: två olika affärer med exakt samma dag, pris och köpare slås ihop; byt till
+// Lantmäteriets förvärvs-id när det finns i filen.
+const AFFAR = `WITH affar AS (
+  SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, x.forvarvare_orgnr AS orgnr,
+    min(x.beteckning) AS beteckning, count(*) AS antal, max(x.demo) AS demo
+  FROM transaktion x JOIN fastighet f ON f.beteckning = x.beteckning
+  WHERE x.kopeskilling_kr >= ? AND (? IS NULL OR f.kommun = ?)
+  GROUP BY 1, 2, 3)`;
+const AFFAR_RAD = `SELECT a.dag, a.kr, a.orgnr, a.beteckning, a.antal, a.demo, b.namn, f.kommun,
+    f.minx, f.miny, f.maxx, f.maxy
+  FROM affar a JOIN fastighet f ON f.beteckning = a.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr`;
+const qa = {
+  ar: db.prepare(`${AFFAR} SELECT DISTINCT substr(dag, 1, 4) AS ar FROM affar WHERE dag IS NOT NULL ORDER BY ar DESC`),
+  summa: db.prepare(`${AFFAR} SELECT count(*) AS antal, sum(kr) AS kr FROM affar WHERE substr(dag, 1, 4) = ?`),
+  dagar30: db.prepare(`${AFFAR} SELECT count(*) AS antal, sum(kr) AS kr FROM affar WHERE dag >= date('now', '-30 days')`),
+  senaste: db.prepare(`${AFFAR} ${AFFAR_RAD} WHERE substr(a.dag, 1, 4) = ? ORDER BY a.dag DESC LIMIT 25`),
+  storsta: db.prepare(`${AFFAR} ${AFFAR_RAD} WHERE substr(a.dag, 1, 4) = ? ORDER BY a.kr DESC LIMIT 5`),
+  perTyp: db.prepare(`${AFFAR} SELECT ${SENASTE_TYP} AS typ, count(*) AS antal, sum(a.kr) AS kr
+    FROM affar a JOIN fastighet f ON f.beteckning = a.beteckning WHERE substr(a.dag, 1, 4) = ? GROUP BY 1`),
+};
+const AFFAR_MIN = [0, 10, 40, 100];   // Mkr; fasta val så att cachen inte kan växa obegränsat
+const STORST_EFTER = { antal: 'antal', areal: 'areal_m2', varde: 'varde_tkr' };
+const storstaAgare = Object.fromEntries(Object.entries(STORST_EFTER).map(([k, col]) => [k, db.prepare(`
+  SELECT a.orgnr, b.namn, b.jurform, max(b.demo) AS demo, count(*) AS antal,
+    sum(f.areal_m2) AS areal_m2, sum(${SENASTE_VARDE}) AS varde_tkr
+  FROM agande a JOIN fastighet f ON f.beteckning = a.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr
+  WHERE (? IS NULL OR f.kommun = ?) AND (? IS NULL OR ${harTyp('f')})
+  GROUP BY a.orgnr ORDER BY ${col} DESC NULLS LAST LIMIT 25`)]));
+
+// I publikt läge ändras databasen inte: svaren cachas (nycklarna är begränsade av valideringen).
+const cache = new Map();
+const cached = (key, fn) => {
+  if (!PUBLIC_MODE) return fn();
+  if (!cache.has(key)) cache.set(key, fn());
+  return cache.get(key);
+};
+const oneOf = (v, list) => (v && list.includes(v) ? v : null);
+
+function affarer(url) {
+  const kommun = oneOf(url.searchParams.get('kommun'), KOMMUNER);
+  const minMkr = AFFAR_MIN.includes(Number(url.searchParams.get('min'))) ? Number(url.searchParams.get('min')) : 0;
+  return cached(`affarer|${kommun}|${minMkr}|${url.searchParams.get('ar')}`, () => {
+    const p = [minMkr * 1e6, kommun, kommun];
+    const arLista = qa.ar.all(...p).map((r) => r.ar);
+    const ar = oneOf(url.searchParams.get('ar'), arLista) ?? arLista[0] ?? null;
+    return {
+      kommun, min: minMkr, ar, arLista,
+      summa: ar ? qa.summa.get(...p, ar) : { antal: 0, kr: null },
+      dagar30: qa.dagar30.get(...p),
+      senaste: ar ? qa.senaste.all(...p, ar) : [],
+      storsta: ar ? qa.storsta.all(...p, ar) : [],
+      perTyp: ar ? qa.perTyp.all(...p, ar) : [],
+    };
+  });
+}
+
+function storsta(url) {
+  const kommun = oneOf(url.searchParams.get('kommun'), KOMMUNER);
+  const anv = oneOf(url.searchParams.get('anv'), TYPER);
+  const efter = STORST_EFTER[url.searchParams.get('efter')] ? url.searchParams.get('efter') : 'antal';
+  return cached(`storsta|${kommun}|${anv}|${efter}`, () => ({
+    kommun, anv, efter, agare: storstaAgare[efter].all(kommun, kommun, anv, anv),
+  }));
+}
 
 // Metadata från build-public (saknas i utvecklingsdatabasen).
 const META = hasTable('meta')
@@ -320,6 +438,9 @@ const routes = [
     ...(statusCounts ?? counts.get()),
     byggd: META.byggd ?? null,
     export: { csv: true, geojson: EXPORT_GEOMETRI },
+    typer: TYPER,
+    agartyper: AGARTYPER,
+    kommuner: KOMMUNER,
     historiska: HIST_AUTH ? Object.keys(HIST_LAYERS).map(Number) : [],
   }]],
 
@@ -327,9 +448,10 @@ const routes = [
     const bbox = (url.searchParams.get('bbox') ?? '').split(',').map(Number);
     if (bbox.length !== 4 || bbox.some(Number.isNaN)) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
     const [minx, miny, maxx, maxy] = bbox;
-    const rows = q.inBbox.all(minx, maxx, miny, maxy);
+    const rows = q.inBbox.all(minx, maxx, miny, maxy, ...filterParams(url));
     const features = rows.slice(0, MAX_FEATURES).map((r) =>
-      featureJson(r.geojson, { beteckning: r.beteckning, varde_tkr: r.varde_tkr, agare: r.agare, demo: r.demo }));
+      featureJson(r.geojson, { beteckning: r.beteckning, varde_tkr: r.varde_tkr, agare: r.agare, demo: r.demo,
+        typ: r.typ, agartyp: r.agartyp, kop_ar: r.kop_dag ? Number(r.kop_dag.slice(0, 4)) : null }));
     return [200, `{"type":"FeatureCollection","truncated":${rows.length > MAX_FEATURES},"features":[${features.join(',')}]}`];
   }],
 
@@ -348,6 +470,9 @@ const routes = [
     const features = rows.slice(0, MAX_FEATURES).map(({ geojson, ...p }) => featureJson(geojson, p));
     return [200, `{"type":"FeatureCollection","truncated":${rows.length > MAX_FEATURES},"features":[${features.join(',')}]}`];
   }],
+
+  [/^\/api\/affarer$/, 'api', (_m, url) => [200, affarer(url)]],
+  [/^\/api\/storsta-agare$/, 'api', (_m, url) => [200, storsta(url)]],
 
   [/^\/api\/bolag\/([\d-]+)$/, 'api', (m) => {
     const orgnr = normOrgnr(m[1]);
