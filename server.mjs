@@ -313,6 +313,9 @@ const qa = {
   storsta: db.prepare(`${AFFAR} ${AFFAR_RAD} WHERE substr(a.dag, 1, 4) = ? ORDER BY a.kr DESC LIMIT 5`),
   perTyp: db.prepare(`${AFFAR} SELECT ${SENASTE_TYP} AS typ, count(*) AS antal, sum(a.kr) AS kr
     FROM affar a JOIN fastighet f ON f.beteckning = a.beteckning WHERE substr(a.dag, 1, 4) = ? GROUP BY 1`),
+  kopare: db.prepare(`${AFFAR} SELECT a.orgnr, b.namn, max(a.demo) AS demo, count(*) AS antal, sum(a.kr) AS kr
+    FROM affar a LEFT JOIN bolag b ON b.orgnr = a.orgnr WHERE substr(a.dag, 1, 4) = ? AND a.orgnr IS NOT NULL
+    GROUP BY a.orgnr ORDER BY kr DESC LIMIT 10`),
 };
 const AFFAR_MIN = [0, 10, 40, 100];   // Mkr; fasta val så att cachen inte kan växa obegränsat
 const STORST_EFTER = { antal: 'antal', areal: 'areal_m2', varde: 'varde_tkr' };
@@ -349,6 +352,7 @@ function affarer(url) {
       senaste: ar ? qa.senaste.all(...p, ar) : [],
       storsta: ar ? qa.storsta.all(...p, ar) : [],
       perTyp: ar ? qa.perTyp.all(...p, ar) : [],
+      kopare: ar ? qa.kopare.all(...p, ar) : [],
     };
   });
 }
@@ -517,16 +521,16 @@ const routes = [
     if (!rows) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
     const features = rows.slice(0, MAX_FEATURES).map((r) =>
       featureJson(r.geojson, { beteckning: r.beteckning, varde_tkr: r.varde_tkr, agare: r.agare, demo: r.demo,
-        typ: r.typ, agartyp: r.agartyp, kop_ar: r.kop_dag ? Number(r.kop_dag.slice(0, 4)) : null }));
+        areal_m2: r.areal_m2, typ: r.typ, agartyp: r.agartyp, kop_ar: r.kop_dag ? Number(r.kop_dag.slice(0, 4)) : null }));
     return [200, `{"type":"FeatureCollection","truncated":${rows.length > MAX_FEATURES},"features":[${features.join(',')}]}`];
   }],
 
-  // Prickar vid låg zoom: [lon, lat, beteckning, värde (tkr), typ, ägartyp, köpår, demo] per fastighet.
+  // Prickar vid låg zoom: [lon, lat, beteckning, värde (tkr), typ, ägartyp, köpår, demo, areal] per fastighet.
   [/^\/api\/punkter$/, 'api', (_m, url) => {
     const rows = traffar(url, q.punkter);
     if (!rows) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
     const p = rows.slice(0, MAX_PUNKTER).map((r) => [+r.lon.toFixed(5), +r.lat.toFixed(5), r.beteckning, r.varde_tkr,
-      r.typ, r.agartyp, r.kop_dag ? Number(r.kop_dag.slice(0, 4)) : null, r.demo]);
+      r.typ, r.agartyp, r.kop_dag ? Number(r.kop_dag.slice(0, 4)) : null, r.demo, r.areal_m2 && Math.round(r.areal_m2)]);
     return [200, { truncated: rows.length > MAX_PUNKTER, p }];
   }],
 

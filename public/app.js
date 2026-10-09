@@ -147,6 +147,9 @@ const agarKat = (jurform) => {
   if (/stiftelse|förening|trossamfund/.test(j)) return 'Stiftelse, förening';
   return 'Övrigt';
 };
+// Härledda egenskaper för kartfärgningen.
+const kategorier = (p) => ({ anv_kat: anvKat(p.typ), agar_kat: agarKat(p.agartyp),
+  kvm: p.varde_tkr != null && p.areal_m2 ? (p.varde_tkr * 1000) / p.areal_m2 : null });
 const ANV_KAT = ['Bostäder', 'Lokaler', 'Bostäder och lokaler', 'Industri', 'Special', 'Övrigt'];
 const AGAR_KAT = ['Aktiebolag', 'Bostadsrättsförening', 'Kommun, region, stat', 'Handels- och kommanditbolag', 'Stiftelse, förening', 'Övrigt'];
 const KAT_FARG = ['--c1', '--c2', '--c3', '--c4', '--c5', '--c6'];
@@ -157,6 +160,9 @@ const COLOR_BY = {
   varde: () => [['step', ['coalesce', ['get', 'varde_tkr'], -1],
     css('--v0'), 0, css('--v1'), 25000, css('--v2'), 100000, css('--v3'), 300000, css('--v4')],
   [['--v1', '< 25 Mkr'], ['--v2', '25–100'], ['--v3', '100–300'], ['--v4', '> 300'], ['--v0', 'Saknas']]],
+  kvm: () => [['step', ['coalesce', ['get', 'kvm'], -1],
+    css('--v0'), 0, css('--v1'), 20000, css('--v2'), 50000, css('--v3'), 100000, css('--v4')],
+  [['--v1', '< 20 tkr/m²'], ['--v2', '20–50'], ['--v3', '50–100'], ['--v4', '> 100'], ['--v0', 'Saknas']]],
   anv: () => kategoriFarg('anv_kat', ANV_KAT),
   agartyp: () => kategoriFarg('agar_kat', AGAR_KAT),
   kopar: () => [['step', ['coalesce', ['get', 'kop_ar'], -1],
@@ -270,7 +276,7 @@ map.on('load', () => {
     const p = e.features[0].properties;
     if (e.features[0].id !== hovered) {
       setHover(e.features[0].id);
-      const extra = { anv: p.typ, agartyp: p.agartyp, kopar: p.kop_ar ? `Senast köpt ${p.kop_ar}` : 'Inget registrerat köp' }[colorBy.value];
+      const extra = { kvm: p.kvm ? `${kr(p.kvm)}/m² tomt` : null, anv: p.typ, agartyp: p.agartyp, kopar: p.kop_ar ? `Senast köpt ${p.kop_ar}` : 'Inget registrerat köp' }[colorBy.value];
       tip?.setHTML(`<strong>${esc(p.beteckning)}</strong>${p.demo ? demoTag(1) : ''}
         <div>${esc(p.agare ?? 'Ägare saknas')}</div>
         <div class="muted">Taxeringsvärde ${mkr(p.varde_tkr ?? null)}${extra ? ` · ${esc(extra)}` : ''}</div>`);
@@ -322,10 +328,10 @@ async function loadVisible() {
     lage === 'punkter' ? api(`/api/punkter?${urval}`) : { p: [] },
     planToggle.on && lage === 'granser' ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
   if (seq !== loadSeq) return;
-  for (const { properties: p } of fc.features) { p.anv_kat = anvKat(p.typ); p.agar_kat = agarKat(p.agartyp); }
-  const punkter = { type: 'FeatureCollection', features: pkt.p.map(([lon, lat, beteckning, varde_tkr, typ, agartyp, kop_ar, demo]) => ({
+  for (const { properties: p } of fc.features) Object.assign(p, kategorier(p));
+  const punkter = { type: 'FeatureCollection', features: pkt.p.map(([lon, lat, beteckning, varde_tkr, typ, agartyp, kop_ar, demo, areal_m2]) => ({
     type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] },
-    properties: { beteckning, varde_tkr, kop_ar, demo, anv_kat: anvKat(typ), agar_kat: agarKat(agartyp) } })) };
+    properties: { beteckning, varde_tkr, kop_ar, demo, ...kategorier({ typ, agartyp, varde_tkr, areal_m2 }) } })) };
   const n = fc.features.length + punkter.features.length;
   $('#filter-hits').textContent = lage === 'inget' ? 'Zooma in för att se träffar'
     : `${fc.truncated || pkt.truncated ? 'Minst ' : ''}${n.toLocaleString('sv-SE')} ${n === 1 ? 'fastighet' : 'fastigheter'} i kartutsnittet`;
@@ -357,7 +363,18 @@ function showPanel(html) {
   $('#panel').hidden = false;
   $('#panel').scrollTop = 0;
 }
-$('#close').addEventListener('click', () => { $('#panel').hidden = true; select(null); markera([]); adressMarker?.remove(); });
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#panel').hidden && !e.target.closest?.('input, select')) $('#close').click(); });
+$('#close').addEventListener('click', () => {
+  $('#panel').hidden = true;
+  select(null);
+  markera([]);
+  adressMarker?.remove();
+  rensaVy();
+});
+// Tar bort vyn (#affarer m.fl.) ur adressen, så att den inte öppnas igen när sidan laddas om.
+function rensaVy() {
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+}
 
 // Ramar in fastigheterna med beteckningarna i lista (tom lista = ingen markering).
 function markera(lista, orgnr = null) {
@@ -393,11 +410,16 @@ const facts = (items) => `<div class="facts">${items.map(([label, value, sub]) =
 async function openFastighet(bet, adress) {
   const f = await apiPanel(`/api/fastighet/${encodeURIComponent(bet)}`);
   if (!f) return;
+  rensaVy();
   select(f.beteckning);
   // Senaste taxeringsåret: värdet är summan av fastighetens taxeringsenheter.
   const ar = f.taxering[0]?.ar;
   const senaste = f.taxering.filter((t) => t.ar === ar);
   const varde = senaste.reduce((s, t) => s + (t.varde_tkr ?? 0), 0);
+  // Förändring mot förra taxeringsåret med värde (taxeringen är sorterad nyast först).
+  const forraAr = f.taxering.find((t) => t.ar < ar && t.varde_tkr != null)?.ar;
+  const forra = forraAr && f.taxering.filter((t) => t.ar === forraAr).reduce((s, t) => s + (t.varde_tkr ?? 0), 0);
+  const andring = forra ? (varde - forra) / forra : null;
   const kop = f.transaktioner.find((x) => x.kopeskilling_kr != null);
   // Nyckeltal bara när köpet gällde hela fastigheten och bara den (inte en andel eller en paketaffär).
   const paket = kop?.i_affar > 1;
@@ -422,6 +444,7 @@ async function openFastighet(bet, adress) {
     ])}
     ${stats([
       [`Taxeringsvärde${ar ? ` ${ar}` : ''}`, f.taxering.length ? mkr(varde) : '–'],
+      ...(andring != null ? [[`Ändring sedan ${forraAr}`, `${andring > 0 ? '+' : ''}${(andring * 100).toLocaleString('sv-SE', { maximumFractionDigits: 0 })} %`]] : []),
       ['Areal', f.areal_m2 ? `${Math.round(f.areal_m2).toLocaleString('sv-SE')} m²` : '–'],
       ...(helKop ? [
         ['Köp per m² tomt', f.areal_m2 ? kr(kop.kopeskilling_kr / f.areal_m2) : '–'],
@@ -472,6 +495,7 @@ async function openFastighet(bet, adress) {
 async function openBolag(orgnr) {
   const b = await apiPanel(`/api/bolag/${orgnr}`);
   if (!b) return;
+  rensaVy();
   select(null);
   const sumTkr = b.fastigheter.reduce((s, f) => s + (f.varde_tkr ?? 0), 0);
   const sumM2 = b.fastigheter.reduce((s, f) => s + (f.areal_m2 ?? 0), 0);
@@ -669,6 +693,10 @@ async function openAffarer(p = {}) {
     <h3>Per användning ${a.ar}</h3>
     ${table('<th>Användning</th><th class="num">Affärer</th><th class="num">Volym</th>', kat.map(([k, v]) =>
       `<tr><td>${esc(k)}${bar(v.kr / (a.summa.kr || 1))}</td><td class="num">${n(v.antal)}</td><td class="num">${mkr(v.kr / 1000)}</td></tr>`), '')}
+    <h3>Största köparna ${a.ar}</h3>
+    ${table('<th>Köpare</th><th class="num">Affärer</th><th class="num">Volym</th>', a.kopare.map((k) =>
+      `<tr><td>${bolagLink(k.orgnr, k.namn, k.demo)}${bar(k.kr / (a.kopare[0].kr || 1))}</td>
+        <td class="num">${n(k.antal)}</td><td class="num">${mkr(k.kr / 1000)}</td></tr>`), '')}
     <h3>Största affärerna ${a.ar}</h3>
     ${table('<th class="num">Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.storsta.map(affarRad), '')}
     <h3>Senaste affärerna ${a.ar}</h3>
