@@ -13,8 +13,8 @@ set -euo pipefail
 TARGET="${1:?Ange server, t.ex. deploy@37.27.152.172}"
 WITH_DATA="${2:-}"
 cd "$(dirname "$0")/.."
-# Git Bash som startats före Node-installationen saknar Node i PATH.
-command -v node >/dev/null || export PATH="/c/Program Files/nodejs:$PATH"
+# public/vendor fylls av "npm install" (postinstall) och laddas upp som den är.
+[[ -f public/vendor/maplibre-gl-csp.js ]] || { echo "public/vendor saknas. Kör: npm install"; exit 1; }
 # Windows egen ssh läser lösenfrasen korrekt i terminalpanelen; Git Bash-versionen gör inte
 # det när den startas från PowerShell (inmatningen hamnar i fel fönster).
 SSH=ssh
@@ -27,9 +27,6 @@ if [[ "$WITH_DATA" == "--data" ]]; then
   FILES+=(data/public.sqlite)
   echo "Databas: $(du -h data/public.sqlite | cut -f1)"
 fi
-
-echo "Kopierar MapLibre till public/vendor…"
-node scripts/vendor.mjs >/dev/null
 
 echo "Laddar upp version $REL till $TARGET…"
 tar -czf - "${FILES[@]}" | "$SSH" "$TARGET" "set -e
@@ -49,13 +46,14 @@ tar -czf - "${FILES[@]}" | "$SSH" "$TARGET" "set -e
   fi
   ln -sfn \$d /opt/fastighetskarta/current
   ls -1dt /opt/fastighetskarta/releases/* | tail -n +4 | xargs -r rm -rf
+  admin() { sudo -n /usr/local/sbin/fastighetskarta-admin \"\$@\"; }
   echo 'Startar om…'
-  sudo -n /usr/local/sbin/fastighetskarta-admin restart
+  admin restart
   sleep 2
-  sudo -n /usr/local/sbin/fastighetskarta-admin status
+  admin status
   curl -s -o /dev/null -w 'Lokalt svar från appen: HTTP %{http_code}\n' http://127.0.0.1:3000/api/status || true
   echo '--- Installation:'
-  sudo -n /usr/local/sbin/fastighetskarta-admin versions 2>/dev/null || { caddy version; apt-cache policy caddy | head -4; }"
+  admin versions"
 
 echo
 echo "Klart. Om tjänsten inte är 'active (running)', se loggen med:"

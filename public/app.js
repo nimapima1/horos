@@ -1,4 +1,4 @@
-// Fastighetskarta – klient. MapLibre + JSON-API från server.mjs.
+// Horos – klient. MapLibre + JSON-API från server.mjs.
 const $ = (sel) => document.querySelector(sel);
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -22,88 +22,122 @@ const map = new maplibregl.Map({
   zoom: 15,
   attributionControl: { compact: true },
 });
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
 let selected = null;
 
-// Satellitbild via vår egen server (se server.mjs). Byts mot Lantmäteriets ortofoto när det finns.
-const SATELLIT = {
-  tiles: [`${location.origin}${location.pathname.replace(/[^/]*$/, '')}tiles/satellit/{z}/{x}/{y}.jpg`],
-  maxzoom: 15,
-  attribution: 'Satellit: <a href="https://cloudless.eox.at" target="_blank" rel="noopener">EOxCloudless</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2025)',
+// Bildlager via vår egen server (se server.mjs), så att besökarnas IP-adresser stannar hos oss.
+const BASE = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
+const LM_ATTR = 'Flygfoto: <a href="https://www.lantmateriet.se" target="_blank" rel="noopener">© Lantmäteriet</a> (CC0)';
+const IMAGERY = {
+  satellit: {
+    label: 'Satellit 2025 (10 m)',
+    source: { tiles: [`${BASE}tiles/satellit/{z}/{x}/{y}.jpg`], maxzoom: 15,
+      attribution: 'Satellit: <a href="https://cloudless.eox.at" target="_blank" rel="noopener">EOxCloudless</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2025)' },
+    paint: { 'raster-contrast': 0.08, 'raster-saturation': 0.15 },   // lite krispigare Sentinel-bild
+  },
 };
+// Historiska flygfoton som täcker hela Stockholm (Lantmäteriet, CC0). Läggs till om servern har inloggning.
+const HISTORISKA = { 2005: 'Flygfoto 2005 (färg, 0,5 m)', 1995: 'Flygfoto 1995 (sv/v)', 1975: 'Flygfoto 1975 (sv/v)', 1960: 'Flygfoto 1960-tal (sv/v)' };
 
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* privat läge */ } },
 };
 
-class BasemapToggle {
-  onAdd(m) {
-    this.map = m;
+class BasemapSelect {
+  onAdd() {
     this.el = document.createElement('div');
-    this.el.className = 'maplibregl-ctrl maplibregl-ctrl-group basemap-toggle';
-    this.btn = document.createElement('button');
-    this.btn.type = 'button';
-    this.btn.addEventListener('click', () => this.set(!this.on));
-    this.el.append(this.btn);
-    this.on = store.get('horos.satellit') === '1';
-    this.render();
+    this.el.className = 'maplibregl-ctrl maplibregl-ctrl-group basemap-select';
+    this.select = document.createElement('select');
+    this.select.setAttribute('aria-label', 'Bakgrund');
+    this.select.add(new Option('Karta', 'karta'));
+    for (const [id, { label }] of Object.entries(IMAGERY)) this.select.add(new Option(label, id));
+    this.select.addEventListener('change', () => this.set(this.select.value));
+    this.el.append(this.select);
+    this.value = store.get('horos.bakgrund') ?? 'karta';
+    this.select.value = IMAGERY[this.value] ? this.value : 'karta';
     return this.el;
   }
   onRemove() { this.el.remove(); }
-  render() {
-    this.btn.textContent = this.on ? 'Karta' : 'Satellit';
-    this.btn.title = this.on ? 'Visa vanlig karta' : 'Visa satellitbild';
-    this.btn.setAttribute('aria-pressed', String(this.on));
+  addHistoriska(years) {
+    for (const ar of Object.keys(HISTORISKA).sort((a, b) => b - a)) {
+      if (!years.includes(Number(ar))) continue;
+      IMAGERY[`h${ar}`] = {
+        label: HISTORISKA[ar],
+        source: { tiles: [`${BASE}tiles/historisk/${ar}/{z}/{x}/{y}.jpg`], minzoom: 10, maxzoom: 18,
+          bounds: [17.5, 59.05, 18.75, 59.6], attribution: LM_ATTR },
+      };
+      this.select.add(new Option(HISTORISKA[ar], `h${ar}`));
+    }
+    if (IMAGERY[this.value] && this.select.value !== this.value) { this.select.value = this.value; applyBasemap(this.value); }
   }
-  set(on) {
-    this.on = on;
-    store.set('horos.satellit', on ? '1' : '0');
-    this.render();
-    applyBasemap(on);
+  get imagery() { return this.select.value !== 'karta'; }
+  set(value) {
+    this.value = value;
+    store.set('horos.bakgrund', value);
+    applyBasemap(value);
   }
 }
-const basemapToggle = new BasemapToggle();
-map.addControl(basemapToggle, 'top-left');
+const basemap = new BasemapSelect();
+map.addControl(basemap, 'top-right');
 
-function applyBasemap(satellit) {
-  if (!map.getLayer('satellit')) return;
-  map.setLayoutProperty('satellit', 'visibility', satellit ? 'visible' : 'none');
-  // Fastigheterna blir lite genomskinligare så att bilden syns igenom.
-  map.setPaintProperty('fastighet-fill', 'fill-opacity',
-    ['case', ['boolean', ['feature-state', 'selected'], false], 0.85, satellit ? 0.45 : 0.6]);
+const SEL = ['boolean', ['feature-state', 'selected'], false];
+const HOVER = ['boolean', ['feature-state', 'hover'], false];
+const valueColor = () => ['step', ['coalesce', ['get', 'varde_tkr'], -1],
+  css('--v0'), 0, css('--v1'), 25000, css('--v2'), 100000, css('--v3'), 300000, css('--v4')];
+
+// På kartan fylls fastigheterna med färg. Över satellitbilden är de osynliga (men klickbara)
+// tills man hovrar eller klickar, så att bilden går att läsa.
+const fastighetPaint = (satellit) => (satellit
+  ? {
+    'fill-opacity': ['case', SEL, 0.3, HOVER, 0.18, 0],
+    'line-color': ['case', SEL, '#FFFFFF', valueColor()],
+    'line-width': ['case', SEL, 3.5, 2.5],
+    'line-opacity': ['case', ['any', SEL, HOVER], 1, 0],
+  }
+  : {
+    'fill-opacity': ['case', SEL, 0.85, HOVER, 0.75, 0.6],
+    'line-color': ['case', ['any', SEL, HOVER], css('--text'), css('--surface-solid')],
+    'line-width': ['case', SEL, 2.5, HOVER, 1.5, 0.6],
+    'line-opacity': 1,
+  });
+
+// Visar valt bildlager (skapas första gången det väljs) under kartans etiketter.
+function applyBasemap(value) {
+  if (!map.getLayer('fastighet-fill')) return;
+  const def = IMAGERY[value];
+  if (def && !map.getLayer(value)) {
+    const firstSymbol = map.getStyle().layers.find((l) => l.type === 'symbol')?.id;
+    map.addSource(value, { type: 'raster', tileSize: 256, ...def.source });
+    map.addLayer({ id: value, type: 'raster', source: value, paint: def.paint ?? {} }, firstSymbol);
+  }
+  for (const id of Object.keys(IMAGERY)) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', id === value ? 'visible' : 'none');
+  for (const [prop, v] of Object.entries(fastighetPaint(Boolean(def)))) {
+    map.setPaintProperty(prop.startsWith('fill') ? 'fastighet-fill' : 'fastighet-line', prop, v);
+  }
 }
 
 map.on('load', () => {
-  // Satellitlagret läggs under kartans etiketter så att gatunamn syns ovanpå bilden.
-  const firstSymbol = map.getStyle().layers.find((l) => l.type === 'symbol')?.id;
-  map.addSource('satellit', { type: 'raster', tiles: SATELLIT.tiles, tileSize: 256, maxzoom: SATELLIT.maxzoom, attribution: SATELLIT.attribution });
-  map.addLayer({ id: 'satellit', type: 'raster', source: 'satellit', layout: { visibility: 'none' } }, firstSymbol);
-
   map.addSource('fastigheter', { type: 'geojson', data: EMPTY, promoteId: 'beteckning' });
-  const fill = ['step', ['coalesce', ['get', 'varde_tkr'], -1],
-    css('--v0'), 0, css('--v1'), 25000, css('--v2'), 100000, css('--v3'), 300000, css('--v4')];
-  map.addLayer({
-    id: 'fastighet-fill', type: 'fill', source: 'fastigheter',
-    paint: {
-      'fill-color': fill,
-      'fill-opacity': ['case', ['boolean', ['feature-state', 'selected'], false], 0.9, 0.6],
-    },
-  });
-  map.addLayer({
-    id: 'fastighet-line', type: 'line', source: 'fastigheter',
-    paint: {
-      'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], css('--text'), css('--surface')],
-      'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 2.5, 0.6],
-    },
-  });
+  const { 'fill-opacity': fillOp, ...linePaint } = fastighetPaint(basemap.imagery);
+  map.addLayer({ id: 'fastighet-fill', type: 'fill', source: 'fastigheter', paint: { 'fill-color': valueColor(), 'fill-opacity': fillOp } });
+  map.addLayer({ id: 'fastighet-line', type: 'line', source: 'fastigheter', paint: linePaint });
 
   map.on('click', 'fastighet-fill', (e) => openFastighet(e.features[0].properties.beteckning));
-  map.on('mouseenter', 'fastighet-fill', () => (map.getCanvas().style.cursor = 'pointer'));
-  map.on('mouseleave', 'fastighet-fill', () => (map.getCanvas().style.cursor = ''));
+  let hovered = null;
+  const setHover = (id) => {
+    if (hovered) map.setFeatureState({ source: 'fastigheter', id: hovered }, { hover: false });
+    hovered = id;
+    if (hovered) map.setFeatureState({ source: 'fastigheter', id: hovered }, { hover: true });
+  };
+  map.on('mousemove', 'fastighet-fill', (e) => {
+    map.getCanvas().style.cursor = 'pointer';
+    if (e.features[0].id !== hovered) setHover(e.features[0].id);
+  });
+  map.on('mouseleave', 'fastighet-fill', () => { map.getCanvas().style.cursor = ''; setHover(null); });
   map.on('moveend', loadVisible);
-  applyBasemap(basemapToggle.on);
+  applyBasemap(basemap.select.value);
   loadVisible();
 });
 
@@ -136,72 +170,84 @@ $('#close').addEventListener('click', () => { $('#panel').hidden = true; select(
 const demoTag = (d) => (d ? '<span class="tag">exempel</span>' : '');
 const bolagLink = (orgnr, namn, demo) =>
   `<a data-bolag="${esc(orgnr)}">${esc(namn ?? fmtOrgnr(orgnr))}</a>${demoTag(demo)}`;
+const bboxAttr = (f) => `data-bbox="${[f.minx, f.miny, f.maxx, f.maxy].join(',')}"`;
+// Tabell med rubrikrad, eller ett meddelande om raderna saknas.
+const table = (head, rows, empty) => (rows.length
+  ? `<table><tr>${head}</tr>${rows.join('')}</table>`
+  : `<p class="empty">${empty}</p>`);
+// Nyckeltal överst i panelen: [[etikett, värde], ...]
+const stats = (items) => `<div class="stats">${items.map(([label, value]) =>
+  `<div class="stat"><div class="stat-label">${label}</div><div class="stat-value">${value}</div></div>`).join('')}</div>`;
 
-async function openFastighet(bet, { fly = false } = {}) {
-  let f;
-  try { f = await api(`/api/fastighet/${encodeURIComponent(bet)}`); }
-  catch (e) { return showPanel(`<p class="empty">${esc(e.message)}</p>`); }
+// Hämtar från API:t; vid fel visas felet i panelen och null returneras.
+async function apiPanel(path) {
+  try { return await api(path); }
+  catch (e) { showPanel(`<p class="empty">${esc(e.message)}</p>`); return null; }
+}
+
+async function openFastighet(bet) {
+  const f = await apiPanel(`/api/fastighet/${encodeURIComponent(bet)}`);
+  if (!f) return;
   select(f.beteckning);
-
-  const agare = f.agare.length
-    ? f.agare.map((a) => `<tr><td>${bolagLink(a.orgnr, a.namn, a.demo)}<div class="muted small">${fmtOrgnr(a.orgnr)}</div></td>
-        <td>${esc(a.andel ?? '')}</td><td class="num">${esc(a.inskrivningsdag ?? '')}</td></tr>`).join('')
-    : null;
-  const tax = f.taxering.length
-    ? f.taxering.map((t) => `<tr><td>${t.ar ?? ''}</td><td>${esc(t.typ ?? '')}</td><td class="num">${mkr(t.varde_tkr)}</td></tr>
-        <tr><td></td><td class="muted small" colspan="2">Mark ${mkr(t.markvarde_tkr)} · Byggnad ${mkr(t.byggvarde_tkr)}${t.taxeringsenhet ? ` · Enhet ${esc(t.taxeringsenhet)}` : ''}</td></tr>`).join('')
-    : null;
-  const tx = f.transaktioner.length
-    ? f.transaktioner.map((x) => `<tr><td class="num">${esc(x.inskrivningsdag ?? '')}</td>
-        <td>${x.forvarvare_orgnr ? bolagLink(x.forvarvare_orgnr, x.forvarvare_namn) : '–'}<div class="muted small">${esc(x.art ?? '')}</div></td>
-        <td class="num">${kr(x.kopeskilling_kr)}</td></tr>`).join('')
-    : null;
-
+  // Senaste årets taxeringsvärde (summan av fastighetens taxeringsenheter) och senaste köp.
+  const ar = f.taxering[0]?.ar;
+  const varde = f.taxering.filter((t) => t.ar === ar).reduce((s, t) => s + (t.varde_tkr ?? 0), 0);
+  const kop = f.transaktioner.find((x) => x.kopeskilling_kr != null);
   showPanel(`
     <h2>${esc(f.beteckning)}${demoTag(f.demo)}</h2>
-    <div class="muted small">${esc(f.kommun ?? '')} · källa: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}</div>
-    <dl style="margin-top:12px"><dt>Areal</dt><dd>${f.areal_m2 ? `${Math.round(f.areal_m2).toLocaleString('sv-SE')} m²` : '–'}</dd></dl>
+    <div class="meta">${esc(f.kommun ?? '')} · källa: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}</div>
+    ${stats([
+      [`Taxeringsvärde${ar ? ` ${ar}` : ''}`, f.taxering.length ? mkr(varde) : '–'],
+      ['Areal', f.areal_m2 ? `${Math.round(f.areal_m2).toLocaleString('sv-SE')} m²` : '–'],
+      [`Senaste köp${kop?.inskrivningsdag ? ` ${kop.inskrivningsdag.slice(0, 4)}` : ''}`, kop ? mkr(kop.kopeskilling_kr / 1000) : '–'],
+    ])}
     <h3>Lagfarna ägare</h3>
-    ${agare ? `<table><tr><th>Ägare</th><th>Andel</th><th class="num">Sedan</th></tr>${agare}</table>` : '<p class="empty">Väntar på uppgifter från Lantmäteriet.</p>'}
+    ${table('<th>Ägare</th><th>Andel</th><th class="num">Sedan</th>', f.agare.map((a) =>
+      `<tr><td>${bolagLink(a.orgnr, a.namn, a.demo)}<div class="muted small">${fmtOrgnr(a.orgnr)}</div></td>
+        <td>${esc(a.andel ?? '')}</td><td class="num">${esc(a.inskrivningsdag ?? '')}</td></tr>`),
+      'Väntar på uppgifter från Lantmäteriet.')}
     <h3>Taxering</h3>
-    ${tax ? `<table><tr><th>År</th><th>Typ</th><th class="num">Värde</th></tr>${tax}</table>` : '<p class="empty">Väntar på uppgifter från Skatteverket.</p>'}
+    ${table('<th>År</th><th>Typ</th><th class="num">Värde</th>', f.taxering.map((t) =>
+      `<tr><td>${t.ar ?? ''}</td><td>${esc(t.typ ?? '')}</td><td class="num">${mkr(t.varde_tkr)}</td></tr>
+        <tr><td></td><td class="muted small" colspan="2">Mark ${mkr(t.markvarde_tkr)} · Byggnad ${mkr(t.byggvarde_tkr)}${t.taxeringsenhet ? ` · Enhet ${esc(t.taxeringsenhet)}` : ''}</td></tr>`),
+      'Väntar på uppgifter från Skatteverket.')}
     <h3>Överlåtelser</h3>
-    ${tx ? `<table><tr><th class="num">Datum</th><th>Förvärvare</th><th class="num">Köpeskilling</th></tr>${tx}</table>` : '<p class="empty">Inga registrerade överlåtelser.</p>'}
+    ${table('<th class="num">Datum</th><th>Förvärvare</th><th class="num">Köpeskilling</th>', f.transaktioner.map((x) =>
+      `<tr><td class="num">${esc(x.inskrivningsdag ?? '')}</td>
+        <td>${x.forvarvare_orgnr ? bolagLink(x.forvarvare_orgnr, x.forvarvare_namn) : '–'}<div class="muted small">${esc(x.art ?? '')}</div></td>
+        <td class="num">${kr(x.kopeskilling_kr)}</td></tr>`),
+      'Inga registrerade överlåtelser.')}
   `);
-  if (fly) flyToBbox(f.beteckning);
 }
 
 async function openBolag(orgnr) {
-  let b;
-  try { b = await api(`/api/bolag/${orgnr}`); }
-  catch (e) { return showPanel(`<p class="empty">${esc(e.message)}</p>`); }
+  const b = await apiPanel(`/api/bolag/${orgnr}`);
+  if (!b) return;
   select(null);
   const sumTkr = b.fastigheter.reduce((s, f) => s + (f.varde_tkr ?? 0), 0);
-  const rows = b.fastigheter.map((f) =>
-    `<tr><td><a data-fastighet="${esc(f.beteckning)}" data-bbox="${[f.minx, f.miny, f.maxx, f.maxy].join(',')}">${esc(f.beteckning)}</a></td>
-     <td class="num">${mkr(f.varde_tkr)}</td></tr>`).join('');
   showPanel(`
     <h2>${esc(b.namn)}${demoTag(b.demo)}</h2>
-    <div class="muted small">${fmtOrgnr(b.orgnr)}${b.avregistrerad ? ` · <strong>avregistrerad ${esc(b.avregistrerad)}</strong>` : ''}</div>
-    <dl style="margin-top:12px">
+    <div class="meta">${fmtOrgnr(b.orgnr)}${b.avregistrerad ? ` · <strong>avregistrerad ${esc(b.avregistrerad)}</strong>` : ''}</div>
+    ${stats([['Fastigheter', b.fastigheter.length.toLocaleString('sv-SE')], ['Taxeringsvärde', sumTkr ? mkr(sumTkr) : '–']])}
+    <dl>
       <dt>Form</dt><dd>${esc(b.jurform ?? '–')}</dd>
       <dt>SNI</dt><dd>${esc(b.sni ?? '–')}</dd>
       <dt>Adress</dt><dd>${esc([b.adress, [b.postnr, b.postort].filter(Boolean).join(' ')].filter(Boolean).join(', ') || '–')}</dd>
       <dt>Registrerad</dt><dd>${esc(b.registrerad ?? '–')}</dd>
     </dl>
     ${b.verksamhet ? `<h3>Verksamhet</h3><p class="small">${esc(b.verksamhet)}</p>` : ''}
-    <h3>Fastigheter (${b.fastigheter.length})${sumTkr ? ` · ${mkr(sumTkr)}` : ''}</h3>
-    ${rows ? `<table><tr><th>Beteckning</th><th class="num">Taxeringsvärde</th></tr>${rows}</table>`
-           : '<p class="empty">Inga kända fastigheter ännu. Ägaruppgifter läses in när Lantmäteriet har svarat.</p>'}
+    <h3>Fastigheter</h3>
+    ${table('<th>Beteckning</th><th class="num">Taxeringsvärde</th>', b.fastigheter.map((f) =>
+      `<tr><td><a data-fastighet="${esc(f.beteckning)}" ${bboxAttr(f)}>${esc(f.beteckning)}</a></td>
+        <td class="num">${mkr(f.varde_tkr)}</td></tr>`),
+      'Inga kända fastigheter ännu. Ägaruppgifter läses in när Lantmäteriet har svarat.')}
     <p class="muted small" style="margin-top:16px">Källa: Bolagsverket och SCB, värdefulla datamängder.</p>
   `);
 }
 
-function flyToBbox(bboxOrBet) {
-  if (typeof bboxOrBet === 'string' && bboxOrBet.includes(',')) {
-    const [a, b, c, d] = bboxOrBet.split(',').map(Number);
-    map.fitBounds([[a, b], [c, d]], { padding: 120, maxZoom: 17 });
-  }
+function flyToBbox(bbox) {
+  const [a, b, c, d] = bbox.split(',').map(Number);
+  map.fitBounds([[a, b], [c, d]], { padding: 120, maxZoom: 17 });
 }
 
 // Länkar i panelen.
@@ -233,7 +279,7 @@ async function runSearch() {
   const items = [];
   if (r.fastigheter.length) {
     items.push('<li class="group">Fastigheter</li>');
-    for (const f of r.fastigheter) items.push(`<li data-kind="f" data-id="${esc(f.beteckning)}" data-bbox="${[f.minx, f.miny, f.maxx, f.maxy].join(',')}">${esc(f.beteckning)}</li>`);
+    for (const f of r.fastigheter) items.push(`<li data-kind="f" data-id="${esc(f.beteckning)}" ${bboxAttr(f)}>${esc(f.beteckning)}</li>`);
   }
   if (r.bolag.length) {
     items.push('<li class="group">Bolag</li>');
@@ -257,8 +303,8 @@ function openOm() {
   select(null);
   showPanel(`
     <h2>Horos</h2>
-    <div class="muted small">Öppen karta över bolagsägda fastigheter i Stockholm</div>
-    <p class="small">I antikens Athen ställdes gränsstenar, <em>horoi</em> (ὅροι), ut på tomter för att
+    <div class="meta">Öppen karta över bolagsägda fastigheter i Stockholm</div>
+    <p>I antikens Athen ställdes gränsstenar, <em>horoi</em> (ὅροι), ut på tomter för att
       offentligt visa vem som hade anspråk på marken. Horos gör samma sak med dagens offentliga uppgifter:
       vilka bolag, föreningar och kommuner som äger fastigheterna, deras taxeringsvärden och vad de har köpts för.</p>
     <h3>Källor</h3>
@@ -269,11 +315,12 @@ function openOm() {
       <dt>Ägare, köp</dt><dd>Lantmäteriet, allmänna handlingar</dd>
       <dt>Karta</dt><dd>OpenFreeMap, © OpenStreetMap-bidragsgivare</dd>
       <dt>Satellit</dt><dd>EOxCloudless 2025 (Copernicus Sentinel-2)</dd>
+      <dt>Flygfoton</dt><dd>Lantmäteriet, historiska ortofoton 1960–2005 (CC0)</dd>
     </dl>
     <h3>Integritet</h3>
-    <p class="small">Horos visar bara fastigheter som ägs av juridiska personer. Uppgifter om privatpersoner
+    <p>Horos visar bara fastigheter som ägs av juridiska personer. Uppgifter om privatpersoner
       samlas inte in och visas inte. Sidan använder inga kakor och sparar inte besökarnas IP-adresser.</p>
-    <p class="small"><a href="metod.html">Metod, begränsningar och nedladdning av datan →</a></p>
+    <p><a href="metod.html">Metod, begränsningar och nedladdning av datan →</a></p>
   `);
 }
 $('#om').addEventListener('click', (e) => { e.preventDefault(); openOm(); });
@@ -284,7 +331,8 @@ addEventListener('hashchange', () => { if (location.hash === '#om') openOm(); })
 api('/api/status').then((s) => {
   $('#demo-banner').hidden = !s.demo;
   const n = (x) => x.toLocaleString('sv-SE');
-  $('#counts').textContent =
-    `${n(s.bolag)} juridiska personer · ${n(s.fastigheter)} fastigheter · ${n(s.taxeringar)} taxeringar · ${n(s.transaktioner)} överlåtelser`
-    + (s.demo ? ` · ${n(s.demo)} exempelfastigheter` : '');
+  $('#counts').textContent = s.demo
+    ? `${n(s.demo)} exempelfastigheter · ${n(s.bolag)} bolag`
+    : `${n(s.fastigheter)} fastigheter · ${n(s.bolag)} bolag · ${n(s.transaktioner)} överlåtelser`;
+  basemap.addHistoriska(s.historiska ?? []);
 });

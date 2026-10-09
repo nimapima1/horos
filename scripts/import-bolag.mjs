@@ -10,11 +10,10 @@
 import { createReadStream, readdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
-import { openDb, normOrgnr, ROOT } from '../lib/db.mjs';
+import { openDb, normOrgnr, rebuildBolagFts, ROOT } from '../lib/db.mjs';
+import { parseArgs, isoDate } from '../lib/csv.mjs';
 
-const args = Object.fromEntries(
-  process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]]] : acc), []),
-);
+const args = parseArgs(process.argv.slice(2));
 const firstTxt = (dir) => {
   try { return join(dir, readdirSync(dir).find((f) => f.endsWith('.txt'))); } catch { return null; }
 };
@@ -65,7 +64,6 @@ const upsertBv = db.prepare(`
     verksamhet = excluded.verksamhet`);
 
 const nz = (s) => (s && s.trim() ? s.trim() : null);
-const isoDate = (s) => (/^\d{8}$/.test(s ?? '') ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6)}` : nz(s));
 
 // Semikolonseparerad rad med "..."-fält och \" som escape.
 function splitBv(line) {
@@ -87,19 +85,17 @@ function splitBv(line) {
 
 async function eachLine(file, encoding, onLine) {
   const rl = createInterface({ input: createReadStream(file, { encoding }), crlfDelay: Infinity });
-  let n = 0, kept = 0, header = null;
-  const BATCH = 20000;
+  let n = 0, kept = 0, first = true;
+  const report = () => process.stdout.write(`\r  ${n.toLocaleString('sv')} rader, ${kept.toLocaleString('sv')} juridiska personer`);
   db.exec('BEGIN');
   for await (const line of rl) {
-    if (!header) { header = line; continue; }
+    if (first) { first = false; continue; }          // rubrikrad
     if (onLine(line)) kept++;
-    if (++n % BATCH === 0) {
-      db.exec('COMMIT; BEGIN');
-      process.stdout.write(`\r  ${n.toLocaleString('sv')} rader, ${kept.toLocaleString('sv')} juridiska personer`);
-    }
+    if (++n % 20000 === 0) { db.exec('COMMIT; BEGIN'); report(); }
   }
   db.exec('COMMIT');
-  console.log(`\r  ${n.toLocaleString('sv')} rader, ${kept.toLocaleString('sv')} juridiska personer`);
+  report();
+  console.log();
 }
 
 if (SCB_FILE) {
@@ -136,9 +132,7 @@ if (BV_FILE) {
 } else console.warn('Ingen Bolagsverket-fil hittades i data/raw/bv – hoppar över.');
 
 console.log('Bygger sökindex för bolagsnamn…');
-db.exec(`DROP TABLE IF EXISTS bolag_fts;
-  CREATE VIRTUAL TABLE bolag_fts USING fts5(namn, content='bolag', content_rowid='rowid');
-  INSERT INTO bolag_fts(bolag_fts) VALUES('rebuild');`);
+rebuildBolagFts(db);
 
 const { n } = db.prepare('SELECT count(*) AS n FROM bolag WHERE demo = 0').get();
 console.log(`Klart: ${n.toLocaleString('sv')} juridiska personer i databasen.`);

@@ -20,6 +20,8 @@
     "start:public": "node --disable-warning=ExperimentalWarning -e \"process.env.PUBLIC_MODE='1';process.env.FASTIGHETSKARTA_DB='data/public.sqlite';import('./server.mjs')\""
   },
   "dependencies": {
+    "@fontsource-variable/lexend": "5.3.0",
+    "@fontsource-variable/source-sans-3": "5.3.0",
     "maplibre-gl": "4.7.1"
   }
 }

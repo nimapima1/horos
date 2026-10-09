@@ -5,54 +5,66 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Horos – bolagsägda fastigheter i Stockholm</title>
   <meta name="description" content="Horos är en öppen karta över fastigheter som ägs av bolag, föreningar och kommuner i Stockholm, byggd på offentliga källor.">
+  <meta name="theme-color" content="#0F172A">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230B1120'/%3E%3Cpath transform='translate(5.8 3) scale(.6)' d='M2 34V10l7-7h5v12h6V3h5l7 7v24h-12V24h-6v10z' fill='%2338BDF8'/%3E%3Cpath d='M5 26.5h22' stroke='%2322D3EE' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preload" href="vendor/lexend.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="vendor/source-sans-3.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="vendor/maplibre-gl.css">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <header class="topbar">
-    <div class="brand">
+<body class="mappage">
+  <div id="map" role="region" aria-label="Karta över fastigheter"></div>
+
+  <div class="sidebar">
+    <header class="topbar glass">
       <div class="brand-row">
-        <strong>Horos</strong>
+        <a class="brand" href="./" aria-label="Horos, till startsidan">
+          <svg class="wordmark" viewBox="0 0 137 42" aria-hidden="true">
+            <path class="wm-stone" d="M2 34V10l7-7h5v12h6V3h5l7 7v24h-12V24h-6v10z"/>
+            <text class="wm-text" x="35" y="34">oros</text>
+            <path class="wm-line" d="M0 39.5h129"/>
+            <circle class="wm-node" cx="131" cy="39.5" r="2.5"/>
+          </svg>
+        </a>
         <nav class="links" aria-label="Sidor">
           <a id="om" href="#om">Om</a>
           <a href="metod.html">Metod</a>
           <a href="metod.html#data">Data</a>
         </nav>
       </div>
-      <span class="muted tagline">Bolagsägda fastigheter i Stockholm · öppna källor</span>
-    </div>
-    <div class="search">
-      <input id="q" type="search" placeholder="Sök bolag, org.nr eller fastighet…" autocomplete="off" aria-label="Sök">
-      <ul id="results" class="results" hidden></ul>
-    </div>
-  </header>
+      <p class="tagline">Bolagsägda fastigheter i Stockholm, ur offentliga källor</p>
+      <div class="search">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="search" placeholder="Sök bolag, org.nr eller fastighet" autocomplete="off" aria-label="Sök bolag, organisationsnummer eller fastighet">
+        <ul id="results" class="results" hidden></ul>
+      </div>
+    </header>
 
-  <div id="demo-banner" class="demo-banner" hidden>
-    <strong>EXEMPELDATA.</strong> Fastigheterna är OpenStreetMap-byggnader och ägare, taxeringsvärden och
-    köpeskillingar är påhittade. Riktiga uppgifter läses in när Lantmäteriet och Skatteverket har svarat.
-  </div>
+    <div id="demo-banner" class="notice glass" role="note" hidden>
+      <strong>Exempeldata.</strong> Fastigheterna är OpenStreetMap-byggnader och ägare, taxeringsvärden och
+      köpeskillingar är påhittade. Riktiga uppgifter läses in när Lantmäteriet och Skatteverket har svarat.
+    </div>
 
-  <main class="layout">
-    <div id="map"></div>
-    <aside id="panel" class="panel" hidden>
-      <button id="close" class="close" aria-label="Stäng">×</button>
+    <aside id="panel" class="panel glass" aria-live="polite" hidden>
+      <button id="close" class="close" type="button" aria-label="Stäng panelen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
       <div id="panel-body"></div>
     </aside>
-    <div class="legend">
-      <div class="legend-title">Taxeringsvärde</div>
-      <div class="legend-row"><i style="background:var(--v1)"></i>&lt; 25 Mkr</div>
-      <div class="legend-row"><i style="background:var(--v2)"></i>25–100 Mkr</div>
-      <div class="legend-row"><i style="background:var(--v3)"></i>100–300 Mkr</div>
-      <div class="legend-row"><i style="background:var(--v4)"></i>&gt; 300 Mkr</div>
-      <div class="legend-row"><i style="background:var(--v0)"></i>Uppgift saknas</div>
-      <div id="zoom-hint" class="muted small" hidden>Zooma in för att se fastigheter</div>
-    </div>
-  </main>
+  </div>
 
-  <footer class="status">
-    <span id="counts" class="muted small"></span>
-    <span class="muted small">Källor: Lantmäteriet · Bolagsverket · SCB · Skatteverket · Karta © OpenFreeMap, © OpenStreetMap</span>
-  </footer>
+  <div class="legend glass">
+    <div class="legend-title">Taxeringsvärde</div>
+    <div class="legend-scale">
+      <span><i style="background:var(--v1)"></i>&lt; 25 Mkr</span>
+      <span><i style="background:var(--v2)"></i>25–100</span>
+      <span><i style="background:var(--v3)"></i>100–300</span>
+      <span><i style="background:var(--v4)"></i>&gt; 300</span>
+      <span><i style="background:var(--v0)"></i>Saknas</span>
+    </div>
+    <div id="zoom-hint" class="hint" hidden>Zooma in för att se fastigheter</div>
+    <div id="counts" class="counts"></div>
+  </div>
 
   <script src="vendor/maplibre-gl-csp.js"></script>
   <script src="app.js"></script>

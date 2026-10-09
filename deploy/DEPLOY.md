@@ -93,11 +93,16 @@ deploy/deploy.sh deploy@<IP> --data
 
 Hemligheter skickas direkt från din terminal till servern och sparas i
 `/etc/fastighetskarta/secrets.env` (läsbar bara för root och Horos-tjänsten). Skriv dem aldrig
-i chatten, i koden eller i ett kommando. Kommandot nedan frågar efter värdet utan att visa det:
+i chatten, i koden eller i ett kommando.
 
-```powershell
-$v = Read-Host -AsSecureString "Värde"; [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($v)) | ssh deploy@<IP> sudo -n /usr/local/sbin/fastighetskarta-admin set-secret NAMN
+Geotorget-inloggningen (för historiska flygfoton) läggs in med ett skript som frågar efter
+lösenordet dolt och skickar det över SSH:
+
+```sh
+node scripts/login-till-server.mjs deploy@<IP> <geotorget-användarnamn>
 ```
+
+Lokalt startas servern med samma inloggning via `node scripts/dev-med-login.mjs <användarnamn>`.
 
 `fastighetskarta-admin list-secrets` visar vilka namn som finns (aldrig värdena).
 Kräver serverkonfiguration version 2.

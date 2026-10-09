@@ -6,16 +6,18 @@
 //
 //   node scripts/demo-data.mjs          lägg in exempeldata
 //   node scripts/demo-data.mjs --clear  ta bort all exempeldata
-import { openDb, geomBbox, withTransaction } from '../lib/db.mjs';
+import { openDb, geomBbox, withTransaction, DATA_TABLES, rebuildBolagFts } from '../lib/db.mjs';
+import { mapCoords, planarArea } from '../lib/geo.mjs';
 
 const db = openDb();
 
 function clearDemo() {
-  for (const t of ['bolag', 'fastighet', 'taxering', 'agande', 'transaktion']) db.exec(`DELETE FROM ${t} WHERE demo = 1`);
+  for (const t of DATA_TABLES) db.exec(`DELETE FROM ${t} WHERE demo = 1`);
 }
 
 if (process.argv.includes('--clear')) {
   clearDemo();
+  rebuildBolagFts(db);
   console.log('Exempeldata borttagen.');
   process.exit(0);
 }
@@ -48,13 +50,8 @@ const BOLAG = [
 
 // Ytberäkning i m² via lokal ekvirektangulär projektion.
 function areaM2(ring) {
-  const lat0 = (ring[0][1] * Math.PI) / 180;
-  const kx = 111320 * Math.cos(lat0), ky = 110540;
-  let a = 0;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    a += (ring[j][0] * kx) * (ring[i][1] * ky) - (ring[i][0] * kx) * (ring[j][1] * ky);
-  }
-  return Math.abs(a / 2);
+  const kx = 111320 * Math.cos((ring[0][1] * Math.PI) / 180), ky = 110540;
+  return planarArea(mapCoords({ type: 'Polygon', coordinates: [ring] }, ([x, y]) => [x * kx, y * ky]));
 }
 
 const insBolag = db.prepare(`INSERT OR REPLACE INTO bolag (orgnr, namn, jurform, status, sni, adress, postnr, postort, registrerad, verksamhet, demo)
@@ -98,4 +95,5 @@ withTransaction(db, () => {
     n++;
   }
 });
+rebuildBolagFts(db);   // så att exempelbolagen hittas i sökningen
 console.log(`Klart: ${n} exempelfastigheter i centrala Stockholm. Ta bort dem med --clear.`);

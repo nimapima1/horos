@@ -1,5 +1,5 @@
 // Importerar Lantmäteriets Fastighetsindelning (GeoPackage, SWEREF 99 TM) för en kommun.
-// Beställ "Fastighetsindelning Nedladdning, vektor" (avgiftsfri, CC0) på
+// Beställ "Fastighetsindelning Nedladdning, vektor" (avgiftsfri, kräver juridisk prövning) på
 // https://geotorget.lantmateriet.se och lägg filen i data/raw/.
 //
 //   node scripts/import-fastigheter.mjs data/raw/fastighetsindelning.gpkg [flaggor]
@@ -11,10 +11,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, geomBbox, normBeteckning, withTransaction } from '../lib/db.mjs';
 import { parseGpkgGeometry, sweref99tmToWgs84, mapCoords, planarArea, round6 } from '../lib/geo.mjs';
+import { parseArgs } from '../lib/csv.mjs';
 
-const argv = process.argv.slice(2);
-const file = argv.find((a) => !a.startsWith('--') && !argv[argv.indexOf(a) - 1]?.startsWith('--'));
-const opt = (name) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
+const args = parseArgs(process.argv.slice(2));
+const file = args._[0];
 if (!file) {
   console.error('Ange sökväg till GeoPackage-filen. Se kommentaren överst i skriptet.');
   process.exit(1);
@@ -26,7 +26,7 @@ const layers = gpkg.prepare(`SELECT c.table_name, g.column_name AS geom, g.geome
   WHERE c.data_type = 'features'`).all();
 const columnsOf = (t) => gpkg.prepare(`PRAGMA table_info("${t}")`).all().map((c) => c.name);
 
-if (argv.includes('--list')) {
+if (args.list) {
   for (const l of layers) {
     const { n } = gpkg.prepare(`SELECT count(*) AS n FROM "${l.table_name}"`).get();
     console.log(`\n${l.table_name}  (${l.gtype}, EPSG:${l.srs_id}, ${n} rader)`);
@@ -36,7 +36,7 @@ if (argv.includes('--list')) {
   process.exit(0);
 }
 
-const layer = layers.find((l) => l.table_name === opt('layer'))
+const layer = layers.find((l) => l.table_name === args.layer)
   ?? layers.find((l) => /yta|omrade|fastighet/i.test(l.table_name) && /POLYGON/i.test(l.gtype))
   ?? layers.find((l) => /POLYGON/i.test(l.gtype));
 if (!layer) throw new Error('Hittade inget polygonlager. Kör med --list och ange --layer.');
@@ -44,9 +44,9 @@ if (layer.srs_id !== 3006) console.warn(`Varning: lagret har EPSG:${layer.srs_id
 
 const cols = columnsOf(layer.table_name);
 const find = (re) => cols.find((c) => re.test(c));
-const betCol = opt('beteckning') ?? find(/^fastighetsbeteckning$/i) ?? find(/beteckning/i);
-const kommunCol = opt('kommun-kolumn') ?? find(/^kommunkod$/i) ?? find(/kommunnamn/i) ?? find(/kommun/i);
-const kommunVal = (opt('kommun') ?? '0180').toUpperCase();
+const betCol = args.beteckning ?? find(/^fastighetsbeteckning$/i) ?? find(/beteckning/i);
+const kommunCol = args['kommun-kolumn'] ?? find(/^kommunkod$/i) ?? find(/kommunnamn/i) ?? find(/kommun/i);
+const kommunVal = String(args.kommun ?? '0180').toUpperCase();
 const kommunMatch = (v) => {
   const s = String(v ?? '').toUpperCase().trim();
   return s === kommunVal || (kommunVal === '0180' && (s === '180' || s === 'STOCKHOLM'));

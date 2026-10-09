@@ -17,7 +17,7 @@
 // när ansökan har beviljats. Läs beslutets villkor innan du publicerar.
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { openDb, DB_PATH, ROOT } from '../lib/db.mjs';
+import { openDb, DB_PATH, ROOT, harJuridiskAgare, rebuildBolagFts, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 
 const args = parseArgs(process.argv.slice(2));
@@ -38,36 +38,32 @@ const db = openDb({ path: OUT });
 db.exec('DROP TABLE har_privat_agare');
 db.exec(`ATTACH DATABASE '${DB_PATH.replace(/'/g, "''")}' AS src`);
 
-db.exec('BEGIN');
-db.exec(`
-  CREATE TEMP TABLE tillaten AS
-    SELECT f.beteckning FROM src.fastighet f
-    WHERE f.demo = 0
-      AND f.beteckning NOT IN (SELECT beteckning FROM src.har_privat_agare)
-      AND (EXISTS (SELECT 1 FROM src.agande a WHERE a.beteckning = f.beteckning AND a.demo = 0)
-        OR EXISTS (SELECT 1 FROM src.taxering t WHERE t.beteckning = f.beteckning AND t.demo = 0 AND t.agare_orgnr IS NOT NULL));
-  CREATE UNIQUE INDEX temp.tillaten_bet ON tillaten(beteckning);
+withTransaction(db, () => {
+  db.exec(`
+    CREATE TEMP TABLE tillaten AS
+      SELECT f.beteckning FROM src.fastighet f
+      WHERE f.demo = 0
+        AND f.beteckning NOT IN (SELECT beteckning FROM src.har_privat_agare)
+        AND ${harJuridiskAgare({ schema: 'src.', extra: 'AND k.demo = 0' })};
+    CREATE UNIQUE INDEX temp.tillaten_bet ON tillaten(beteckning);
 
-  INSERT INTO fastighet SELECT * FROM src.fastighet WHERE beteckning IN (SELECT beteckning FROM tillaten);
-  INSERT INTO agande SELECT * FROM src.agande WHERE demo = 0 AND beteckning IN (SELECT beteckning FROM tillaten);
-  INSERT INTO taxering SELECT * FROM src.taxering WHERE demo = 0 AND agare_orgnr IS NOT NULL
-    AND beteckning IN (SELECT beteckning FROM tillaten);
-  INSERT INTO transaktion SELECT * FROM src.transaktion WHERE demo = 0 AND beteckning IN (SELECT beteckning FROM tillaten);
-`);
-if (args['alla-bolag']) {
-  db.exec('INSERT INTO bolag SELECT * FROM src.bolag WHERE demo = 0');
-} else {
-  db.exec(`INSERT INTO bolag SELECT * FROM src.bolag WHERE demo = 0 AND orgnr IN (
-    SELECT orgnr FROM agande UNION SELECT agare_orgnr FROM taxering UNION SELECT forvarvare_orgnr FROM transaktion)`);
-}
-db.exec(`CREATE TABLE meta (nyckel TEXT PRIMARY KEY, varde TEXT);
-  INSERT INTO meta VALUES ('byggd', datetime('now')), ('lm_beslut', ${args['lm-beslut'] ? `'${String(args['lm-beslut']).replace(/'/g, "''")}'` : 'NULL'}),
-    ('export_geometri', '${args['export-geometri'] ? '1' : '0'}');`);
-db.exec('COMMIT');
+    INSERT INTO fastighet SELECT * FROM src.fastighet WHERE beteckning IN (SELECT beteckning FROM tillaten);
+    INSERT INTO agande SELECT * FROM src.agande WHERE demo = 0 AND beteckning IN (SELECT beteckning FROM tillaten);
+    INSERT INTO taxering SELECT * FROM src.taxering WHERE demo = 0 AND agare_orgnr IS NOT NULL
+      AND beteckning IN (SELECT beteckning FROM tillaten);
+    INSERT INTO transaktion SELECT * FROM src.transaktion WHERE demo = 0 AND beteckning IN (SELECT beteckning FROM tillaten);
+    INSERT INTO bolag SELECT * FROM src.bolag WHERE demo = 0 ${args['alla-bolag'] ? '' : `AND orgnr IN (
+      SELECT orgnr FROM agande UNION SELECT agare_orgnr FROM taxering UNION SELECT forvarvare_orgnr FROM transaktion)`};
+    CREATE TABLE meta (nyckel TEXT PRIMARY KEY, varde TEXT);
+  `);
+  const meta = db.prepare('INSERT INTO meta VALUES (?, ?)');
+  meta.run('byggd', new Date().toISOString().slice(0, 19).replace('T', ' '));
+  meta.run('lm_beslut', args['lm-beslut'] ? String(args['lm-beslut']) : null);
+  meta.run('export_geometri', args['export-geometri'] ? '1' : '0');
+});
 db.exec('DETACH DATABASE src');
 
-db.exec(`CREATE VIRTUAL TABLE bolag_fts USING fts5(namn, content='bolag', content_rowid='rowid');
-  INSERT INTO bolag_fts(bolag_fts) VALUES('rebuild');`);
+rebuildBolagFts(db);
 // Servern öppnar filen skrivskyddat: ingen WAL, kompakt fil.
 db.exec('PRAGMA journal_mode = DELETE; VACUUM;');
 

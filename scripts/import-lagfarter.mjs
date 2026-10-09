@@ -6,8 +6,8 @@
 //
 // Fält: beteckning, orgnr, andel, datum, kopeskilling, art
 // Rader med personnummer hoppas alltid över.
-import { openDb, normOrgnr, normBeteckning, withTransaction } from '../lib/db.mjs';
-import { readTable, mapColumns, parseArgs, num, isoDate } from '../lib/csv.mjs';
+import { openDb, normOrgnr, normBeteckning, withTransaction, markPrivata } from '../lib/db.mjs';
+import { loadMapped, parseArgs, num, isoDate } from '../lib/csv.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const file = args._[0];
@@ -27,16 +27,8 @@ const FIELDS = {
   art: ['overlatelseform', 'forvarvsart', 'fangesart', 'art', 'fang'],
 };
 
-const { header, rows } = readTable(file);
-const col = mapColumns(header, FIELDS, args.map);
-console.log(`${rows.length} rader. Kolumner i filen: ${header.join(' | ')}`);
-for (const f of Object.keys(FIELDS)) console.log(`  ${f.padEnd(13)} -> ${col[f] != null ? header[col[f]] : '(saknas)'}`);
-if (col.beteckning == null || col.orgnr == null) {
-  console.error('\nBeteckning och organisationsnummer måste hittas. Ange dem med --map.');
-  process.exit(1);
-}
+const { rows, get } = loadMapped(file, FIELDS, args.map, ['beteckning', 'orgnr']);
 
-const get = (r, f) => (col[f] != null ? String(r[col[f]] ?? '').trim() || null : null);
 let personer = 0;
 const recs = [];
 const privata = new Set();
@@ -59,8 +51,7 @@ withTransaction(db, () => {
     if (!args.append) db.exec('DELETE FROM agande WHERE demo = 0');
     const ins = db.prepare('INSERT INTO agande (beteckning, orgnr, andel, inskrivningsdag, demo) VALUES (?, ?, ?, ?, 0)');
     for (const r of recs) ins.run(r.bet, r.orgnr, r.andel, r.datum);
-    const insP = db.prepare('INSERT OR IGNORE INTO har_privat_agare (beteckning) VALUES (?)');
-    for (const b of privata) if (b) insP.run(b);
+    markPrivata(db, privata);
   } else {
     if (!args.append) db.exec('DELETE FROM transaktion WHERE demo = 0');
     const ins = db.prepare(`INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr, art, andel, demo)

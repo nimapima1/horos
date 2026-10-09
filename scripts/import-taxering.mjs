@@ -6,8 +6,8 @@
 //
 // Fält: beteckning, taxeringsenhet, typ, ar, varde, markvarde, byggvarde, orgnr, andel
 // Rader där ägaren inte är en juridisk person (personnummer) hoppas över.
-import { openDb, normOrgnr, normBeteckning, withTransaction } from '../lib/db.mjs';
-import { readTable, mapColumns, parseArgs, num } from '../lib/csv.mjs';
+import { openDb, normOrgnr, normBeteckning, withTransaction, markPrivata } from '../lib/db.mjs';
+import { loadMapped, parseArgs, num } from '../lib/csv.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const file = args._[0];
@@ -25,28 +25,20 @@ const FIELDS = {
   andel: ['agarandel', 'andel'],
 };
 
-const { header, rows } = readTable(file);
-const col = mapColumns(header, FIELDS, args.map);
-console.log(`${rows.length} rader. Kolumner i filen: ${header.join(' | ')}`);
-for (const f of Object.keys(FIELDS)) console.log(`  ${f.padEnd(15)} -> ${col[f] != null ? header[col[f]] : '(saknas)'}`);
-if (col.beteckning == null || col.varde == null) {
-  console.error('\nBeteckning och taxeringsvärde måste hittas. Ange dem med --map, t.ex. --map beteckning="Fastighet"');
-  process.exit(1);
-}
+const { rows, get } = loadMapped(file, FIELDS, args.map, ['beteckning', 'varde']);
 
 // Skatteverket anger normalt värden i tkr. Gissa om inget anges: medianvärde > 100 000 => kr.
-const values = rows.map((r) => num(r[col.varde])).filter((v) => v != null).sort((x, y) => x - y);
+const values = rows.map((r) => num(get(r, 'varde'))).filter((v) => v != null).sort((x, y) => x - y);
 const enhet = args.enhet ?? (values[Math.floor(values.length / 2)] > 100000 ? 'kr' : 'tkr');
 const toTkr = (v) => (v == null ? null : Math.round(enhet === 'kr' ? v / 1000 : v));
 console.log(`Värden tolkas som ${enhet}.`);
 
-const get = (r, f) => (col[f] != null ? String(r[col[f]] ?? '').trim() || null : null);
 let personer = 0;
 const recs = [];
 const privata = new Set();
 for (const r of rows) {
   const orgnrRaw = get(r, 'orgnr');
-  const orgnr = orgnrRaw ? normOrgnr(orgnrRaw) : null;
+  const orgnr = normOrgnr(orgnrRaw);
   if (orgnrRaw && !orgnr) {                              // personnummer: spara aldrig
     personer++;
     privata.add(normBeteckning(get(r, 'beteckning')));   // bara beteckningen, för uteslutning
@@ -64,8 +56,7 @@ const ins = db.prepare(`INSERT INTO taxering (beteckning, taxeringsenhet, typ, a
 withTransaction(db, () => {
   if (!args.append) db.exec('DELETE FROM taxering WHERE demo = 0');
   for (const r of recs) ins.run(...r);
-  const insP = db.prepare('INSERT OR IGNORE INTO har_privat_agare (beteckning) VALUES (?)');
-  for (const b of privata) if (b) insP.run(b);
+  markPrivata(db, privata);
 });
 const { utan } = db.prepare(`SELECT count(DISTINCT t.beteckning) AS utan FROM taxering t
   LEFT JOIN fastighet f ON f.beteckning = t.beteckning WHERE t.demo = 0 AND f.beteckning IS NULL`).get();
