@@ -219,6 +219,7 @@ button { font: inherit; color: inherit; }
 .anv-bar { display: flex; gap: 2px; height: 10px; margin: 12px 0 4px; border-radius: 5px; overflow: hidden; }
 .anv-bar span { min-width: 3px; }
 .panel .anv-tab { margin: 6px 0 8px; }
+.panel .anv-tab th.num { white-space: normal; padding-left: 10px; }   /* två rubriker bredvid varandra på mobil */
 .anv-tab i { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 3px; vertical-align: -1px; }
 .anv-summa td { font-weight: 700; border-top: 1px solid var(--border); }
 
