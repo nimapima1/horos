@@ -242,6 +242,7 @@ button { font: inherit; color: inherit; }
 .panel td { padding: 9px 6px 9px 0; border-top: 1px solid var(--border); vertical-align: top; }
 .panel td.num, .panel th.num { text-align: right; padding-right: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .panel td .small { margin-top: 1px; }
+.panel td.dag { width: 1%; white-space: nowrap; padding-right: 14px; font-variant-numeric: tabular-nums; }
 .panel a { cursor: pointer; font-weight: 600; }
 .empty { margin: 4px 0; padding: 12px; border-radius: var(--radius-sm); background: var(--surface-sunken); font-size: 14px; color: var(--muted); }
 .tag {
@@ -283,7 +284,7 @@ button { font: inherit; color: inherit; }
   padding: 12px 14px; max-width: 300px; font-size: 13px;
 }
 .legend-title { display: flex; align-items: center; gap: 8px; font-family: var(--font-head); font-weight: 600; font-size: 14px; margin-bottom: 8px; }
-.legend-title select { flex: 1; min-height: 32px; font: inherit; font-size: 13px; color: var(--text); background: var(--surface-sunken); border: 1px solid transparent; border-radius: 7px; padding: 0 6px; }
+.legend-title select { flex: 1; min-width: 0; min-height: 32px; font: 400 13px var(--font-body); color: var(--text); background: var(--surface-sunken); border: 1px solid transparent; border-radius: 7px; padding: 0 6px; }
 .legend-scale { display: grid; grid-template-columns: repeat(2, auto); gap: 5px 14px; }
 .legend-scale span { display: flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--muted); }
 .legend i { width: 14px; height: 14px; border-radius: 4px; flex: none; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08); }
@@ -312,13 +313,23 @@ button { font: inherit; color: inherit; }
   }
   .notice { padding: 9px 12px; font-size: 13px; line-height: 1.4; }
   /* Kontrollerna nedtill till höger: överst skulle sökrutan och notisen täcka dem. */
-  .maplibregl-ctrl-top-right { top: auto; bottom: 36px; }
-  /* Teckenförklaringen (med Färga efter) nedtill när panelen är stängd. */
-  .legend { left: 10px; right: auto; bottom: 28px; width: calc(100vw - 190px); max-width: 220px; padding: 9px 11px; }   /* kontrollerna står till höger */
+  .maplibregl-ctrl-top-right { top: auto; bottom: 34px; right: 0; }
+  .basemap-select select { width: 150px; }
+  /* Teckenförklaringen (med Färga efter) nedtill när panelen är stängd, ovanför källhänvisningen och
+     till vänster om kontrollerna (150 px + marginaler). */
+  .legend { left: 10px; right: auto; bottom: 44px; width: calc(100vw - 186px); max-width: 220px; padding: 9px 11px; }
   .legend-title { display: grid; gap: 4px; font-size: 13px; }
   .legend-scale { grid-template-columns: 1fr; gap: 3px; }
   .legend .counts { display: none; }
   body:has(#panel:not([hidden])) .legend, body:has(.filters[open]) .legend { display: none; }
+}
+/* Minsta telefonerna: menyn på en rad, och källhänvisningen (två rader här) under teckenförklaringen. */
+@media (max-width: 340px) {
+  .wordmark { height: 28px; }
+  .links a { padding: 10px 4px; font-size: 13px; }
+  .legend { bottom: 62px; padding: 9px 8px; }
+  .legend-title select { padding: 0 2px; }
+  .maplibregl-ctrl-top-right { bottom: 52px; }
 }
 
 /* --- Textsidor (metod.html) ---------------------------------------------------- */

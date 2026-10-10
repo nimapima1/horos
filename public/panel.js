@@ -12,6 +12,12 @@ const bboxAttr = (f) => `data-bbox="${[f.minx, f.miny, f.maxx, f.maxy].join(',')
 const table = (head, rows, empty) => (rows.length
   ? `<table><tr>${head}</tr>${rows.join('')}</table>`
   : `<p class="empty">${empty}</p>`);
+const MANADER = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+// Datumkolumn: "2026-10-10" -> "10 okt" med året under, så att kolumnen blir smal.
+const dagCell = (d) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d ?? '');
+  return `<td class="dag">${m ? `${+m[3]} ${MANADER[m[2] - 1]}<div class="muted small">${m[1]}</div>` : esc(d ?? '')}</td>`;
+};
 // Nyckeltal överst i panelen: [[etikett, värde, undertext], ...]
 const stats = (items) => `<div class="stats">${items.map(([label, value, sub]) =>
   `<div class="stat"><div class="stat-label">${label}</div><div class="stat-value">${value}</div>${sub ? `<div class="fact-sub">${sub}</div>` : ''}</div>`).join('')}</div>`;
@@ -158,21 +164,21 @@ async function openFastighet(bet, adress) {
         <tr><td></td><td class="muted small" colspan="2">Mark ${mkr(t.markvarde_tkr)} · Byggnad ${mkr(t.byggvarde_tkr)}${t.taxeringsenhet ? ` · Enhet ${esc(t.taxeringsenhet)}` : ''}</td></tr>`),
       'Väntar på uppgifter från Skatteverket.')}
     <h3>Överlåtelser</h3>
-    ${table('<th class="num">Datum</th><th>Förvärvare</th><th class="num">Köpeskilling</th>', f.transaktioner.map((x, i) => {
+    ${table('<th>Datum</th><th>Förvärvare</th><th class="num">Köpeskilling</th>', f.transaktioner.map((x, i) => {
       // Säljaren är förvärvaren i överlåtelsen före (listan är nyast först), om den finns i Horos.
       const fore = f.transaktioner[i + 1];
       const fran = fore?.forvarvare_orgnr && fore.forvarvare_orgnr !== x.forvarvare_orgnr
         ? `från ${bolagLink(fore.forvarvare_orgnr, fore.forvarvare_namn)}` : '';
-      return `<tr><td class="num">${esc(x.inskrivningsdag ?? '')}</td>
+      return `<tr>${dagCell(x.inskrivningsdag)}
         <td>${x.forvarvare_orgnr ? bolagLink(x.forvarvare_orgnr, x.forvarvare_namn) : '–'}<div class="muted small">${[esc(x.art ?? ''), fran].filter(Boolean).join(' · ')}</div></td>
         <td class="num">${kr(x.kopeskilling_kr)}</td></tr>`;
     }), 'Inga registrerade överlåtelser.')}
     ${f.nyheter.length ? `<h3>I pressmeddelanden</h3>
-    ${table('<th class="num">Datum</th><th>Affär</th><th class="num">Pris</th>', f.nyheter.map(nyhetRad), '')}` : ''}
+    ${table('<th>Datum</th><th>Affär</th><th class="num">Pris</th>', f.nyheter.map(nyhetRad), '')}` : ''}
     <h3>Köp i närheten</h3>
     <div class="meta small">Inom cirka 300 meter, senaste först.</div>
-    ${table('<th class="num">Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', f.narKop.map((x) =>
-      `<tr><td class="num">${esc(x.dag ?? '')}</td>
+    ${table('<th>Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', f.narKop.map((x) =>
+      `<tr>${dagCell(x.dag)}
         <td><a data-fastighet="${esc(x.beteckning)}" ${bboxAttr(x)}>${esc(x.beteckning)}</a>
           <div class="muted small">${x.orgnr ? bolagLink(x.orgnr, x.namn, x.demo) : '–'}</div></td>
         <td class="num">${mkr(x.kr / 1000)}<div class="muted small">${x.paket ? 'paketaffär'
@@ -228,8 +234,8 @@ async function openBolag(orgnr) {
         <div class="muted small">${fastighetLink(a)}${a.bransch ? ` · ${esc(a.bransch)}` : ''}</div></td>
         <td class="num">${esc(ANSTKL[a.anstkl] ?? '–')}</td></tr>`), '')}` : ''}
     <h3>Köp</h3>
-    ${table('<th class="num">Datum</th><th>Fastighet</th><th class="num">Pris</th>', b.kop.map((x) =>
-      `<tr><td class="num">${esc(x.dag ?? '')}</td><td>${fastighetLink(x)}</td><td class="num">${x.kr == null ? '–' : mkr(x.kr / 1000)}</td></tr>`),
+    ${table('<th>Datum</th><th>Fastighet</th><th class="num">Pris</th>', b.kop.map((x) =>
+      `<tr>${dagCell(x.dag)}<td>${fastighetLink(x)}</td><td class="num">${x.kr == null ? '–' : mkr(x.kr / 1000)}</td></tr>`),
       'Inga registrerade köp.')}
     <h3>Sålt</h3>
     ${table('<th>Fastighet</th><th class="num">Köpt</th><th class="num">Sålt</th>', b.salt.map((x) => {
@@ -290,12 +296,12 @@ const field = (label, name, opts) => `<label>${label}<select name="${name}">${op
 const bar = (andel) => `<div class="bar"><i style="width:${Math.max(1, Math.round(andel * 100))}%"></i></div>`;
 const fastighetLink = (r) => `<a data-fastighet="${esc(r.beteckning)}" ${bboxAttr(r)}>${esc(r.beteckning)}</a>`
   + (r.antal > 1 ? ` <span class="muted small">+ ${r.antal - 1} till</span>` : '');
-const affarRad = (r) => `<tr><td class="num">${esc(r.dag ?? '')}</td>
+const affarRad = (r) => `<tr>${dagCell(r.dag)}
   <td>${fastighetLink(r)}<div class="muted small">${r.orgnr ? bolagLink(r.orgnr, r.namn, r.demo) : '–'}${r.saljare_orgnr && r.saljare_orgnr !== r.orgnr ? ` från ${bolagLink(r.saljare_orgnr, r.saljare)}` : ''}</div></td>
   <td class="num">${mkr(r.kr / 1000)}</td></tr>`;
 
 // Affär ur ett pressmeddelande: rubriken länkar till källan, "Visa på kartan" ramar in fastigheterna.
-const nyhetRad = (n) => `<tr><td class="num">${esc(n.dag ?? '')}</td>
+const nyhetRad = (n) => `<tr>${dagCell(n.dag)}
   <td><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.rubrik)}</a>
     <div class="muted small">${esc(n.utgivare)} ${n.typ === 'kop' ? 'köper' : 'säljer'}${n.kommun ? ` · ${esc(n.kommun)}` : ''}${n.minx != null
       ? ` · <a data-ram="${[n.minx, n.miny, n.maxx, n.maxy].join(',')}" data-markera="${esc(JSON.stringify(n.beteckningar))}">Visa på kartan</a>` : ''}</div></td>
@@ -323,7 +329,7 @@ async function openAffarer(p = {}) {
     </form>
     ${a.nyheter.length ? `<h3>Senaste i pressmeddelanden</h3>
     <div class="meta small">Fastighetsbolagens egna pressmeddelanden (Cision). Pris enligt pressmeddelandet; affären syns i lagfarterna några månader senare.</div>
-    ${table('<th class="num">Datum</th><th>Affär</th><th class="num">Pris</th>', a.nyheter.map(nyhetRad), '')}` : ''}
+    ${table('<th>Datum</th><th>Affär</th><th class="num">Pris</th>', a.nyheter.map(nyhetRad), '')}` : ''}
     ${a.ar ? `
     ${stats([[`Volym ${a.ar}`, mkr((a.summa.kr ?? 0) / 1000)], [`Affärer ${a.ar}`, n(a.summa.antal)],
       ['Senaste 30 dagarna', `${n(a.dagar30.antal)} st · ${mkr((a.dagar30.kr ?? 0) / 1000)}`]])}
@@ -339,9 +345,9 @@ async function openAffarer(p = {}) {
       `<tr><td>${bolagLink(k.orgnr, k.namn, k.demo)}${bar(k.kr / (a.kopare[0].kr || 1))}</td>
         <td class="num">${n(k.antal)}</td><td class="num">${mkr(k.kr / 1000)}</td></tr>`), '')}
     <h3>Största affärerna ${a.ar}</h3>
-    ${table('<th class="num">Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.storsta.map(affarRad), '')}
+    ${table('<th>Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.storsta.map(affarRad), '')}
     <h3>Senaste affärerna ${a.ar}</h3>
-    ${table('<th class="num">Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.senaste.map(affarRad), '')}
+    ${table('<th>Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.senaste.map(affarRad), '')}
     ` : '<p class="empty">Inga registrerade köp ännu. Köpeskillingar läses in när Lantmäteriet har svarat.</p>'}
   `);
 }
