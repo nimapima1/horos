@@ -11,12 +11,10 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
 - **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt. Koden till och
-  med 6df6f22, publik databas byggd 2026-10-10 13:03 med `--alla-bolag`: 0 fastigheter, 2,2 miljoner bolag,
-  120 177 adresser, 127 affärer ur pressmeddelanden, inga arbetsställen (byggt utan `--scb-villkor`).
-- **Känt fel i den publika databasen**: `bolag.agarkontroll` har SCB:s sifferkoder (`10`, `20`, `30` …), men
-  koden sedan 6df6f22 förväntar sig ord (`stat`, `kommun`, `region` …). Den lokala databasen har redan ord.
-  Syns inte i dag (0 fastigheter), men **nästa publicering ska byggas om med `build-public` och `--data`**.
-- `npm test`: 30 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
+  med b8fd5c8, publik databas byggd 2026-10-10 14:25 med `--alla-bolag` och publicerad med `--data`:
+  0 fastigheter, 2,2 miljoner bolag (ägarkontrollen som ord: `stat`, `kommun`, `region` …), 120 177 adresser,
+  127 affärer ur pressmeddelanden, inga arbetsställen (byggt utan `--scb-villkor`).
+- `npm test`: 31 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
   av en annan session). Starta om servern efter import eller demo-data.
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
   terminal (lösenfras **direkt**, annars stänger servern anslutningen). Deploy laddar upp arbetskatalogen som den
@@ -50,7 +48,7 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
 
 ## Förslag till nästa session
 
-1. **Publicera med ny databas** (`build-public --alla-bolag`, `deploy --data`) så att ägarkontrollen blir ord live.
+1. Inga svar på tillståndsmejlen ännu (kollat i Gmail 2026-10-10 eftermiddag).
 2. **Schemalagd import av pressmeddelanden** på servern: i dag körs `import-nyheter` för hand, och den publika
    databasen byts bara vid `deploy --data`. Kräver en ändring på servern (root eller ny cloud-init), t.ex. en
    egen skrivbar SQLite för nyheter som servern läser. Fråga användaren först.
