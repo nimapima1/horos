@@ -35,10 +35,10 @@ before(async () => {
     ('T 1:2', '2020-01-01', 20000000, '7690000002')`);
   // Arbetsställen: två på 1:1 (Alfa är störst), ett utan fastighet. Lokaltyp och LOA räknas vid importen
   // (lib/lokaltyp.mjs): kontor 34,5 anställda × 20 m² = 690, butik 2,5 × 40 = 100.
-  db.exec(`INSERT INTO arbetsstalle (cfar, orgnr, benamning, sni, bransch, anstkl, adress, beteckning, lokaltyp, loa_m2) VALUES
-    (1, '7690000002', NULL, '47110', 'Livsmedelsbutik', 2, 'Testgatan 2', 'T 1:1', 'Butik', 100),
-    (2, '5560000001', 'Alfa City', '62100', 'Dataprogrammering', 5, 'Testgatan 1', 'T 1:1', 'Kontor', 690),
-    (3, '5560000001', NULL, NULL, NULL, 3, 'Annangatan 9', NULL, 'Övrigt', 210)`);
+  db.exec(`INSERT INTO arbetsstalle (cfar, orgnr, benamning, sni, bransch, anstkl, adress, beteckning, lokaltyp, loa_m2, reklamsparr) VALUES
+    (1, '7690000002', NULL, '47110', 'Livsmedelsbutik', 2, 'Testgatan 2', 'T 1:1', 'Butik', 100, 1),
+    (2, '5560000001', 'Alfa City', '62100', 'Dataprogrammering', 5, 'Testgatan 1', 'T 1:1', 'Kontor', 690, 0),
+    (3, '5560000001', NULL, NULL, NULL, 3, 'Annangatan 9', NULL, 'Övrigt', 210, 0)`);
   db.close();
 
   server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(ROOT, 'server.mjs')], {
@@ -161,8 +161,9 @@ test('fastighet: grannar, paketaffär och köp i närheten', async () => {
 
 test('företag på adressen och bolagets arbetsställen', async () => {
   const f = await json(`/api/fastighet/${encodeURIComponent('T 1:1')}`);
-  assert.deepEqual(f.hyresgaster.map((h) => [h.namn, h.benamning, h.anstkl, h.adress]),
-    [['Alfa AB', 'Alfa City', 5, 'Testgatan 1'], ['Brf Beta', null, 2, 'Testgatan 2']]);
+  // Reklamspärren måste följa med: SCB:s villkor kräver att den visas.
+  assert.deepEqual(f.hyresgaster.map((h) => [h.namn, h.benamning, h.anstkl, h.adress, h.reklamsparr]),
+    [['Alfa AB', 'Alfa City', 5, 'Testgatan 1', 0], ['Brf Beta', null, 2, 'Testgatan 2', 1]]);
   assert.equal(f.upplatelse, 'tomtratt');
   assert.equal(f.agare[0].tomtratt, 1);
   assert.deepEqual(f.anvandning, [{ typ: 'Kontor', loa_m2: 690 }, { typ: 'Butik', loa_m2: 100 }]);

@@ -46,13 +46,14 @@ async function* sidor() {
     yield* (Array.isArray(d) ? d : [d]).map((s) => s.arbetsstallen ?? []);
     return;
   }
-  let cursor = null, antal = 0;
-  do {
+  let cursor = null;
+  for (let sida = 1; ; sida++) {
     const s = await hamta(`/arbetsstallen/full?limit=${LIMIT}${cursor != null ? `&cursorId=${cursor}` : ''}`);
     yield s.arbetsstallen ?? [];
-    cursor = s.pagination?.hasMore && !(args.sidor && ++antal >= Number(args.sidor)) ? s.pagination.nextCursorId : null;
-    if (cursor != null) await vanta(PAUS_MS);
-  } while (cursor != null);
+    if (!s.pagination?.hasMore || sida === Number(args.sidor)) return;
+    cursor = s.pagination.nextCursorId;
+    await vanta(PAUS_MS);
+  }
 }
 
 const koder = args.sni ? JSON.parse(readFileSync(args.sni, 'utf8')) : args.fil ? [] : await hamta('/kodtabeller/naringsgrenkoder');

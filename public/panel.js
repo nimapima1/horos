@@ -2,7 +2,8 @@
 // som kopplar in dem (länkar, routning) och vars hjälpfunktioner (esc, showPanel, statusP …) de använder.
 const demoTag = (d) => (d ? '<span class="tag">exempel</span>' : '');
 // SCB:s villkor: den som sprider uppgifterna ska informera om reklamspärr.
-const sparrTag = (x) => (x ? '<span class="tag" title="Har frånsagt sig reklam via post, e-post och telefon (SCB)">reklamspärr</span>' : '');
+const SPARR_TEXT = 'har frånsagt sig reklam via post, e-post och telefon';
+const sparrTag = (x) => (x ? `<span class="tag" title="Företaget ${SPARR_TEXT} (SCB)">reklamspärr</span>` : '');
 const SCB_KALLA = 'SCB, företagsregistret (egen bearbetning)';
 const bolagLink = (orgnr, namn, demo) =>
   `<a data-bolag="${esc(orgnr)}">${esc(namn ?? fmtOrgnr(orgnr))}</a>${demoTag(demo)}`;
@@ -133,8 +134,8 @@ async function openFastighet(bet, adress) {
       ] : []),
     ])}
     ${s.foretag ? `<h3>Företag på adressen</h3>
-    <div class="meta small">Företag med arbetsställe på fastigheten enligt SCB:s företagsregister. Det säger inget om hyresavtal.
-      Företag märkta reklamspärr har frånsagt sig reklam via post, e-post och telefon.</div>
+    <div class="meta small">Företag med arbetsställe på fastigheten enligt SCB:s företagsregister. Det säger inget om hyresavtal.${f.hyresgaster.some((h) => h.reklamsparr) ? `
+      Företag märkta reklamspärr ${SPARR_TEXT}.` : ''}</div>
     ${hyresgastTabell(f.hyresgaster)}` : ''}
     <h3>Detaljplan</h3>
     ${table('<th>Plan</th><th class="num">Laga kraft</th>', f.planer.map((p) =>
@@ -178,7 +179,12 @@ async function openFastighet(bet, adress) {
           : x.areal_m2 && (!x.andel || x.andel === '1/1') ? `${kr(x.kr / x.areal_m2)}/m²` : ''}</div></td></tr>`),
       'Inga registrerade köp i närheten.')}
     <button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>
-    <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.planer.length ? ` · planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}` : ''}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}${f.hyresgaster.length ? ` · företag: ${f.hyresgaster.some((h) => h.demo) ? 'påhittade (exempel)' : SCB_KALLA}` : ''}</p>
+    <p class="muted small" style="margin-top:16px">${[
+      `Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}`,
+      f.planer.length && `planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}`,
+      f.adresser.length && 'adresser: © OpenStreetMap-bidragsgivare',
+      f.hyresgaster.length && `företag: ${f.hyresgaster.some((h) => h.demo) ? 'påhittade (exempel)' : SCB_KALLA}`,
+    ].filter(Boolean).join(' · ')}</p>
   `);
 }
 
