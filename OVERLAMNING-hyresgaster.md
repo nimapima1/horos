@@ -113,11 +113,10 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
   PUBLIC_MODE vägrar starta med arbetsställen med personnummer eller utan fastighet i Horos.
 - Påhittade arbetsställen i demo-data. Tester: `test/arbetsstallen.test.mjs` + ett i `test/server.test.mjs` (16 totalt).
 
-### När nyckeln finns
-1. Användaren sätter nyckeln i sin terminal (skrivs aldrig i chatten): `$env:SCB_API_KEY = Read-Host -MaskInput`,
-   eller kör skriptet utan variabel så frågar det dolt.
-2. `npm run import:arbetsstallen -- --dry` först. Kontrollera att fältnamnen stämmer (antal "utan koordinater"
-   ska vara litet, branscher ska ha klartext). Ändra i `rad()` om svaret skiljer sig från specen.
+### Nyckeln finns (2026-10-10), importen är körd lokalt
+1. Användaren kör skriptet utan variabel och klistrar in nyckeln med högerklick när det frågar
+   (`Read-Host -MaskInput` finns inte i Windows PowerShell 5.1). Nyckeln skrivs aldrig i chatten.
+2. ~~Torrkörning och fältnamn~~ Gjort: fälten stämmer med specen; se `OVERLAMNING.md` för siffrorna.
 3. ~~Kontrollera SNI 2025-avdelningarna~~ Gjort 2026-10-10: `AVDELNINGAR`, aeStat, aeTyp, anstKl och reklamspärr
    stämmer mot SCB:s kodtabeller (bara reklamspärr var fel i PDF:en: 1/2, inte 3/4). Handel (G) har bara 46/47.
 4. ~~Läs SCB:s villkor~~ (gjort 2026-10-10, se ovan); därefter `build-public --scb-villkor`.
@@ -153,6 +152,4 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
 
 - Kommunens plandokument (länk) väntar på att kolumnerna i planfilen är kända.
 - Under zoom 10 visas inga fastigheter (behöver förberäknade kluster för hela landet).
-- Commitarna är inte pushade till GitHub.
-- Publicera rättningarna: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172`
-  i användarens terminal (lösenfras).
+- (Pushning och publicering är gjorda 2026-10-10, se `OVERLAMNING.md`.)
