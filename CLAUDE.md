@@ -84,7 +84,7 @@ Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, ba
   Privatperson som säljare: affären visas, namnet aldrig; försäljning till privatperson tas inte med.
   **MFN förbjuder automatisk hämtning** (robots.txt: `*.rss`, `*.xml`, `*.json`): inte med förrän Modular
   Finance gett tillstånd. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
-  efterfrågas (mejlutkast i `UTKAST-mejl-nyheter.md`). Körs bara manuellt än; behöver ett schemalagt jobb på servern.
+  efterfrågas (utkast i användarens Gmail 2026-10-10: red@fastighetsvarlden.se, bjorn.rundstrom@fastighetsnytt.se, support@modularfinance.com). Körs bara manuellt än; behöver ett schemalagt jobb på servern.
 - Företag på adressen (SCB-arbetsställen, 2026-10-10): tabell `arbetsstalle`, import, panel i fastighet och
   bolag, uppskattad användning från branscher. Väntar på API-nyckel och SCB:s villkor, se `OVERLAMNING-hyresgaster.md`.
 - Fastighetspanelen (2026-10-10): rutan Användning (lokaltyper, uppskattad LOA), tomtareal, LOA/BOA,
