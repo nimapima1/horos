@@ -16,7 +16,7 @@ const node = (args, env) => spawnSync(process.execPath, ['--disable-warning=Expe
 
 // Ett arbetsställe i SCB:s format (/v1/arbetsstallen/full) med adresskoordinat (ost, nord).
 const ae = (cfarNr, peOrgNr, [ost, nord], extra = {}) => ({
-  cfarNr, peOrgNr, ben: '', aeStat: 1, aeTyp: 1, anstKl: 3, reklamSparrTyp: 3, tel: '08-123', epost: 'x@example.se',
+  cfarNr, peOrgNr, ben: '', aeStat: 1, aeTyp: 1, anstKl: 3, reklamSparrTyp: 1, tel: '08-123', epost: 'x@example.se',
   belagenhetsadress: { lan: '01', kommun: '0180', bGatuAdress: 'Testgatan 1', bPostNr: '11122', bPostOrt: 'STOCKHOLM' },
   geografiskInformation: { ostKoordinatSW: ost, nordKoordinatSW: nord, ostKoordinatAdressSW: ost, nordKoordinatAdressSW: nord },
   naringsgrenar: [{ rangordning: 2, naringsgren: '47710', avdelningsKod: 'G' }, { rangordning: 1, naringsgren: '62100', avdelningsKod: 'K' }],
@@ -39,7 +39,7 @@ test('import-arbetsstallen utesluter fysiska personer, reklamspärr och ej verks
     { pagination: { hasMore: true }, arbetsstallen: [
       ae(10000001, '165560000001', P, { ben: 'Butiken' }),
       ae(10000002, '198001011234', P),                        // enskild firma (personnummer)
-      ae(10000003, '165560000003', P, { reklamSparrTyp: 4 }),
+      ae(10000003, '165560000003', P, { reklamSparrTyp: 2 }),
     ] },
     { pagination: { hasMore: false }, arbetsstallen: [
       ae(10000004, '165560000004', P, { aeStat: 9 }),

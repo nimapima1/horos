@@ -79,7 +79,7 @@ function rad(a) {
   if (!orgnr) return n.person++;                       // personnummer: enskild firma
   if (Number(a.aeStat) !== 1) return n.ejVerksam++;
   if (Number(a.aeTyp) === 3) return n.fiktiv++;
-  if (Number(a.reklamSparrTyp) === 4) return n.reklamsparr++;  // har frånsagt sig exponering
+  if (Number(a.reklamSparrTyp) === 2) return n.reklamsparr++;  // 2 = har frånsagt sig reklam (kodtabellen)
   const g = a.geografiskInformation ?? {};
   // Adressens läge, annars fastighetens mittpunkt.
   const [x, y] = g.ostKoordinatAdressSW > 0 ? [g.ostKoordinatAdressSW, g.nordKoordinatAdressSW] : [g.ostKoordinatSW, g.nordKoordinatSW];

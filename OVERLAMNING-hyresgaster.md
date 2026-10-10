@@ -50,7 +50,7 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
 2. **Variablerna – besvarad 2026-10-10** (postbeskrivning-ae.pdf, variabelbeskrivning-afr_261009.pdf):
    - `peOrgNr`: 12 siffror. Juridisk person = `16` + orgnr; enskild firma = personnummer (börjar 19/20).
      `normOrgnr` avvisar redan personnumren (tredje siffran efter sekelsiffrorna < 2).
-   - `reklamSparrTyp`: 3 = tar emot reklam, **4 = har frånsagt sig reklam** (uteslut). Även
+   - `reklamSparrTyp`: 1 = tar emot reklam, **2 = har frånsagt sig reklam** (uteslut; kodtabellen `reklamsparrtypkoder`, kontrollerad 2026-10-10 – PDF:en sa 3/4). Även
      `telefonSparrTyp` (1 ej, 2 telemarketing, 3 Nix) och `epostSparrTyp` (1 ej, 2 spärrat); de gäller
      kontaktvägar vi ändå inte sparar.
    - `aeStat`: 0 aldrig verksam, 1 verksam, 9 ej längre verksam. `aeTyp` 3 = fiktivt arbetsställe
@@ -80,7 +80,7 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
 
 - Visa **bara arbetsställen som tillhör juridiska personer**. Enskilda firmor (personnummer) läses
   aldrig in: använd `normOrgnr` i `lib/db.mjs`, som avvisar personnummer, och hoppa över raden.
-- **Uteslut arbetsställen med reklamspärr** (`reklamSparrTyp` = 4).
+- **Uteslut arbetsställen med reklamspärr** (`reklamSparrTyp` = 2).
 - Visa bara hyresgäster på fastigheter som finns i Horos (juridisk ägare). `build-public.mjs` ska bara
   ta med arbetsställen på tillåtna fastigheter, och `PUBLIC_MODE`-kontrollen i `server.mjs` bör vägra
   starta om ett arbetsställe tillhör en fysisk person.
@@ -93,7 +93,7 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
 
 - Tabell `arbetsstalle` (lib/db.mjs), `scripts/import-arbetsstallen.mjs` (`npm run import:arbetsstallen`):
   hämtar `/v1/arbetsstallen/full` för hela landet sida för sida, utesluter personnummer, aeStat ≠ 1,
-  aeTyp 3, reklamspärr 4 och rader utan koordinater, kopplar adresskoordinaten till fastighet. Sparar alla
+  aeTyp 3, reklamspärr (2) och rader utan koordinater, kopplar adresskoordinaten till fastighet. Sparar alla
   kvarvarande (även utan fastighet, `beteckning` null); `--dry` räknar bara. `--fil`/`--sni` för sparade svar.
 - API: `hyresgaster` i `/api/fastighet/:bet`, `arbetsstallen` i `/api/bolag/:orgnr`.
 - Ruta "Användning" (under Ägare/Senaste köp): taxeringstyp + uppskattad fördelning på 7 lokaltyper med
