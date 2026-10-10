@@ -38,6 +38,8 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   SQLite-filer för test i `data/_test/` (långa sökvägar i scratchpad fungerar inte).
 - Git-commits: `git -c user.name="Nima Behnejad" -c user.email="nima.behnejad@gmail.com" commit`.
 
+`PRIVAT.md` (inte i git, repot är publikt): mejlkontakter, myndighetsärenden och kostnader. Lägg sådant där, inte här.
+
 ## Server
 
 - Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3.
@@ -85,7 +87,7 @@ Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, ba
   Privatperson som säljare: affären visas, namnet aldrig; försäljning till privatperson tas inte med.
   **MFN förbjuder automatisk hämtning** (robots.txt: `*.rss`, `*.xml`, `*.json`): inte med förrän Modular
   Finance gett tillstånd. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
-  efterfrågas (utkast i användarens Gmail 2026-10-10: red@fastighetsvarlden.se, bjorn.rundstrom@fastighetsnytt.se, support@modularfinance.com). Körs bara manuellt än; behöver ett schemalagt jobb på servern.
+  efterfrågas (mejl 2026-10-10, se `PRIVAT.md`). Körs bara manuellt än; behöver ett schemalagt jobb på servern.
 - Företag på adressen (SCB-arbetsställen, 2026-10-10): tabell `arbetsstalle`, import, panel i fastighet och
   bolag, uppskattad användning från branscher. API-nyckel finns (användaren klistrar in den i terminalen); villkoren lästa 2026-10-10: spridning tillåten med
   källa "SCB (egen bearbetning)", reklamspärr ska markeras (inte uteslutas). Se `OVERLAMNING-hyresgaster.md`.
@@ -95,8 +97,7 @@ Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, ba
 Den publika databasen har **0 fastigheter** (bara bolag och adresser) tills riktiga data finns.
 
 Väntar på:
-- Skatteverket: avslog taxeringsvärden (OSL 27:1); användaren har skickat en avgränsad begäran
-  (bara värden, inte ägare, med hänvisning till 27:6) och begärt överklagbart beslut.
+- Skatteverket: taxeringsvärden, ärendet pågår (detaljer i `PRIVAT.md`).
 - Lantmäteriet (allmän handling): lagfarter/köpeskillingar från 2016 där förvärvaren är juridisk
   person, och nuvarande juridiska ägare. **Tomträttsinnehav är inte efterfrågat**: kontrollera när
   filen kommer om tomträtt/upplåtelseform finns med; annars begär det separat (se `OVERLAMNING.md`).
@@ -106,16 +107,8 @@ Väntar på:
   - Ortofoto historiska Visning – LM2026/153973, **beviljad** (används)
   - Belägenhetsadress Nedladdning, vektor – inskickad 2026-10-09
   - Byggnad Nedladdning, vektor – ifylld 2026-10-09; kontrollera att den skickades
-- Lantmäteriet geodatasupport (geodatasupport@lm.se, 026-63 36 00 vardagar 9–12): förfrågan
-  skickad 2026-10-09 om rikstäckning. Frågor: ändamålsprövning för Fastighetsinformation
-  (Inskrivning: ägare, förvärv) och Taxering Nedladdning vid icke-kommersiell användning; urval med
-  bara juridiska ägare; köpeskilling i Förvärv eller Fastighetsprisuttag; publicering per fastighet;
-  offert för hela landet; Markreglerande bestämmelse (detaljplaner) för hela landet; utökning av
-  ärendena Fastighetsindelning/Belägenhetsadress/Byggnad till hela landet; FUK via forskningspartner.
-  Uppskattning ur avgiftsdokumentet: ägare+förvärv+taxering ca 2 kr/registerenhet, ca 650 tkr + moms
-  för hela landet med faktor 0,1 (mindre om urval på juridiska ägare går); planer ca 7–22 tkr/år.
-  Svaret avgör vägen till rikstäckning. Formell ansökan görs sedan som beställning på Geotorget
-  (helst alla produkter i samma beställning). Skrapning är uteslutet (risk att förlora licenserna).
+- Lantmäteriet geodatasupport: förfrågan om rikstäckning skickad 2026-10-09 (frågor och kostnadsuppskattning
+  i `PRIVAT.md`). Svaret avgör vägen till rikstäckning. Skrapning är uteslutet (risk att förlora licenserna).
 
 När filer kommer: lägg i `data/raw/`, kör importskriptet med `--dry` först, påminn om åtagandena,
 bygg med `build-public` och publicera.

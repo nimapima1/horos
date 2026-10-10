@@ -9,7 +9,7 @@ import { pointInGeom } from '../lib/geo.mjs';
 import { CISION, lasRss, tolka } from '../lib/nyheter.mjs';
 
 const args = parseArgs(process.argv.slice(2));
-const UA = 'Horos/0.1 (ideell fastighetskarta; nima.behnejad@gmail.com)';
+const UA = 'Horos/0.1 (ideell fastighetskarta; kontakt@horos.se)';
 const vanta = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const db = openDb();

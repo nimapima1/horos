@@ -135,3 +135,9 @@ Sidan [metod.html](public/metod.html) beskriver källor, urval och begränsninga
 - Ange källor enligt licenserna (Lantmäteriet, Bolagsverket/SCB, OpenStreetMap, OpenFreeMap).
 - Ta bort exempeldatan (`npm run demo -- --clear`).
 - Byt bakgrundskarta eller kontrollera OpenFreeMaps villkor vid mycket trafik.
+
+## Licens
+
+Koden är fri programvara under [GNU Affero General Public License v3.0](LICENSE) eller senare.
+Licensen gäller bara koden. Uppgifterna kommer från Lantmäteriet, SCB, Bolagsverket, OpenStreetMap
+m.fl. och har egna villkor (se tabellen ovan och metodsidan).

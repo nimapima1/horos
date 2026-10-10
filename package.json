@@ -2,6 +2,7 @@
   "name": "horos",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "description": "Horos – öppen karta över bolagsägda fastigheter, byggd på offentliga källor",
   "type": "module",
   "engines": {
