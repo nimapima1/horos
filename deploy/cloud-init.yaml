@@ -1,5 +1,6 @@
 #cloud-config
-# Horos – serverkonfiguration, version 4 (www skickas vidare till domänen).
+# Horos – serverkonfiguration, version 5 (www skickas vidare till domänen; inget Via-huvud,
+# set-secret skriver inte ut hemlighetens längd).
 # Klistra in hela filen under "Cloud config" när servern skapas i Hetzner Cloud Console.
 # Ubuntu 24.04. Installerar Node 24 (NodeSource) och Caddy (HTTPS, från Caddys officiella
 # releaser på GitHub) med automatiska uppdateringar, brandvägg, skapar användaren "deploy"
@@ -79,7 +80,7 @@ write_files:
           install -m 0640 -o root -g fastighetskarta "$tmp" "$SECRETS"
           rm -f "$tmp"
           systemctl restart fastighetskarta
-          echo "Sparade $name (${#value} tecken) och startade om tjänsten." ;;
+          echo "Sparade $name och startade om tjänsten." ;;
         list-secrets)
           cut -d= -f1 "$SECRETS" 2>/dev/null || echo "(inga)" ;;
         update-caddy)
@@ -210,6 +211,7 @@ write_files:
           Permissions-Policy "geolocation=(), camera=(), microphone=()"
           Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tiles.openfreemap.org; connect-src 'self' https://tiles.openfreemap.org; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
           -Server
+          -Via
         }
         # Ingen åtkomstlogg: besökarnas IP-adresser sparas inte.
       }

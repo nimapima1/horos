@@ -43,7 +43,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 
 ## Server
 
-- Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3 plus www-blocket från v4 (inlagt som root 2026-10-10).
+- Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3 plus ändringarna i v4–v5 (www-blocket, inget `Via`, `set-secret` utan längd), inlagda för hand som root 2026-10-10. Root-lösenordet återställdes 2026-10-10 (Hetzner > Rescue).
   Hetzners webbkonsol tappar Skift vid inklistring (`_ { } : &` blir `- [ ] ; 7`): skriv dem som
   `\x5f \x7b \x7d \x3a` i sed och kör kommandon var för sig i stället för med `&&`.
   Domän horos.se (Loopia, LoopiaDNS, köpt 2026-10-10; A-post @ och www -> servern; www skickas vidare till horos.se).
@@ -128,6 +128,5 @@ bygg med `build-public` och publicera.
   "i Stockholm" (stämmer tills annan data finns).
 - Planer: länk till kommunens plandokument (insynsbk för Stockholm) när kolumnerna i filen är kända.
 
-- Vid nästa serverändring: ta bort längdutskriften i `set-secret` och Caddys `Via`-huvud.
 - När Byggnad beviljas: importera ändamål och visa som "Användning" (före taxeringstypen).
 - När Belägenhetsadress beviljas: byt OSM-adresserna (`kalla='osm'`) mot Lantmäteriets.
