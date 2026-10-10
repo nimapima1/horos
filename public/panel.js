@@ -1,6 +1,9 @@
 // Panelvyer: fastighet, bolag, Om, Affärer och Största ägare. Bara deklarationer: laddas före app.js,
 // som kopplar in dem (länkar, routning) och vars hjälpfunktioner (esc, showPanel, statusP …) de använder.
 const demoTag = (d) => (d ? '<span class="tag">exempel</span>' : '');
+// SCB:s villkor: den som sprider uppgifterna ska informera om reklamspärr.
+const sparrTag = (x) => (x ? '<span class="tag" title="Har frånsagt sig reklam via post, e-post och telefon (SCB)">reklamspärr</span>' : '');
+const SCB_KALLA = 'SCB, företagsregistret (egen bearbetning)';
 const bolagLink = (orgnr, namn, demo) =>
   `<a data-bolag="${esc(orgnr)}">${esc(namn ?? fmtOrgnr(orgnr))}</a>${demoTag(demo)}`;
 const bboxAttr = (f) => `data-bbox="${[f.minx, f.miny, f.maxx, f.maxy].join(',')}"`;
@@ -52,7 +55,7 @@ function anvandningRuta(typer, ar, anvandning, loa, s) {
           <td class="num">${procent(r.andel)}</td><td class="num">${ungefarM2(r.loa)}</td></tr>`).join('')}
         <tr class="anv-summa"><td>Totalt</td><td></td><td class="num">${ungefarM2(loa)}</td></tr>
       </table>
-      <div class="fact-sub">Uppskattat från branscher och antal anställda hos företagen på fastigheten (SCB).
+      <div class="fact-sub">Uppskattat från branscher och antal anställda hos företagen på fastigheten (källa: ${SCB_KALLA}).
         Grov indikation, inte uppmätt yta.</div>` : `<div class="fact-sub">${s.foretag ? 'Ingen uppskattning: inga företag registrerade på fastigheten.' : 'Ingen uppskattning ännu.'}</div>`}
   </section>`;
 }
@@ -69,7 +72,7 @@ function hyresgastTabell(hyresgaster) {
     || x.localeCompare(y, 'sv', { numeric: true }));
   const rader = adresser.flatMap(([adress, lista]) => [
     ...(perAdress.size > 1 ? [`<tr><td colspan="2"><strong>${esc(adress)}</strong></td></tr>`] : []),
-    ...lista.map((h) => `<tr><td>${bolagLink(h.orgnr, h.namn ?? h.benamning, h.demo)}${h.benamning && h.namn && h.benamning !== h.namn ? ` · ${esc(h.benamning)}` : ''}
+    ...lista.map((h) => `<tr><td>${bolagLink(h.orgnr, h.namn ?? h.benamning, h.demo)}${sparrTag(h.reklamsparr)}${h.benamning && h.namn && h.benamning !== h.namn ? ` · ${esc(h.benamning)}` : ''}
       <div class="muted small">${esc(h.bransch ?? (h.sni ? `SNI ${h.sni}` : ''))}</div></td>
       <td class="num">${esc(ANSTKL[h.anstkl] ?? '–')}</td></tr>`),
   ]);
@@ -130,7 +133,8 @@ async function openFastighet(bet, adress) {
       ] : []),
     ])}
     ${s.foretag ? `<h3>Företag på adressen</h3>
-    <div class="meta small">Företag med arbetsställe på fastigheten enligt SCB:s företagsregister. Det säger inget om hyresavtal.</div>
+    <div class="meta small">Företag med arbetsställe på fastigheten enligt SCB:s företagsregister. Det säger inget om hyresavtal.
+      Företag märkta reklamspärr har frånsagt sig reklam via post, e-post och telefon.</div>
     ${hyresgastTabell(f.hyresgaster)}` : ''}
     <h3>Detaljplan</h3>
     ${table('<th>Plan</th><th class="num">Laga kraft</th>', f.planer.map((p) =>
@@ -174,7 +178,7 @@ async function openFastighet(bet, adress) {
           : x.areal_m2 && (!x.andel || x.andel === '1/1') ? `${kr(x.kr / x.areal_m2)}/m²` : ''}</div></td></tr>`),
       'Inga registrerade köp i närheten.')}
     <button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>
-    <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.planer.length ? ` · planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}` : ''}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}${f.hyresgaster.length ? ` · företag: ${f.hyresgaster.some((h) => h.demo) ? 'påhittade (exempel)' : 'SCB'}` : ''}</p>
+    <p class="muted small" style="margin-top:16px">Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}${f.planer.length ? ` · planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}` : ''}${f.adresser.length ? ' · adresser: © OpenStreetMap-bidragsgivare' : ''}${f.hyresgaster.length ? ` · företag: ${f.hyresgaster.some((h) => h.demo) ? 'påhittade (exempel)' : SCB_KALLA}` : ''}</p>
   `);
 }
 
@@ -214,7 +218,7 @@ async function openBolag(orgnr) {
       'Inga kända fastigheter ännu. Ägaruppgifter läses in när Lantmäteriet har svarat.')}
     ${b.arbetsstallen.length ? `<h3>Arbetsställen i Horos</h3>
     ${table('<th>Adress</th><th class="num">Anställda</th>', b.arbetsstallen.map((a) =>
-      `<tr><td>${esc(a.adress ?? 'Adress saknas')}${a.benamning ? ` · ${esc(a.benamning)}` : ''}
+      `<tr><td>${esc(a.adress ?? 'Adress saknas')}${a.benamning ? ` · ${esc(a.benamning)}` : ''}${sparrTag(a.reklamsparr)}
         <div class="muted small">${fastighetLink(a)}${a.bransch ? ` · ${esc(a.bransch)}` : ''}</div></td>
         <td class="num">${esc(ANSTKL[a.anstkl] ?? '–')}</td></tr>`), '')}` : ''}
     <h3>Köp</h3>
@@ -228,7 +232,7 @@ async function openBolag(orgnr) {
         <td class="num">${esc(x.kopt ?? '')}<div class="muted small">${x.kop_kr == null ? '–' : mkr(x.kop_kr / 1000)}</div></td>
         <td class="num">${esc(x.salt ?? '')}<div class="muted small">${x.salt_kr == null ? '–' : mkr(x.salt_kr / 1000)}</div></td></tr>`;
     }), 'Inga registrerade försäljningar.')}
-    <p class="muted small" style="margin-top:16px">Källa: Bolagsverket och SCB, värdefulla datamängder. Köp och försäljningar: Lantmäteriet.${b.arbetsstallen.length ? ' Arbetsställen: SCB, företagsregistret.' : ''}</p>
+    <p class="muted small" style="margin-top:16px">Källa: Bolagsverket och SCB, värdefulla datamängder. Köp och försäljningar: Lantmäteriet.${b.arbetsstallen.length ? ` Arbetsställen: ${SCB_KALLA}.` : ''}</p>
   `);
 }
 
@@ -259,7 +263,7 @@ async function openOm() {
       <dt>Taxering</dt><dd>Skatteverket, allmänna handlingar</dd>
       <dt>Ägare, köp</dt><dd>Lantmäteriet, allmänna handlingar</dd>
       <dt>Planer</dt><dd>Lantmäteriet, Markreglerande bestämmelse</dd>
-      ${s.foretag ? '<dt>Företag</dt><dd>SCB, företagsregistret (arbetsställen)</dd>' : ''}
+      ${s.foretag ? `<dt>Företag</dt><dd>${SCB_KALLA}, arbetsställen</dd>` : ''}
       <dt>Adresser</dt><dd>© OpenStreetMap-bidragsgivare (ODbL)</dd>
       <dt>Karta</dt><dd>OpenFreeMap, © OpenStreetMap-bidragsgivare</dd>
       <dt>Satellit</dt><dd>EOxCloudless 2025 (Copernicus Sentinel-2)</dd>

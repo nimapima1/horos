@@ -23,7 +23,7 @@ const ae = (cfarNr, peOrgNr, [ost, nord], extra = {}) => ({
   ...extra,
 });
 
-test('import-arbetsstallen utesluter fysiska personer, reklamspärr och ej verksamma och kopplar till fastighet', () => {
+test('import-arbetsstallen utesluter fysiska personer och ej verksamma, märker reklamspärr och kopplar till fastighet', () => {
   mkdirSync(DIR, { recursive: true });
   for (const f of [DB, `${DB}-wal`, `${DB}-shm`]) rmSync(f, { force: true });
   const [lon, lat] = sweref99tmToWgs84(674000, 6580000);
@@ -52,18 +52,18 @@ test('import-arbetsstallen utesluter fysiska personer, reklamspärr och ej verks
 
   const dry = node([join(ROOT, 'scripts', 'import-arbetsstallen.mjs'), '--fil', FIL, '--sni', `${FIL}.sni`, '--dry']);
   assert.equal(dry.status, 0, dry.stderr);
-  assert.match(dry.stdout, /1 enskilda firmor, 1 ej verksamma, 1 fiktiva, 1 med reklamspärr, 1 utan koordinater/);
+  assert.match(dry.stdout, /1 med reklamspärr\.\n.*1 enskilda firmor, 1 ej verksamma, 1 fiktiva, 1 utan koordinater/);
   const r = node([join(ROOT, 'scripts', 'import-arbetsstallen.mjs'), '--fil', FIL, '--sni', `${FIL}.sni`]);
   assert.equal(r.status, 0, r.stderr);
 
   const ro = openDb({ path: DB, readOnly: true });
-  const rows = ro.prepare('SELECT cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, beteckning, lokaltyp, loa_m2 FROM arbetsstalle ORDER BY cfar').all();
+  const rows = ro.prepare('SELECT cfar, orgnr, benamning, sni, avdelning, bransch, anstkl, adress, beteckning, lokaltyp, loa_m2, reklamsparr FROM arbetsstalle ORDER BY cfar').all();
   ro.close();
+  const K = { sni: '62100', avdelning: 'K', bransch: 'Dataprogrammering', anstkl: 3, adress: 'Testgatan 1', lokaltyp: 'Kontor', loa_m2: 140 };
   assert.deepEqual(rows.map((x) => ({ ...x })), [
-    { cfar: 10000001, orgnr: '5560000001', benamning: 'Butiken', sni: '62100', avdelning: 'K', bransch: 'Dataprogrammering',
-      anstkl: 3, adress: 'Testgatan 1', beteckning: 'T 1:1', lokaltyp: 'Kontor', loa_m2: 140 },
-    { cfar: 10000007, orgnr: '5560000007', benamning: null, sni: '62100', avdelning: 'K', bransch: 'Dataprogrammering',
-      anstkl: 3, adress: 'Testgatan 1', beteckning: null, lokaltyp: 'Kontor', loa_m2: 140 },
+    { cfar: 10000001, orgnr: '5560000001', benamning: 'Butiken', ...K, beteckning: 'T 1:1', reklamsparr: 0 },
+    { cfar: 10000003, orgnr: '5560000003', benamning: null, ...K, beteckning: 'T 1:1', reklamsparr: 1 },   // sparas, märks
+    { cfar: 10000007, orgnr: '5560000007', benamning: null, ...K, beteckning: null, reklamsparr: 0 },
   ]);
 });
 

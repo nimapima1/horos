@@ -36,14 +36,21 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
   aktuella data (ingen historik), ingen bulkfil. Stockholm bör gå på några tiotal anrop.
 - Registret innehåller också **fysiska personer** med registrerad firma, F-skatt, moms eller
   arbetsgivarregistrering, alltså enskilda firmor.
-- **Reklamspärr**: företag och arbetsställen med reklamspärr har aktivt frånsagt sig exponering.
+- **Reklamspärr**: företaget har frånsagt sig reklam via post, e-post och telefon (inte exponering).
 - Källor: <https://www.scb.se/vara-tjanster/bestall-data-och-statistik/foretagsregistret/avgiftsfria-uppgifter-i-foretagsregistret/>,
   variabelbeskrivning (PDF): <https://www.scb.se/contentassets/8a8eb5c3d45f461ea93482f8e8d4de4f/variabelbeskrivning-api.pdf>,
   postbeskrivning arbetsställen (postbeskrivning-ae.pdf, länkas från samma sida).
 
 ## Öppna frågor (1 kvar)
 
-1. **Användarvillkoren** i Registreringsportalen: får uppgifterna publiceras per adress på en öppen
+1. **Användarvillkoren – besvarad 2026-10-10** (lästa med användaren i Registreringsportalen):
+   - Nyttjanderätt: får användas och spridas utan andra begränsningar än att källa anges: "SCB" eller
+     "Statistiska centralbyrån", vid bearbetning med tillägget att egen bearbetning gjorts. Horos skriver
+     "SCB, företagsregistret (egen bearbetning)" (`SCB_KALLA` i public/panel.js).
+   - Reklamspärr: "Vid vidarespridning av uppgifter svarar Användaren för att informera om reklamspärrar."
+     Alltså markera, inte utesluta. Horos sparar `reklamsparr` och visar etiketten "reklamspärr".
+   - GDPR gäller personuppgifter (vi tar inte in enskilda firmor); överföring bara inom EU/EES.
+   (Ursprunglig fråga: får uppgifterna publiceras per adress på en öppen
    sajt? SCB:s sida nämner varken licens eller publicering (CC0 gäller SCB:s övriga öppna data).
    Läs villkoren tillsammans med användaren innan något publiceras.
    Registreringen sker med BankID på https://registreraafr.scb.se/; villkoren syns först efter inloggning.
@@ -80,7 +87,7 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
 
 - Visa **bara arbetsställen som tillhör juridiska personer**. Enskilda firmor (personnummer) läses
   aldrig in: använd `normOrgnr` i `lib/db.mjs`, som avvisar personnummer, och hoppa över raden.
-- **Uteslut arbetsställen med reklamspärr** (`reklamSparrTyp` = 2).
+- **Märk arbetsställen med reklamspärr** (`reklamSparrTyp` = 2) och förklara spärren på metodsidan (SCB:s villkor).
 - Visa bara hyresgäster på fastigheter som finns i Horos (juridisk ägare). `build-public.mjs` ska bara
   ta med arbetsställen på tillåtna fastigheter, och `PUBLIC_MODE`-kontrollen i `server.mjs` bör vägra
   starta om ett arbetsställe tillhör en fysisk person.
@@ -93,7 +100,7 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
 
 - Tabell `arbetsstalle` (lib/db.mjs), `scripts/import-arbetsstallen.mjs` (`npm run import:arbetsstallen`):
   hämtar `/v1/arbetsstallen/full` för hela landet sida för sida, utesluter personnummer, aeStat ≠ 1,
-  aeTyp 3, reklamspärr (2) och rader utan koordinater, kopplar adresskoordinaten till fastighet. Sparar alla
+  aeTyp 3 och rader utan koordinater, märker reklamspärr (2), kopplar adresskoordinaten till fastighet. Sparar alla
   kvarvarande (även utan fastighet, `beteckning` null); `--dry` räknar bara. `--fil`/`--sni` för sparade svar.
 - API: `hyresgaster` i `/api/fastighet/:bet`, `arbetsstallen` i `/api/bolag/:orgnr`.
 - Ruta "Användning" (under Ägare/Senaste köp): taxeringstyp + uppskattad fördelning på 7 lokaltyper med
@@ -112,7 +119,7 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
 2. `npm run import:arbetsstallen -- --dry` först. Kontrollera att fältnamnen stämmer (antal "utan koordinater"
    ska vara litet, branscher ska ha klartext). Ändra i `rad()` om svaret skiljer sig från specen.
 3. Kontrollera SNI 2025-avdelningarna i `AVDELNINGAR` (lib/lokaltyp.mjs) mot `avdelningText` i kodtabellen.
-4. Läs SCB:s villkor med användaren; först därefter `build-public --scb-villkor`.
+4. ~~Läs SCB:s villkor~~ (gjort 2026-10-10, se ovan); därefter `build-public --scb-villkor`.
 
 ## Föreslagen lösning (ursprunglig plan)
 

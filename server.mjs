@@ -284,14 +284,14 @@ const q = {
   bolag: db.prepare('SELECT * FROM bolag WHERE orgnr = ?'),
   // Företag med arbetsställe på fastigheten, störst först.
   hyresgaster: HAS_AE && db.prepare(`SELECT a.orgnr, b.namn, a.benamning, a.sni, a.bransch, a.anstkl,
-      a.adress, a.demo
+      a.adress, a.reklamsparr, a.demo
     FROM arbetsstalle a LEFT JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = ?
     ORDER BY a.anstkl DESC NULLS LAST, coalesce(b.namn, a.benamning) LIMIT 300`),
   // Uppskattad användning per lokaltyp (se LOKALTYPER), störst först.
   anvandning: HAS_AE && db.prepare(`SELECT lokaltyp AS typ, sum(loa_m2) AS loa_m2
     FROM arbetsstalle WHERE beteckning = ? GROUP BY lokaltyp ORDER BY loa_m2 DESC`),
   // Bolagets arbetsställen på fastigheter i Horos.
-  arbetsstallen: HAS_AE && db.prepare(`SELECT a.benamning, a.bransch, a.anstkl, a.adress, a.beteckning,
+  arbetsstallen: HAS_AE && db.prepare(`SELECT a.benamning, a.bransch, a.anstkl, a.adress, a.reklamsparr, a.beteckning,
       f.minx, f.miny, f.maxx, f.maxy
     FROM arbetsstalle a JOIN fastighet f ON f.beteckning = a.beteckning WHERE a.orgnr = ?
     ORDER BY a.anstkl DESC NULLS LAST, a.adress LIMIT 100`),

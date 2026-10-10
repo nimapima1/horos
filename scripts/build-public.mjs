@@ -61,7 +61,7 @@ withTransaction(db, () => {
       AND beteckning IN (SELECT beteckning FROM tillaten);
     INSERT INTO transaktion SELECT * FROM src.transaktion WHERE demo = 0 AND beteckning IN (SELECT beteckning FROM tillaten);
     -- Arbetsställen (SCB) bara på tillåtna fastigheter; importen har redan tagit bort enskilda
-    -- firmor och reklamspärrade, och villkoret på orgnr är en extra spärr mot personnummer.
+    -- firmor (reklamspärren följer med och visas), och villkoret på orgnr är en extra spärr mot personnummer.
     ${args['scb-villkor'] ? `INSERT INTO arbetsstalle SELECT * FROM src.arbetsstalle WHERE demo = 0
       AND substr(orgnr, 3, 1) >= '2' AND beteckning IN (SELECT beteckning FROM tillaten);` : ''}
     INSERT INTO bolag SELECT * FROM src.bolag WHERE demo = 0 ${args['alla-bolag'] ? '' : `AND orgnr IN (

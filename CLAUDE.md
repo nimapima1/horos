@@ -87,7 +87,8 @@ Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, ba
   Finance gett tillstånd. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
   efterfrågas (utkast i användarens Gmail 2026-10-10: red@fastighetsvarlden.se, bjorn.rundstrom@fastighetsnytt.se, support@modularfinance.com). Körs bara manuellt än; behöver ett schemalagt jobb på servern.
 - Företag på adressen (SCB-arbetsställen, 2026-10-10): tabell `arbetsstalle`, import, panel i fastighet och
-  bolag, uppskattad användning från branscher. Väntar på API-nyckel och SCB:s villkor, se `OVERLAMNING-hyresgaster.md`.
+  bolag, uppskattad användning från branscher. API-nyckel finns (användaren klistrar in den i terminalen); villkoren lästa 2026-10-10: spridning tillåten med
+  källa "SCB (egen bearbetning)", reklamspärr ska markeras (inte uteslutas). Se `OVERLAMNING-hyresgaster.md`.
 - Fastighetspanelen (2026-10-10): rutan Användning (lokaltyper, uppskattad LOA), tomtareal, LOA/BOA,
   exploateringstal, upplåtelseform (tomträtt/äganderätt). Typkoder → klartext i import-taxering.
   Senaste överlämning: `OVERLAMNING.md`.
