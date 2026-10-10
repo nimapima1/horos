@@ -21,7 +21,7 @@
 // och tillåter publicering per adress.
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { openDb, DB_PATH, ROOT, harJuridiskAgare, rebuildAdressFts, rebuildBolagFts, rebuildRtree, withTransaction } from '../lib/db.mjs';
+import { openDb, DB_PATH, ROOT, harJuridiskAgare, NYHET_PLATS_UTANFOR, rebuildAdressFts, rebuildBolagFts, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 
 const args = parseArgs(process.argv.slice(2));
@@ -74,7 +74,7 @@ withTransaction(db, () => {
     -- fastighet i Horos visas inte på kartan (åtagandet för belägenhetsadresser), och en fastighet som
     -- sålts till en privatperson finns inte bland de tillåtna.
     INSERT INTO nyhet SELECT * FROM src.nyhet;
-    INSERT INTO nyhet_plats SELECT * FROM src.nyhet_plats WHERE beteckning IN (SELECT beteckning FROM tillaten);
+    INSERT INTO nyhet_plats SELECT * FROM src.nyhet_plats WHERE NOT ${NYHET_PLATS_UTANFOR};   -- fastighet = de tillåtna
     ${args['lm-planer'] ? 'INSERT INTO plan SELECT * FROM src.plan WHERE demo = 0;' : ''}
     CREATE TABLE meta (nyckel TEXT PRIMARY KEY, varde TEXT);
   `);

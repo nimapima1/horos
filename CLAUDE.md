@@ -92,15 +92,17 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
   Finance gett tillstånd. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
   efterfrågas (mejlen skickade 2026-10-10, väntar på svar; se `PRIVAT.md`). På servern: cron (som deploy, inlagd av `deploy.sh`) kör
   `deploy/nyheter.sh` 05:15 och 15:15 UTC: `import-nyheter --publik` på en kopia av den publika databasen
-  (platser bara på fastigheter i den), byter filen och startar om; logg i `/var/lib/fastighetskarta/nyheter.log`.
-  `deploy --data` skriver över serverns nyheter med de lokala: kör `import-nyheter` lokalt före `build-public`.
+  (platser bara på fastigheter i den, samma regel `NYHET_PLATS_UTANFOR` som build-public och serverns spärr), byter
+  filen och startar om bara om något ändrades; hoppar över om appen är stoppad. Lås `databas.lock` delas med
+  `deploy.sh`, som vid `--data` behåller serverns pressmeddelanden (`import-nyheter --behall`). Logg i
+  `/var/lib/fastighetskarta/nyheter.log`.
 - Företag på adressen (SCB-arbetsställen, 2026-10-10): tabell `arbetsstalle`, import, panel i fastighet och
   bolag, uppskattad användning från branscher. API-nyckel finns (användaren klistrar in den i terminalen); villkoren lästa 2026-10-10: spridning tillåten med
   källa "SCB (egen bearbetning)", reklamspärr ska markeras (inte uteslutas). Se `OVERLAMNING-hyresgaster.md`.
 - Fastighetspanelen (2026-10-10): rutan Användning (lokaltyper, uppskattad LOA), tomtareal, LOA/BOA,
   exploateringstal, upplåtelseform (tomträtt/äganderätt). Typkoder → klartext i import-taxering.
   Senaste överlämning: `OVERLAMNING.md`.
-Den publika databasen har **0 fastigheter** (bara bolag och adresser) tills riktiga data finns.
+Den publika databasen har **0 fastigheter** (bara bolag, adresser och pressmeddelanden) tills riktiga data finns.
 
 Väntar på:
 - Svar på tillståndsmejlen (Fastighetsvärlden, Fastighetsnytt, MFN), skickade 2026-10-10 från kontakt@horos.se.

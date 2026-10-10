@@ -35,6 +35,12 @@ tar -czf - "${FILES[@]}" | "$SSH" "$TARGET" "set -e
   d=/opt/fastighetskarta/releases/$REL
   mkdir -p \$d && tar -xzf - -C \$d
   if [ -f \$d/data/public.sqlite ]; then
+    # Samma lås som cron-jobbet deploy/nyheter.sh, och pressmeddelanden som det hämtat följer med.
+    exec 9>/var/lib/fastighetskarta/databas.lock; flock 9
+    if [ -f /var/lib/fastighetskarta/public.sqlite ]; then
+      node --disable-warning=ExperimentalWarning \$d/scripts/import-nyheter.mjs --publik \$d/data/public.sqlite \
+        --behall /var/lib/fastighetskarta/public.sqlite || echo 'Varning: serverns pressmeddelanden följde inte med.'
+    fi
     # Byt databasen atomärt så att servern aldrig läser en halv fil.
     mv \$d/data/public.sqlite /var/lib/fastighetskarta/public.sqlite.new
     mv /var/lib/fastighetskarta/public.sqlite.new /var/lib/fastighetskarta/public.sqlite
@@ -47,10 +53,9 @@ tar -czf - "${FILES[@]}" | "$SSH" "$TARGET" "set -e
   ln -sfn \$d /opt/fastighetskarta/current
   ls -1dt /opt/fastighetskarta/releases/* | tail -n +4 | xargs -r rm -rf
   # Pressmeddelanden två gånger om dagen (UTC, utanför omstartsfönstret 04:30), logg i nyheter.log.
-  if command -v crontab >/dev/null; then
-    { crontab -l 2>/dev/null | grep -v horos-nyheter || true
-      echo '15 5,15 * * * bash /opt/fastighetskarta/current/deploy/nyheter.sh >> /var/lib/fastighetskarta/nyheter.log 2>&1 # horos-nyheter'; } | crontab -
-  else echo 'cron saknas: pressmeddelandena hämtas inte automatiskt.'; fi
+  # deploy har inga andra cron-jobb, så hela crontaben skrivs om.
+  echo '15 5,15 * * * bash /opt/fastighetskarta/current/deploy/nyheter.sh >> /var/lib/fastighetskarta/nyheter.log 2>&1' \
+    | crontab - || echo 'cron saknas: pressmeddelandena hämtas inte automatiskt.'
   admin() { sudo -n /usr/local/sbin/fastighetskarta-admin \"\$@\"; }
   echo 'Startar om…'
   admin restart

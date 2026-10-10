@@ -3,9 +3,12 @@
 // Fastigheter hittas via beteckningen i texten (kommun + trakt) eller adressen (adresspunkt -> fastighet).
 //
 //   node scripts/import-nyheter.mjs [--dry]   (--dry: visa vad som hittas, spara inget)
-//   node scripts/import-nyheter.mjs --publik <fil>   (servern, deploy/nyheter.sh: en kopia av den publika databasen)
+//   node scripts/import-nyheter.mjs --publik <fil>   (servern, deploy/nyheter.sh: en kopia av den publika databasen;
+//                                                     slutkod 3 = inget ändrades)
+//   node scripts/import-nyheter.mjs --publik <ny> --behall <gammal>   (deploy --data: pressmeddelanden som bara
+//                                                     finns i den gamla publika databasen följer med, ingen hämtning)
 import { DatabaseSync } from 'node:sqlite';
-import { openDb, rebuildRtree, withTransaction } from '../lib/db.mjs';
+import { NYHET_PLATS_UTANFOR, openDb, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 import { pointInGeom } from '../lib/geo.mjs';
 import { CISION, lasRss, tolka } from '../lib/nyheter.mjs';
@@ -17,6 +20,25 @@ const vanta = (ms) => new Promise((r) => setTimeout(r, ms));
 // Den publika databasen öppnas utan openDb: schemat skulle skapa tabeller som gör att servern vägrar starta.
 const db = args.publik ? new DatabaseSync(args.publik) : openDb();
 if (!args.publik) rebuildRtree(db, 'fastighet');
+
+// Cron hämtar pressmeddelanden på servern, så den gamla publika databasen kan ha sådana som den nya
+// (byggd lokalt) saknar. Platserna följer bara med på fastigheter i den nya.
+if (args.publik && args.behall) {
+  db.exec(`ATTACH DATABASE '${String(args.behall).replace(/'/g, "''")}' AS gammal`);
+  withTransaction(db, () => db.exec(`
+    CREATE TEMP TABLE bara_gamla AS SELECT url FROM gammal.nyhet WHERE url NOT IN (SELECT url FROM main.nyhet);
+    INSERT INTO main.nyhet SELECT * FROM gammal.nyhet WHERE url IN (SELECT url FROM bara_gamla);
+    INSERT INTO main.nyhet_plats SELECT * FROM gammal.nyhet_plats
+      WHERE url IN (SELECT url FROM bara_gamla) AND NOT ${NYHET_PLATS_UTANFOR};`));
+  console.log(`Behöll ${db.prepare('SELECT count(*) AS n FROM bara_gamla').get().n} pressmeddelanden som bara fanns på servern.`);
+  process.exit(0);
+}
+
+// Innehållet i nyhet/nyhet_plats, för att se om något ändrades (då behöver servern inte startas om).
+const innehall = () => db.prepare(`SELECT
+  (SELECT json_group_array(json_array(url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun)) FROM (SELECT * FROM nyhet ORDER BY url))
+  || (SELECT json_group_array(json_array(url, beteckning, adress, lon, lat)) FROM (SELECT * FROM nyhet_plats ORDER BY 1, 2, 3, 4, 5)) AS s`).get().s;
+const fore = args.publik && innehall();
 const finnsFastighet = db.prepare('SELECT 1 FROM fastighet WHERE beteckning = ?');
 const adresser = db.prepare('SELECT lon, lat, ort FROM adress WHERE gata = ? COLLATE NOCASE AND nummer = ?');
 const kandidater = db.prepare(`SELECT f.beteckning, f.geojson FROM fastighet f
@@ -36,11 +58,11 @@ const fastighetensKommun = db.prepare('SELECT kommun FROM fastighet WHERE beteck
 // Kommunen tas från fastigheten under punkten, annars från adressens ort.
 function adressPunkt({ gata, nummer }, kommun) {
   if (!kommun) return null;
-  for (const a of adresser.all(gata, nummer)) {
-    const bet = fastighetVid(a.lon, a.lat);
-    if ((bet ? fastighetensKommun.get(bet)?.kommun : a.ort) === kommun) return { ...a, bet };
-  }
-  return null;
+  const rader = adresser.all(gata, nummer).map((a) => ({ ...a, bet: fastighetVid(a.lon, a.lat) }));
+  // Publikt saknas fastigheterna utan juridisk ägare, så kommunen för en sådan träff är okänd och en annan
+  // träff kunde väljas än lokalt. En adress som finns på flera ställen hoppas därför över.
+  if (args.publik && new Set(rader.map((a) => a.bet ?? `${a.lon},${a.lat}`)).size > 1) return null;
+  return rader.find((a) => (a.bet ? fastighetensKommun.get(a.bet)?.kommun : a.ort) === kommun) ?? null;
 }
 
 let antal = 0, medPlats = 0;
@@ -53,15 +75,14 @@ for (const [namn, utgivare] of CISION) {
     // Pressmeddelanden som inte (längre) räknas som affärer, t.ex. efter ändrade regler i lib/nyheter.mjs.
     if (!args.dry) for (const n of alla) if (!affarer.includes(n)) { delNyhet.run(n.url); delPlats.run(n.url); }
     for (const n of affarer) {
-      // Kandidatbeteckningar sparas även om fastigheten inte finns än, så att de kopplas när den läses in.
-      let platser = n.beteckningar.map((b) => [b, null, null, null]);
+      // Lokalt sparas kandidatbeteckningar även om fastigheten inte finns än, så att de kopplas när den läses in.
+      // Publikt (--publik) tas platser utan fastighet i databasen bort efter hämtningen, som i build-public.
+      const platser = n.beteckningar.map((b) => [b, null, null, null]);
       for (const a of n.adresser) {
         const p = adressPunkt(a, n.kommun);
         if (p) platser.push([p.bet, `${a.gata} ${a.nummer}`, p.lon, p.lat]);
       }
-      // Som i build-public: publikt bara platser på fastigheter i databasen (de tillåtna), inga lösa adresspunkter.
-      if (args.publik) platser = platser.filter(([b]) => b && finnsFastighet.get(b));
-      const kopplade = platser.filter(([b, , lon]) => lon != null || finnsFastighet.get(b)).length;
+      const kopplade = platser.filter(([b, , lon]) => finnsFastighet.get(b) || (lon != null && !args.publik)).length;
       antal++; if (kopplade) medPlats++;
       if (args.dry) {
         console.log(`${n.datum?.slice(0, 10)} ${n.typ} ${n.pris_kr ? `${n.pris_kr / 1e6} Mkr` : '–'} ${n.rubrik}`
@@ -75,4 +96,9 @@ for (const [namn, utgivare] of CISION) {
   });
   await vanta(1000);   // en förfrågan i sekunden
 }
-console.log(`${args.dry ? 'Torrkörning: ' : 'Klart: '}${antal} affärer i pressmeddelanden, ${medPlats} med plats på kartan.`);
+// Avbryts hämtningen blir slutkoden fel och deploy/nyheter.sh kastar kopian, så det räcker att städa här.
+if (args.publik && !args.dry) db.exec(`DELETE FROM nyhet_plats WHERE ${NYHET_PLATS_UTANFOR}`);
+const oforandrat = args.publik && innehall() === fore;
+console.log(`${args.dry ? 'Torrkörning: ' : 'Klart: '}${antal} affärer i pressmeddelanden, ${medPlats} med plats på kartan`
+  + `${oforandrat ? ' (inget ändrades)' : ''}.`);
+if (oforandrat) process.exitCode = 3;

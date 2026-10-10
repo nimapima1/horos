@@ -5,7 +5,7 @@ Engångsuppsättning tar ungefär 20 minuter. Därefter räcker ett kommando fö
 Servern heter `horos-3` i Hetzner (Helsingfors, 37.27.152.172). Internt på servern heter tjänst, kataloger och
 admin-skript `fastighetskarta`, t.ex. `/opt/fastighetskarta` och `fastighetskarta-admin`.
 
-Serverkonfiguration: [`cloud-init.yaml`](cloud-init.yaml) version 4. Caddy installeras från
+Serverkonfiguration: [`cloud-init.yaml`](cloud-init.yaml) version 5. Caddy installeras från
 Caddys GitHub-releaser (SHA-512 kontrolleras) och uppdateras veckovis av en timer, eftersom
 Caddys apt-förråd hos Cloudsmith svarar 402. Node uppdateras via unattended-upgrades, och
 servern startar om 04:30 när en uppdatering kräver det. Version 1 (157.180.82.3) och
@@ -83,6 +83,8 @@ deploy/deploy.sh deploy@<IP>          # bara ny kod
 npm run build:public && deploy/deploy.sh deploy@<IP> --data   # ny data
 ```
 
+Pressmeddelanden som servern hämtat (cron, `deploy/nyheter.sh`) följer med vid `--data`.
+
 Med Lantmäteriets data när ansökan beviljats:
 
 ```sh
@@ -143,4 +145,5 @@ ssh deploy@<IP> 'ln -sfn /opt/fastighetskarta/releases/<äldre> /opt/fastighetsk
 | App | Node 24, systemd-tjänst med härdning (skrivskyddat filsystem, inga privilegier), lyssnar bara på 127.0.0.1:3000 |
 | Webbserver | Caddy: HTTPS, komprimering, säkerhetshuvuden (CSP m.m.), ingen åtkomstlogg |
 | Data | `/var/lib/fastighetskarta/public.sqlite`, öppnas skrivskyddat |
+| Cron (deploy) | `deploy/nyheter.sh` 05:15 och 15:15 UTC: nya pressmeddelanden, byter databasen och startar om om något ändrats; logg i `/var/lib/fastighetskarta/nyheter.log` (läggs in av `deploy.sh`) |
 | Integritet | Inga besökar-IP:n loggas; MapLibre serveras från egen server. Bakgrundskartan hämtas från OpenFreeMap (tredje part: besökarens webbläsare kontaktar deras servrar) |

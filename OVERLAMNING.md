@@ -10,11 +10,11 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   (`master` = `origin/master`). Sådant som inte ska vara publikt (namngivna personers adresser, förhandlingsläge,
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
-- **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt. Koden till och
-  med b8fd5c8, publik databas byggd 2026-10-10 14:25 med `--alla-bolag` och publicerad med `--data`:
-  0 fastigheter, 2,2 miljoner bolag (ägarkontrollen som ord: `stat`, `kommun`, `region` …), 120 177 adresser,
-  127 affärer ur pressmeddelanden, inga arbetsställen (byggt utan `--scb-villkor`).
-- `npm test`: 31 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
+- **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt. Koden som
+  den deployades senast (se `git log`), publik databas byggd 2026-10-10 14:25 med `--alla-bolag` och publicerad
+  med `--data`: 0 fastigheter, 2,2 miljoner bolag (ägarkontrollen som ord: `stat`, `kommun`, `region` …), 120 177
+  adresser, inga arbetsställen (byggt utan `--scb-villkor`). Pressmeddelandena uppdateras av cron (se CLAUDE.md).
+- `npm test`: 33 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
   av en annan session). Starta om servern efter import eller demo-data.
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
   terminal (lösenfras **direkt**, annars stänger servern anslutningen). Deploy laddar upp arbetskatalogen som den

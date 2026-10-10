@@ -2,7 +2,7 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
-import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, hasColumn, rebuildRtree } from './lib/db.mjs';
+import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree } from './lib/db.mjs';
 import { innerPoints, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN } from './lib/kommuner.mjs';
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
@@ -52,6 +52,9 @@ if (PUBLIC_MODE) {
       OR beteckning IS NULL OR beteckning NOT IN (SELECT beteckning FROM fastighet)`).get().n;
     if (ae) fel.push(`${ae} arbetsställen med personnummer eller utan fastighet i Horos`);
   }
+  // Pressmeddelandenas platser: bara på fastigheter som visas (åtagandet för belägenhetsadresser).
+  const np = HAS_NYHET && db.prepare(`SELECT count(*) AS n FROM nyhet_plats WHERE ${NYHET_PLATS_UTANFOR}`).get().n;
+  if (np) fel.push(`${np} platser i pressmeddelanden utan fastighet i Horos`);
   if (hasTable('har_privat_agare')) fel.push('tabellen har_privat_agare finns (bygg databasen med scripts/build-public.mjs)');
   if (fel.length) {
     console.error(`Vägrar starta i publikt läge: ${fel.join('; ')}.`);
