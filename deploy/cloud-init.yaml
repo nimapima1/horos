@@ -1,5 +1,5 @@
 #cloud-config
-# Horos – serverkonfiguration, version 3.
+# Horos – serverkonfiguration, version 4 (www skickas vidare till domänen).
 # Klistra in hela filen under "Cloud config" när servern skapas i Hetzner Cloud Console.
 # Ubuntu 24.04. Installerar Node 24 (NodeSource) och Caddy (HTTPS, från Caddys officiella
 # releaser på GitHub) med automatiska uppdateringar, brandvägg, skapar användaren "deploy"
@@ -195,6 +195,11 @@ write_files:
 
   - path: /etc/caddy/Caddyfile.template
     content: |
+      # www skickas vidare till domänen utan www (tas bort när servern bara har sin IP-adress).
+      www.__SITE__ {
+        redir https://__SITE__{uri} permanent
+      }
+
       __SITE__ {
         encode zstd gzip
         reverse_proxy 127.0.0.1:3000
@@ -228,7 +233,7 @@ runcmd:
   # Caddy från den officiella GitHub-releasen (kontrollerad med SHA-512), uppdateras veckovis.
   - /usr/local/sbin/horos-update-caddy || /usr/local/sbin/horos-update-caddy
   # Tills en domän är satt: servera över http på serverns IP.
-  - sed "s|__SITE__|:80|; /Strict-Transport-Security/d" /etc/caddy/Caddyfile.template > /etc/caddy/Caddyfile
+  - sed "/^www\./,/^}/d; s|__SITE__|:80|; /Strict-Transport-Security/d" /etc/caddy/Caddyfile.template > /etc/caddy/Caddyfile
   - systemctl reload caddy || systemctl restart caddy
   # Kataloger: koden och datan ägs av deploy, appen läser bara. Hemligheter ägs av root.
   - mkdir -p /opt/fastighetskarta/releases /var/lib/fastighetskarta/tiles /etc/fastighetskarta

@@ -5,7 +5,7 @@ Engångsuppsättning tar ungefär 20 minuter. Därefter räcker ett kommando fö
 Servern heter `horos-3` i Hetzner (Helsingfors, 37.27.152.172). Internt på servern heter tjänst, kataloger och
 admin-skript `fastighetskarta`, t.ex. `/opt/fastighetskarta` och `fastighetskarta-admin`.
 
-Serverkonfiguration: [`cloud-init.yaml`](cloud-init.yaml) version 3. Caddy installeras från
+Serverkonfiguration: [`cloud-init.yaml`](cloud-init.yaml) version 4. Caddy installeras från
 Caddys GitHub-releaser (SHA-512 kontrolleras) och uppdateras veckovis av en timer, eftersom
 Caddys apt-förråd hos Cloudsmith svarar 402. Node uppdateras via unattended-upgrades, och
 servern startar om 04:30 när en uppdatering kräver det. Version 1 (157.180.82.3) och

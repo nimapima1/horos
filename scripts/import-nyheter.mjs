@@ -23,6 +23,7 @@ const fastighetVid = (lon, lat) =>
 const insNyhet = db.prepare(`INSERT OR REPLACE INTO nyhet (url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun)
   VALUES (?, 'cision', ?, ?, ?, ?, ?, ?)`);
 const delPlats = db.prepare('DELETE FROM nyhet_plats WHERE url = ?');
+const delNyhet = db.prepare('DELETE FROM nyhet WHERE url = ?');
 const insPlats = db.prepare('INSERT INTO nyhet_plats (url, beteckning, adress, lon, lat) VALUES (?, ?, ?, ?, ?)');
 
 // Adressen i texten -> en punkt: en enda träff, annars den i en kommun som texten nämner.
@@ -35,9 +36,11 @@ let antal = 0, medPlats = 0;
 for (const [namn, utgivare] of CISION) {
   const res = await fetch(`https://news.cision.com/se/${namn}/ListItems?format=rss&pageSize=100`, { headers: { 'user-agent': UA } });
   if (!res.ok) { console.error(`${utgivare}: Cision svarade ${res.status}`); continue; }
-  const affarer = lasRss(await res.text()).map((n) => ({ ...n, ...tolka(n) }))
-    .filter((n) => n.typ && n.url.startsWith('https://news.cision.com/'));   // länken visas på sidan
+  const alla = lasRss(await res.text()).map((n) => ({ ...n, ...tolka(n) }));
+  const affarer = alla.filter((n) => n.typ && n.url.startsWith('https://news.cision.com/'));   // länken visas på sidan
   withTransaction(db, () => {
+    // Pressmeddelanden som inte (längre) räknas som affärer, t.ex. efter ändrade regler i lib/nyheter.mjs.
+    if (!args.dry) for (const n of alla) if (!affarer.includes(n)) { delNyhet.run(n.url); delPlats.run(n.url); }
     for (const n of affarer) {
       // Kandidatbeteckningar sparas även om fastigheten inte finns än, så att de kopplas när den läses in.
       const platser = n.beteckningar.map((b) => [b, null, null, null]);

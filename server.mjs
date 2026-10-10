@@ -681,10 +681,10 @@ const routes = [
 
   // Antal per kommun med kartfiltren (bbox ignoreras): [lon, lat, kommun, antal, värde (tkr)].
   [/^\/api\/kommunkluster$/, 'api', (_m, url) => {
-    const nyckel = filterParams(url).join('|');
+    const p = filterParams(url), nyckel = p.join('|');
     if (!klusterCache.has(nyckel)) {
       if (klusterCache.size >= 500) klusterCache.clear();
-      klusterCache.set(nyckel, q.kommunKluster.all(-180, 180, -90, 90, null, null, ...filterParams(url))
+      klusterCache.set(nyckel, q.kommunKluster.all(-180, 180, -90, 90, null, null, ...p)
         .map((r) => [r.lon, r.lat, r.kommun, r.n, r.varde_tkr]));
     }
     return [200, { k: klusterCache.get(nyckel) }];

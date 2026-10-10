@@ -21,5 +21,15 @@ test('köp med adress och pris i miljarder; kommunen före trakten tas bort', ()
 
 test('inte affärer: uthyrning, rapporter, utlandet och försäljning till privatperson', () => {
   for (const rubrik of ['Vasakronan hyr ut 3000 kvm i Malmö', 'Delårsrapport: Corem säljer mer', 'Skanska säljer kontor i Warszawa för EUR 98M',
-    'Peab säljer fastighet i Solna till en privatperson']) assert.equal(tolka({ rubrik, text: '' }), null, rubrik);
+    'Peab säljer fastighet i Solna till en privatperson', 'Vasakronan köper kontor för EUR 50M'])
+    assert.equal(tolka({ rubrik, text: '' }), null, rubrik);
+});
+
+test('en svensk affär med priset även i euro räknas', () => {
+  assert.equal(tolka({ rubrik: 'Slättö förvärvar 40 % av en portfölj i Uppsala värderad till 3,1 miljarder SEK (270 miljoner EUR)', text: '' }).typ, 'kop');
+});
+
+test('priset är köpeskillingen, inte hyresvärdet', () => {
+  for (const text of ['Hyresvärdet uppgår till 12 mkr. Köpeskillingen är 300 mkr.', 'Ett hyresvärde om 1 200 mkr och köpeskilling 300 mkr.'])
+    assert.equal(tolka({ rubrik: 'Vasakronan köper i Uppsala', text }).pris_kr, 300e6, text);
 });
