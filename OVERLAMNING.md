@@ -49,11 +49,12 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
 ## Förslag till nästa session
 
 1. Inga svar på tillståndsmejlen ännu (kollat i Gmail 2026-10-10 eftermiddag).
-2. **Schemalagd import av pressmeddelanden** på servern: i dag körs `import-nyheter` för hand, och den publika
-   databasen byts bara vid `deploy --data`. Kräver en ändring på servern (root eller ny cloud-init), t.ex. en
-   egen skrivbar SQLite för nyheter som servern läser. Fråga användaren först.
-3. Schemalagd SCB-import (registret uppdateras varje natt): nyckeln i `/etc/fastighetskarta/secrets.env` via
-   `login-till-server`, jobb utanför 04:00–04:30. Fråga först; nyckeln är personlig.
+2. Pressmeddelanden hämtas på servern två gånger om dagen sedan 2026-10-10 (cron som deploy, se CLAUDE.md).
+   Kontrollera `nyheter.log` efter första körningen:
+   `ssh deploy@37.27.152.172 tail /var/lib/fastighetskarta/nyheter.log` (och `crontab -l`).
+3. Schemalagd SCB-import: vänta tills fastigheterna finns (arbetsställena publiceras bara på tillåtna
+   fastigheter och med `--scb-villkor`, så i dag ger det inget). Nyckeln är personlig och
+   `secrets.env` kan inte läsas av deploy; fråga användaren hur den ska förvaras.
 4. Planer: länk till kommunens plandokument när kolumnerna i planfilen är kända.
 
 ## Kom ihåg när data kommer

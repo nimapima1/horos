@@ -3,6 +3,8 @@
 // Fastigheter hittas via beteckningen i texten (kommun + trakt) eller adressen (adresspunkt -> fastighet).
 //
 //   node scripts/import-nyheter.mjs [--dry]   (--dry: visa vad som hittas, spara inget)
+//   node scripts/import-nyheter.mjs --publik <fil>   (servern, deploy/nyheter.sh: en kopia av den publika databasen)
+import { DatabaseSync } from 'node:sqlite';
 import { openDb, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 import { pointInGeom } from '../lib/geo.mjs';
@@ -12,8 +14,9 @@ const args = parseArgs(process.argv.slice(2));
 const UA = 'Horos/0.1 (ideell fastighetskarta; kontakt@horos.se)';
 const vanta = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const db = openDb();
-rebuildRtree(db, 'fastighet');
+// Den publika databasen öppnas utan openDb: schemat skulle skapa tabeller som gör att servern vägrar starta.
+const db = args.publik ? new DatabaseSync(args.publik) : openDb();
+if (!args.publik) rebuildRtree(db, 'fastighet');
 const finnsFastighet = db.prepare('SELECT 1 FROM fastighet WHERE beteckning = ?');
 const adresser = db.prepare('SELECT lon, lat, ort FROM adress WHERE gata = ? COLLATE NOCASE AND nummer = ?');
 const kandidater = db.prepare(`SELECT f.beteckning, f.geojson FROM fastighet f
@@ -51,11 +54,13 @@ for (const [namn, utgivare] of CISION) {
     if (!args.dry) for (const n of alla) if (!affarer.includes(n)) { delNyhet.run(n.url); delPlats.run(n.url); }
     for (const n of affarer) {
       // Kandidatbeteckningar sparas även om fastigheten inte finns än, så att de kopplas när den läses in.
-      const platser = n.beteckningar.map((b) => [b, null, null, null]);
+      let platser = n.beteckningar.map((b) => [b, null, null, null]);
       for (const a of n.adresser) {
         const p = adressPunkt(a, n.kommun);
         if (p) platser.push([p.bet, `${a.gata} ${a.nummer}`, p.lon, p.lat]);
       }
+      // Som i build-public: publikt bara platser på fastigheter i databasen (de tillåtna), inga lösa adresspunkter.
+      if (args.publik) platser = platser.filter(([b]) => b && finnsFastighet.get(b));
       const kopplade = platser.filter(([b, , lon]) => lon != null || finnsFastighet.get(b)).length;
       antal++; if (kopplade) medPlats++;
       if (args.dry) {

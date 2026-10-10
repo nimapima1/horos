@@ -21,7 +21,7 @@ SSH=ssh
 [[ -x /c/Windows/System32/OpenSSH/ssh.exe ]] && SSH=/c/Windows/System32/OpenSSH/ssh.exe
 
 REL="$(date +%Y%m%d-%H%M%S)"
-FILES=(server.mjs package.json lib public)
+FILES=(server.mjs package.json lib public scripts/import-nyheter.mjs deploy/nyheter.sh)
 if [[ "$WITH_DATA" == "--data" ]]; then
   [[ -f data/public.sqlite ]] || { echo "data/public.sqlite saknas. Kör: npm run build:public"; exit 1; }
   FILES+=(data/public.sqlite)
@@ -46,6 +46,11 @@ tar -czf - "${FILES[@]}" | "$SSH" "$TARGET" "set -e
   fi
   ln -sfn \$d /opt/fastighetskarta/current
   ls -1dt /opt/fastighetskarta/releases/* | tail -n +4 | xargs -r rm -rf
+  # Pressmeddelanden två gånger om dagen (UTC, utanför omstartsfönstret 04:30), logg i nyheter.log.
+  if command -v crontab >/dev/null; then
+    { crontab -l 2>/dev/null | grep -v horos-nyheter || true
+      echo '15 5,15 * * * bash /opt/fastighetskarta/current/deploy/nyheter.sh >> /var/lib/fastighetskarta/nyheter.log 2>&1 # horos-nyheter'; } | crontab -
+  else echo 'cron saknas: pressmeddelandena hämtas inte automatiskt.'; fi
   admin() { sudo -n /usr/local/sbin/fastighetskarta-admin \"\$@\"; }
   echo 'Startar om…'
   admin restart

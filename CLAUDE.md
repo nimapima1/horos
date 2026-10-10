@@ -90,7 +90,10 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
   Privatperson som säljare: affären visas, namnet aldrig; försäljning till privatperson tas inte med.
   **MFN förbjuder automatisk hämtning** (robots.txt: `*.rss`, `*.xml`, `*.json`): inte med förrän Modular
   Finance gett tillstånd. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
-  efterfrågas (mejlen skickade 2026-10-10, väntar på svar; se `PRIVAT.md`). Körs bara manuellt än; behöver ett schemalagt jobb på servern.
+  efterfrågas (mejlen skickade 2026-10-10, väntar på svar; se `PRIVAT.md`). På servern: cron (som deploy, inlagd av `deploy.sh`) kör
+  `deploy/nyheter.sh` 05:15 och 15:15 UTC: `import-nyheter --publik` på en kopia av den publika databasen
+  (platser bara på fastigheter i den), byter filen och startar om; logg i `/var/lib/fastighetskarta/nyheter.log`.
+  `deploy --data` skriver över serverns nyheter med de lokala: kör `import-nyheter` lokalt före `build-public`.
 - Företag på adressen (SCB-arbetsställen, 2026-10-10): tabell `arbetsstalle`, import, panel i fastighet och
   bolag, uppskattad användning från branscher. API-nyckel finns (användaren klistrar in den i terminalen); villkoren lästa 2026-10-10: spridning tillåten med
   källa "SCB (egen bearbetning)", reklamspärr ska markeras (inte uteslutas). Se `OVERLAMNING-hyresgaster.md`.
