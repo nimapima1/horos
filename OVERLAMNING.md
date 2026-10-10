@@ -1,4 +1,4 @@
-# Överlämning 2026-10-10 (eftermiddag)
+# Överlämning 2026-10-10 (kväll)
 
 Läs `CLAUDE.md` först (regler, teknik, server) och `PRIVAT.md` (inte i git: mejlkontakter, myndighetsärenden,
 kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 och vad som ska göras härnäst.
@@ -6,70 +6,86 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
 
 ## Läget
 
-- **Publikt repo**: https://github.com/nimapima1/horos (AGPL-3.0-or-later, `LICENSE`). Allt committat är pushat
-  (`master` följer `origin/master`). Skrivs sådant som inte ska vara publikt (namngivna personers adresser,
-  förhandlingsläge, kostnader, nycklar): lägg det i `PRIVAT.md`. Äldre commits innehåller fortfarande det som
-  flyttades dit; historiken är inte omskriven.
-- **Live**: https://horos.se kör koden till och med 358f3f5 (deployad 2026-10-10, bara kod, ingen ny databas).
-  Den publika databasen har fortfarande 0 fastigheter, alltså inga arbetsställen heller.
-- **Ej committat från en annan session** (horos.se/www): `CLAUDE.md` (två rader), `deploy/DEPLOY.md`,
-  `deploy/cloud-init.yaml`. Rör dem inte utan att fråga; de är inte pushade.
-- `npm test`: 24 gröna.
-- Prova lokalt: `preview_start {name: "horos-3005"}`. Lokala databasen har nu **777 708 riktiga arbetsställen
-  från SCB** (hela landet) ovanpå demo-fastigheterna; 10 825 av dem hamnar på demo-fastigheter, vilket bara
-  är ett sammanträffande av koordinaterna. Starta om servern efter import eller demo-data.
-- Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i
-  användarens terminal (lösenfras inom ett par minuter). Den här datorns DNS hittade inte horos.se direkt
-  efter köpet; kontrollera med `curl --resolve horos.se:443:37.27.152.172 https://horos.se/`.
+- **Publikt repo**: https://github.com/nimapima1/horos (AGPL-3.0-or-later). Allt är committat och pushat
+  (`master` = `origin/master`). Sådant som inte ska vara publikt (namngivna personers adresser, förhandlingsläge,
+  kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
+  (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
+- **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt. Koden till och
+  med 6df6f22, publik databas byggd 2026-10-10 13:03 med `--alla-bolag`: 0 fastigheter, 2,2 miljoner bolag,
+  120 177 adresser, 127 affärer ur pressmeddelanden, inga arbetsställen (byggt utan `--scb-villkor`).
+- **Känt fel i den publika databasen**: `bolag.agarkontroll` har SCB:s sifferkoder (`10`, `20`, `30` …), men
+  koden sedan 6df6f22 förväntar sig ord (`stat`, `kommun`, `region` …). Den lokala databasen har redan ord.
+  Syns inte i dag (0 fastigheter), men **nästa publicering ska byggas om med `build-public` och `--data`**.
+- `npm test`: 30 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
+  av en annan session). Starta om servern efter import eller demo-data.
+- Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
+  terminal (lösenfras **direkt**, annars stänger servern anslutningen). Deploy laddar upp arbetskatalogen som den
+  är: kontrollera `git status` först så att ingen annan sessions ocommittade ändringar följer med.
 
-## Gjort denna session: SCB-arbetsställen på riktigt
+## Gjort 2026-10-10
 
-- Nyckeln fungerar. Den sparas ingenstans: användaren klistrar in den (högerklick, inte Ctrl+V) när
-  `import-arbetsstallen` frågar. `lib/prompt.mjs` tar bort markörer och styrtecken från inklistrad text.
-- Importen (`--dry` först, `--sidor N` för prov): 1 917 910 lästa, 777 708 sparade, 8 042 med reklamspärr;
-  uteslutna 632 373 enskilda firmor, 398 963 ej verksamma, 290 fiktiva, 108 576 utan koordinater.
-- **Reklamspärr är kod 2** (kodtabellen), inte 4 som PDF:en sa. Övriga koder och SNI-avdelningarna är
-  kontrollerade mot kodtabellerna.
-- **SCB:s villkor lästa** (Registreringsportalen, efter BankID): fri spridning med källa; vid bearbetning
-  "egen bearbetning". Den som sprider uppgifterna ska **informera om reklamspärr** (inte utesluta). Därför:
-  kolumnen `arbetsstalle.reklamsparr`, etiketten "reklamspärr" i panelerna med förklaring när någon har spärr,
-  text på metodsidan, källan `SCB_KALLA` = "SCB, företagsregistret (egen bearbetning)" i `public/panel.js`.
-- Granskat med thermo-nuclear och ponytail-review; alla fem fynd fixade (358f3f5).
+- **Kommunöversikt** under zoom 10: `/api/kommunkluster` (antal per kommun i hela landet med kartfiltren,
+  sparas per filter i minnet), bubblor som slås ihop när man zoomar ut.
+- **Pressmeddelanden** (`lib/nyheter.mjs`, `scripts/import-nyheter.mjs`): 14 nyhetsrum på Cision, bara rubrik,
+  länk, datum, typ, pris, kommun och platser (aldrig texten). Listor i Affärer och fastighetspanelen.
+  Granskat två gånger (ponytail-review, code-review max); bland annat: bara en *köpande* privatperson stoppar
+  affären, platser publiceras bara på tillåtna fastigheter (inga lösa adresspunkter), adressen måste ligga i
+  kommunen texten nämner, valutan som nämns först avgör utlandsaffär, hyresvärdet blir inte pris.
+- **Domän** horos.se hos Loopia (LoopiaDNS), A-post för `@` och `www` mot servern. www skickas vidare av Caddy
+  (cloud-init v4; på servern inlagt för hand som root, se CLAUDE.md). `kontakt@horos.se` vidarebefordras till
+  Gmail, och Gmail skickar som adressen; SPF inkluderar Google.
+- **Hetzner-kontot** hade huvudadress på jobbmejlen (Micasa); användaren har bytt den 2026-10-10.
+- **SCB** (annan session): arbetsställen och ägarkontroll importerade lokalt, villkoren lästa (se nedan och
+  `OVERLAMNING-hyresgaster.md`).
 
-## Kom ihåg när data kommer
+## Väntar på svar
 
-- **Lantmäteriet (lagfarter/ägare): tomträttsinnehav är INTE efterfrågat.** Kontrollera när filen kommer om
-  den har tomträttsinnehav eller en kolumn för upplåtelseform (import-lagfarter letar efter `upplatelseform`,
-  `tomtratt`, `inskrivningstyp` m.fl., annars `--map tomtratt=<kolumn>`). Saknas det: begär tomträttsinnehav
-  (innehavare och upplåtelseform) separat. Annars visar rutan Upplåtelseform "uppgift saknas" överallt.
-- **När fastigheterna finns**: kör `import-arbetsstallen` igen (kopplingen till fastighet görs vid importen)
-  och bygg med `build-public --scb-villkor` (+ `--alla-bolag`, `--lm-beslut` osv.), deploy med `--data`.
-- **Skatteverket (taxering)**: kontrollera typkoden (och "325.0" från Excel), att specialenheter (8xx) är med,
-  och om lokalyta/boyta finns. Då ska de ersätta uppskattad LOA och fylla i BOA och exploateringstalet.
-- **Byggnad (Lantmäteriet)**: byggnadernas ändamål ska ersätta lokaltyperna från branscherna.
-- Vid varje import: `--dry` först, påminn om åtagandena (bara juridiska personer), bygg med build-public.
+- **Mejlen om tillstånd är skickade 2026-10-10** från `kontakt@horos.se` (Fastighetsvärlden, Fastighetsnytt,
+  Modular Finance/MFN; mottagare i `PRIVAT.md`). Svaren kommer till Gmail via `kontakt@horos.se`.
+  - Ja från MFN: lägg till MFN-flöden (`mfn.se/all/a/<bolag>.rss`) som källa i `lib/nyheter.mjs`; de flesta
+    noterade fastighetsbolagen finns där. Följ deras villkor (källa, hämtfrekvens).
+  - Ja från en tidning: bara rubrik + länk + det vi själva läser ut; ingen artikeltext, inget bakom betalvägg.
+  - Fastighetsnytt fick också frågan om vem som svarar för DI (samma koncern, Bonnier News).
+- Skatteverket, Lantmäteriet (lagfarter, geodatasupport) och Geotorget-ärendena: se `CLAUDE.md` och `PRIVAT.md`.
 
 ## Förslag till nästa session
 
-1. ~~Ägarkontroll från SCB~~ Gjort 2026-10-10: `import-agarkontroll` fyller `bolag.agarkontroll` (lokalt körd:
-   1 676 statliga, 2 881 kommunala, 175 regionägda, 44 130 utlandsägda). Importen sparar ord (stat, kommun, region, privat, privat_koncern, utland); ägarkategorin använder de tre första. Staten omfattar AP-fondernas bolag (t.ex. Rikshem); ägaren visas alltid med bolagets namn.
-   Utlandsägda (`utland`) lagras men är ingen egen kategori än. Kommer ut publikt med nästa `build-public --data`.
-2. Schemalagd SCB-import på servern (registret uppdateras varje natt): kräver att nyckeln läggs i
-   `/etc/fastighetskarta/secrets.env` (som Geotorget, via `login-till-server`) och ett jobb utanför 04:00–04:30.
-   Fråga användaren först; nyckeln är personlig.
-3. Pressmeddelanden behöver också ett schemalagt jobb (se CLAUDE.md).
+1. **Publicera med ny databas** (`build-public --alla-bolag`, `deploy --data`) så att ägarkontrollen blir ord live.
+2. **Schemalagd import av pressmeddelanden** på servern: i dag körs `import-nyheter` för hand, och den publika
+   databasen byts bara vid `deploy --data`. Kräver en ändring på servern (root eller ny cloud-init), t.ex. en
+   egen skrivbar SQLite för nyheter som servern läser. Fråga användaren först.
+3. Schemalagd SCB-import (registret uppdateras varje natt): nyckeln i `/etc/fastighetskarta/secrets.env` via
+   `login-till-server`, jobb utanför 04:00–04:30. Fråga först; nyckeln är personlig.
 4. Planer: länk till kommunens plandokument när kolumnerna i planfilen är kända.
+
+## Kom ihåg när data kommer
+
+- **Lantmäteriet (lagfarter/ägare): tomträttsinnehav är INTE efterfrågat.** Kontrollera när filen kommer om den
+  har tomträttsinnehav eller en kolumn för upplåtelseform (import-lagfarter letar efter `upplatelseform`,
+  `tomtratt`, `inskrivningstyp` m.fl., annars `--map tomtratt=<kolumn>`). Saknas det: begär det separat.
+- **När fastigheterna finns**: kör `import-arbetsstallen` och `import-nyheter` igen (kopplingen till fastighet
+  görs vid importen) och bygg med `build-public --scb-villkor --alla-bolag --lm-beslut <nr>`, deploy med `--data`.
+- **Skatteverket (taxering)**: kontrollera typkoden (och "325.0" från Excel), att specialenheter (8xx) är med,
+  och om lokalyta/boyta finns; då ska de ersätta uppskattad LOA och fylla i BOA och exploateringstalet.
+- **Byggnad**: ändamålen ska ersätta lokaltyperna från branscherna. **Belägenhetsadress**: byt OSM-adresserna.
+- Vid varje import: `--dry` först, påminn om åtagandena (bara juridiska personer), bygg med build-public.
 
 ## Tips för arbetet
 
 - I PowerShell blockeras `npm` (execution policy): kör `& "C:\Program Files\nodejs\node.exe" scripts/…` direkt.
-- Bash-verktyget gör om `\\` i heredocs; redigera filer med Edit/Write när ersättningen har backslash.
-- Flera filer har CRLF i arbetskopian (git normaliserar); Edit-verktyget klarar det.
+- Bash-verktyget och Python i heredocs gör om `\\`, `\b` och `\n`; redigera filer med Edit/Write när texten har
+  backslash. Kontrollera efteråt med `grep -c $'\x08'` att inga backspace-tecken hamnat i regexar.
+- Den här datorns router cachar DNS länge: testa servern med `curl --resolve horos.se:443:37.27.152.172 …`.
+- Behörighetskontrollen stoppar Claude från köp, DNS-ändringar, `git push` och root-kommandon på servern:
+  användaren gör dem (Loopia, Hetzners konsol, terminalen) och Claude kontrollerar resultatet.
+- Hetzners webbkonsol tappar Skift vid inklistring; se CLAUDE.md (Server).
 
 ## Kända brister
 
+- Pressmeddelandena tolkas med regler (regexar): fastigheter kan saknas eller bli fel, och priset är bolagets
+  uppgift (ofta underliggande fastighetsvärde). Felaktiga kandidatbeteckningar syns aldrig, eftersom bara
+  beteckningar som finns bland de tillåtna fastigheterna publiceras.
+- `/api/kommunkluster` räknar över alla fastigheter vid första anropet med ett nytt filter; inte mätt med
+  rikstäckande data (förberäkna i build-public om det blir långsamt).
 - Uppskattad LOA kan bli orimlig (stora arbetsgivare, lokaler utan företag); tumreglerna står på metodsidan.
-  Byggverksamhet (SNI F) räknas som Industri, vilket kan diskuteras.
-- Filtren räknar per fastighet i kartutsnittet vid varje anrop; inte mätt med verkliga datamängder.
-- Län och kommun är bara provade med Stockholm (exempeldatan har en kommun).
-- `--sidor` har inget automatiskt test (testerna läser fil, inte API:t); provat mot SCB 2026-10-10.
+- Filtren räknar per fastighet i kartutsnittet vid varje anrop; län och kommun är bara provade med Stockholm.

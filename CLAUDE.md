@@ -76,7 +76,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 
 Live på https://horos.se (sedan 2026-10-10; http://37.27.152.172 fungerar inte längre): ny design och logotyp, bakgrundsväljare (karta, satellit 2025, flygfoton 2005/1995/1975/1960),
 adressökning (120 177 OSM-adresser) och panel med Ägare/Användning/Senaste köp först.
-Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, bara gränssnittet tittat på):
+Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssnittet tittat på):
 - Kartan: filter (län och kommun (`lib/kommuner.mjs`, zoomar dit), ägare (namn/org.nr), ägarkategori, användning, lokalslag, upplåtelseform (tomträtt/äganderätt), ägartyp, värde, köpår, köpeskilling, tomtyta och uppskattad LOA från/till) med antal träffar och
   CSV-nedladdning (`/data/horos-traffar.csv`); "Färga efter" värde, värde/m², användning, ägartyp,
   köpår; prickar/kluster zoom 10–14 (`/api/punkter`), antal per kommun under zoom 10 (`/api/kommunkluster`); hovringsruta; delbar adress (`?l=&f=&farg=` + filter).
@@ -90,7 +90,7 @@ Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, ba
   Privatperson som säljare: affären visas, namnet aldrig; försäljning till privatperson tas inte med.
   **MFN förbjuder automatisk hämtning** (robots.txt: `*.rss`, `*.xml`, `*.json`): inte med förrän Modular
   Finance gett tillstånd. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
-  efterfrågas (mejl 2026-10-10, se `PRIVAT.md`). Körs bara manuellt än; behöver ett schemalagt jobb på servern.
+  efterfrågas (mejlen skickade 2026-10-10, väntar på svar; se `PRIVAT.md`). Körs bara manuellt än; behöver ett schemalagt jobb på servern.
 - Företag på adressen (SCB-arbetsställen, 2026-10-10): tabell `arbetsstalle`, import, panel i fastighet och
   bolag, uppskattad användning från branscher. API-nyckel finns (användaren klistrar in den i terminalen); villkoren lästa 2026-10-10: spridning tillåten med
   källa "SCB (egen bearbetning)", reklamspärr ska markeras (inte uteslutas). Se `OVERLAMNING-hyresgaster.md`.
@@ -100,6 +100,7 @@ Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, ba
 Den publika databasen har **0 fastigheter** (bara bolag och adresser) tills riktiga data finns.
 
 Väntar på:
+- Svar på tillståndsmejlen (Fastighetsvärlden, Fastighetsnytt, MFN), skickade 2026-10-10 från kontakt@horos.se.
 - Skatteverket: taxeringsvärden, ärendet pågår (detaljer i `PRIVAT.md`).
 - Lantmäteriet (allmän handling): lagfarter/köpeskillingar från 2016 där förvärvaren är juridisk
   person, och nuvarande juridiska ägare. **Tomträttsinnehav är inte efterfrågat**: kontrollera när
