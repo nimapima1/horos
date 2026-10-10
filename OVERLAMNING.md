@@ -52,8 +52,8 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
 ## Förslag till nästa session
 
 1. ~~Ägarkontroll från SCB~~ Gjort 2026-10-10: `import-agarkontroll` fyller `bolag.agarkontroll` (lokalt körd:
-   1 676 statliga, 2 881 kommunala, 175 regionägda, 44 130 utlandsägda). Ägarkategorin använder 10/20/30.
-   Utlandsägda (50) lagras men är ingen egen kategori än. Kommer ut publikt med nästa `build-public --data`.
+   1 676 statliga, 2 881 kommunala, 175 regionägda, 44 130 utlandsägda). Importen sparar ord (stat, kommun, region, privat, privat_koncern, utland); ägarkategorin använder de tre första. Staten omfattar AP-fondernas bolag (t.ex. Rikshem); ägaren visas alltid med bolagets namn.
+   Utlandsägda (`utland`) lagras men är ingen egen kategori än. Kommer ut publikt med nästa `build-public --data`.
 2. Schemalagd SCB-import på servern (registret uppdateras varje natt): kräver att nyckeln läggs i
    `/etc/fastighetskarta/secrets.env` (som Geotorget, via `login-till-server`) och ett jobb utanför 04:00–04:30.
    Fråga användaren först; nyckeln är personlig.

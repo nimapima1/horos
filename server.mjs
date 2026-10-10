@@ -2,7 +2,7 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
-import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, rebuildRtree } from './lib/db.mjs';
+import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, hasColumn, rebuildRtree } from './lib/db.mjs';
 import { innerPoints, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN } from './lib/kommuner.mjs';
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
@@ -25,9 +25,8 @@ const HAS_PLAN = hasTable('plan');   // saknas i publika databaser byggda före 
 const HAS_AE = hasTable('arbetsstalle') && !!db.prepare('SELECT 1 FROM arbetsstalle LIMIT 1').get();
 const HAS_NYHET = hasTable('nyhet');   // saknas i publika databaser byggda före pressmeddelandena
 // Kolumner som saknas i publika databaser byggda före dem (servern läser dem utan att lägga till kolumner).
-const hasColumn = (table, column) => !!db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get(table, column);
-const HAS_TOMTRATT = hasColumn('agande', 'tomtratt');
-const HAS_AGARKONTROLL = hasColumn('bolag', 'agarkontroll');
+const HAS_TOMTRATT = hasColumn(db, 'agande', 'tomtratt');
+const HAS_AGARKONTROLL = hasColumn(db, 'bolag', 'agarkontroll');
 
 // Rumsliga index. build-public bygger dem i den publika databasen; lokalt byggs de om vid
 // start, så att de stämmer efter en import.
@@ -181,9 +180,7 @@ const AGARKATEGORI_SQL = `CASE
     WHEN b.jurform IN ('Statlig enhet', 'Regional statlig myndighet', 'Allmän försäkringskassa') THEN 'stat'
     WHEN b.jurform IN ('Kommun', 'Kommunalförbund') THEN 'kommun'
     WHEN b.jurform = 'Region' THEN 'region'
-    ${HAS_AGARKONTROLL ? `WHEN b.agarkontroll = '10' THEN 'stat'
-    WHEN b.agarkontroll = '20' THEN 'kommun'
-    WHEN b.agarkontroll = '30' THEN 'region'` : ''}
+    ${HAS_AGARKONTROLL ? "WHEN b.agarkontroll IN ('stat', 'kommun', 'region') THEN b.agarkontroll" : ''}
     WHEN b.jurform IN ('Bostadsrättsförening', 'Bostadsförening', 'Kooperativ hyresrättsförening') THEN 'brf'
     WHEN b.sni LIKE '68%' THEN 'fastighetsbolag'
     ELSE 'ovriga' END`;

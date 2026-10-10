@@ -21,14 +21,7 @@ import { lokaltyp, loaM2 } from '../lib/lokaltyp.mjs';
 import { scbKlient } from '../lib/scb.mjs';
 
 const args = parseArgs(process.argv.slice(2));
-const scb = args.fil ? null : await scbKlient();
-
-// Sidorna en i taget, från fil eller från SCB.
-function sidor() {
-  if (!args.fil) return scb.sidor('/arbetsstallen/full', 'arbetsstallen', args.sidor);
-  const d = JSON.parse(readFileSync(args.fil, 'utf8'));
-  return (Array.isArray(d) ? d : [d]).map((s) => s.arbetsstallen ?? []);
-}
+const scb = await scbKlient({ fil: args.fil });
 
 const koder = args.sni ? JSON.parse(readFileSync(args.sni, 'utf8')) : args.fil ? [] : await scb.hamta('/kodtabeller/naringsgrenkoder');
 const BRANSCH = new Map(koder.map((k) => [k.kod, k.klartext]));
@@ -79,7 +72,7 @@ function rad(a) {
 db.exec('BEGIN');
 try {
   if (!args.dry) db.exec('DELETE FROM arbetsstalle WHERE demo = 0');
-  for await (const sida of sidor()) {
+  for await (const sida of scb.sidor('/arbetsstallen/full', 'arbetsstallen', args.sidor)) {
     sida.forEach(rad);
     if (!args.fil) process.stdout.write(`\r${n.lasta.toLocaleString('sv')} lästa…`);
   }

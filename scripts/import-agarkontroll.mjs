@@ -1,22 +1,24 @@
-// Läser ägarkontrollen ur SCB:s företagsregister (fältet agKat: statligt, kommunalt, regioner, privat
-// svenskt, utländskt) till bolag.agarkontroll, för alla bolag som redan finns i tabellen (import-bolag).
-// Ägarkategorin på kartan använder den, så att t.ex. kommunala bostadsbolag räknas som Kommun.
+// Läser ägarkontrollen ur SCB:s företagsregister (fältet agKat) till bolag.agarkontroll, för alla bolag
+// som redan finns i tabellen (import-bolag). Ägarkategorin på kartan använder den, så att t.ex. kommunala
+// bostadsbolag räknas som Kommun.
 //
 //   node scripts/import-agarkontroll.mjs [--dry] [--sidor N]
+//   node scripts/import-agarkontroll.mjs --fil sidor.json [--dry]
 //
 // Hämtar /v1/juridiskaenheter/full för hela landet (några hundra anrop). Nyckeln: se lib/scb.mjs.
-// --sidor N: bara de N första sidorna (5 000 per sida), för att prova.
+// --sidor N: bara de N första sidorna (5 000 per sida). --fil: sparade svar ({jes: [...]}) i stället för API:t.
 import { openDb, normOrgnr } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 import { scbKlient } from '../lib/scb.mjs';
 
 const args = parseArgs(process.argv.slice(2));
-const KODER = new Set(['10', '20', '30', '41', '42', '50']);
-const scb = await scbKlient();
+// SCB:s koder (kodtabellen agarkontrollkoder) -> värdet i bolag.agarkontroll.
+const AGARKONTROLL = { 10: 'stat', 20: 'kommun', 30: 'region', 41: 'privat', 42: 'privat_koncern', 50: 'utland' };
+const scb = await scbKlient({ fil: args.fil });
 
 const db = openDb();
 const upd = db.prepare('UPDATE bolag SET agarkontroll = ? WHERE orgnr = ?');
-const n = { lasta: 0, person: 0, uppdaterade: 0, saknas: 0, perKod: {} };
+const n = { lasta: 0, person: 0, uppdaterade: 0, saknas: 0, perVarde: {} };
 
 // En transaktion; torrkörningen gör samma sak och rullar tillbaka, så att siffrorna stämmer.
 db.exec('BEGIN');
@@ -26,12 +28,12 @@ try {
       n.lasta++;
       const orgnr = normOrgnr(e.peOrgNr);
       if (!orgnr) { n.person++; continue; }   // personnummer: enskild firma
-      const kod = KODER.has(String(e.agKat)) ? String(e.agKat) : null;
-      if (!upd.run(kod, orgnr).changes) { n.saknas++; continue; }
+      const varde = AGARKONTROLL[e.agKat] ?? null;
+      if (!upd.run(varde, orgnr).changes) { n.saknas++; continue; }
       n.uppdaterade++;
-      n.perKod[kod] = (n.perKod[kod] ?? 0) + 1;
+      n.perVarde[varde] = (n.perVarde[varde] ?? 0) + 1;
     }
-    process.stdout.write(`\r${n.lasta.toLocaleString('sv')} lästa…`);
+    if (!args.fil) process.stdout.write(`\r${n.lasta.toLocaleString('sv')} lästa…`);
   }
   db.exec(args.dry ? 'ROLLBACK' : 'COMMIT');
 } catch (e) {
@@ -42,4 +44,4 @@ try {
 const t = (v) => v.toLocaleString('sv');
 console.log(`\n${args.dry ? 'Torrkörning (inget sparat)' : 'Klart'}: ${t(n.lasta)} juridiska enheter lästa, `
   + `${t(n.uppdaterade)} bolag uppdaterade, ${t(n.saknas)} finns inte i bolag, ${t(n.person)} enskilda firmor hoppades över.\n`
-  + `  Ägarkontroll: ${Object.entries(n.perKod).map(([k, v]) => `${k}: ${t(v)}`).join(', ')}`);
+  + `  Ägarkontroll: ${Object.entries(n.perVarde).map(([k, v]) => `${k}: ${t(v)}`).join(', ')}`);

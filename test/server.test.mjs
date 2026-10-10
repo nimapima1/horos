@@ -17,7 +17,7 @@ before(async () => {
   for (const ext of ['', '-wal', '-shm']) rmSync(DB + ext, { force: true });
   const db = openDb({ path: DB });
   db.exec(`INSERT INTO bolag (orgnr, namn, jurform, sni, agarkontroll) VALUES
-    ('5560000001', 'Alfa AB', 'Aktiebolag', '68201', '20'), ('7690000002', 'Brf Beta', 'Bostadsrättsförening', NULL, '41')`);
+    ('5560000001', 'Alfa AB', 'Aktiebolag', '68201', 'kommun'), ('7690000002', 'Brf Beta', 'Bostadsrättsförening', NULL, 'privat')`);
   const insF = db.prepare(`INSERT INTO fastighet (beteckning, kommun, areal_m2, geojson, minx, miny, maxx, maxy, kalla)
     VALUES (?, 'Testkommun', ?, ?, ?, ?, ?, ?, 'lantmateriet')`);
   // 1:1 och 1:2 gränsar till varandra, 1:3 ligger en bit bort.
