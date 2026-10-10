@@ -24,7 +24,10 @@ const HAS_PLAN = hasTable('plan');   // saknas i publika databaser byggda före 
 // build-public körs med --scb-villkor, och då ska inget om företag visas.
 const HAS_AE = hasTable('arbetsstalle') && !!db.prepare('SELECT 1 FROM arbetsstalle LIMIT 1').get();
 const HAS_NYHET = hasTable('nyhet');   // saknas i publika databaser byggda före pressmeddelandena
-const HAS_TOMTRATT = !!db.prepare("SELECT 1 FROM pragma_table_info('agande') WHERE name = 'tomtratt'").get();
+// Kolumner som saknas i publika databaser byggda före dem (servern läser dem utan att lägga till kolumner).
+const hasColumn = (table, column) => !!db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get(table, column);
+const HAS_TOMTRATT = hasColumn('agande', 'tomtratt');
+const HAS_AGARKONTROLL = hasColumn('bolag', 'agarkontroll');
 
 // Rumsliga index. build-public bygger dem i den publika databasen; lokalt byggs de om vid
 // start, så att de stämmer efter en import.
@@ -172,12 +175,15 @@ const UPPLATELSE = HAS_TOMTRATT ? `(SELECT CASE WHEN max(k.tomtratt) = 1 THEN 't
   FROM agande k WHERE k.beteckning = f.beteckning)` : 'NULL';
 const UPPLATELSEFORMER = [['aganderatt', 'Äganderätt'], ['tomtratt', 'Tomträtt']];
 
-// Ägarkategori för bolaget b. Kommunalt och statligt ägda aktiebolag räknas som fastighetsbolag (eller
-// övriga): ägarkontrollen finns inte i datan än.
+// Ägarkategori för bolaget b: myndigheten själv efter juridisk form, bolag som staten, en kommun eller en
+// region äger efter SCB:s ägarkontroll (scripts/import-agarkontroll.mjs), annars efter form och bransch.
 const AGARKATEGORI_SQL = `CASE
     WHEN b.jurform IN ('Statlig enhet', 'Regional statlig myndighet', 'Allmän försäkringskassa') THEN 'stat'
     WHEN b.jurform IN ('Kommun', 'Kommunalförbund') THEN 'kommun'
     WHEN b.jurform = 'Region' THEN 'region'
+    ${HAS_AGARKONTROLL ? `WHEN b.agarkontroll = '10' THEN 'stat'
+    WHEN b.agarkontroll = '20' THEN 'kommun'
+    WHEN b.agarkontroll = '30' THEN 'region'` : ''}
     WHEN b.jurform IN ('Bostadsrättsförening', 'Bostadsförening', 'Kooperativ hyresrättsförening') THEN 'brf'
     WHEN b.sni LIKE '68%' THEN 'fastighetsbolag'
     ELSE 'ovriga' END`;

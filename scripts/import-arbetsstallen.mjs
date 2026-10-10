@@ -18,45 +18,19 @@ import { openDb, normOrgnr, rebuildRtree } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 import { pointInGeom, sweref99tmToWgs84 } from '../lib/geo.mjs';
 import { lokaltyp, loaM2 } from '../lib/lokaltyp.mjs';
-import { promptHidden } from '../lib/prompt.mjs';
+import { scbKlient } from '../lib/scb.mjs';
 
 const args = parseArgs(process.argv.slice(2));
-const BAS = 'https://apiafr.scb.se/v1';
-const LIMIT = 5000;
-const PAUS_MS = 250;   // SCB tillåter 5 anrop per sekund och nyckel
+const scb = args.fil ? null : await scbKlient();
 
-const nyckel = args.fil ? null : process.env.SCB_API_KEY || await promptHidden('SCB API-nyckel: ');
-if (nyckel != null && !/^[!-~]+$/.test(nyckel)) throw new Error('API-nyckeln är tom eller har ogiltiga tecken. Klistra in med högerklick och tryck Enter.');
-const vanta = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function hamta(path) {
-  for (let forsok = 1; ; forsok++) {
-    const res = await fetch(BAS + path, { headers: { 'X-API-Key': nyckel, accept: 'application/json' } });
-    if (res.ok) return res.json();
-    // 429: för många anrop; 503: nattlig uppdatering 04:00–04:30. Vänta och försök igen.
-    if ((res.status === 429 || res.status === 503) && forsok < 6) { await vanta(forsok * 10_000); continue; }
-    throw new Error(`SCB svarade ${res.status} på ${path}: ${(await res.text()).slice(0, 200)}`);
-  }
+// Sidorna en i taget, från fil eller från SCB.
+function sidor() {
+  if (!args.fil) return scb.sidor('/arbetsstallen/full', 'arbetsstallen', args.sidor);
+  const d = JSON.parse(readFileSync(args.fil, 'utf8'));
+  return (Array.isArray(d) ? d : [d]).map((s) => s.arbetsstallen ?? []);
 }
 
-// Sidorna en i taget, så att hela landet aldrig ligger i minnet.
-async function* sidor() {
-  if (args.fil) {
-    const d = JSON.parse(readFileSync(args.fil, 'utf8'));
-    yield* (Array.isArray(d) ? d : [d]).map((s) => s.arbetsstallen ?? []);
-    return;
-  }
-  let cursor = null;
-  for (let sida = 1; ; sida++) {
-    const s = await hamta(`/arbetsstallen/full?limit=${LIMIT}${cursor != null ? `&cursorId=${cursor}` : ''}`);
-    yield s.arbetsstallen ?? [];
-    if (!s.pagination?.hasMore || sida === Number(args.sidor)) return;
-    cursor = s.pagination.nextCursorId;
-    await vanta(PAUS_MS);
-  }
-}
-
-const koder = args.sni ? JSON.parse(readFileSync(args.sni, 'utf8')) : args.fil ? [] : await hamta('/kodtabeller/naringsgrenkoder');
+const koder = args.sni ? JSON.parse(readFileSync(args.sni, 'utf8')) : args.fil ? [] : await scb.hamta('/kodtabeller/naringsgrenkoder');
 const BRANSCH = new Map(koder.map((k) => [k.kod, k.klartext]));
 
 const db = openDb();

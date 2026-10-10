@@ -19,6 +19,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   `lib/typkoder.mjs` (Skatteverkets typkoder → klartext per taxeringsår; används av import-taxering),
   `lib/lokaltyp.mjs` (arbetsställe → lokaltyp och uppskattad LOA; sparas i `arbetsstalle` vid importen).
   `lib/nyheter.mjs` (pressmeddelanden: RSS, utläsning av typ/pris/kommun/beteckning/adress, nyhetsrummen på Cision).
+  `lib/scb.mjs` (SCB:s företagsregister: nyckeln, paus före varje anrop, sidhämtning; används av SCB-importerna).
 - Kartfiltren: `FILTER` i `server.mjs`, `[parameter, omvandling, SQL-villkor]`; WHERE-delen byggs ur listan.
 - `public/`: `index.html` + `panel.js` (panelvyerna, bara deklarationer, laddas först) + `app.js` (karta,
   filter, sök, status och all inkoppling), `metod.html`, `style.css`
@@ -26,7 +27,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   inga inline-skript.
 - Importskript i `scripts/`: `import-bolag`, `import-fastigheter` (GPKG), `import-taxering`,
   `import-lagfarter`, `import-adresser` (OSM via Overpass, eller `--fil`), `import-planer`
-  (Markreglerande bestämmelse, GPKG per kommun), `import-nyheter` (pressmeddelanden från Cision → `nyhet`/`nyhet_plats`, bara fakta och länk), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
+  (Markreglerande bestämmelse, GPKG per kommun), `import-nyheter` (pressmeddelanden från Cision → `nyhet`/`nyhet_plats`, bara fakta och länk), `import-agarkontroll` (SCB:s ägarkontroll → `bolag.agarkontroll`; statligt/kommunalt/regionägt i ägarkategorin), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
   `SCB_API_KEY`, kopplas till fastighet med punkt-i-polygon), `demo-data` (även påhittade planer och arbetsställen).
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.

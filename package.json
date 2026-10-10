@@ -19,6 +19,7 @@
     "import:adresser": "node --disable-warning=ExperimentalWarning scripts/import-adresser.mjs",
     "import:nyheter": "node --disable-warning=ExperimentalWarning scripts/import-nyheter.mjs",
     "import:arbetsstallen": "node --disable-warning=ExperimentalWarning scripts/import-arbetsstallen.mjs",
+    "import:agarkontroll": "node --disable-warning=ExperimentalWarning scripts/import-agarkontroll.mjs",
     "demo": "node --disable-warning=ExperimentalWarning scripts/demo-data.mjs",
     "vendor": "node scripts/vendor.mjs",
     "postinstall": "node scripts/vendor.mjs",
