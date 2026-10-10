@@ -17,10 +17,8 @@
         "--disable-warning=ExperimentalWarning",
         "server.mjs"
       ],
-      "env": {
-        "PORT": "3005"
-      },
-      "port": 3005
+      "port": 3005,
+      "autoPort": true
     }
   ]
 }

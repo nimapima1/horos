@@ -246,7 +246,22 @@ map.on('load', () => {
     map.easeTo({ center: f.geometry.coordinates, zoom: 16 });
     openFastighet(f.properties.beteckning);
   });
-  for (const id of ['punkt', 'punkt-kluster']) {
+  // Översikt under PUNKT_ZOOM: antal per kommun, ihopslaget till större områden när man zoomar ut.
+  map.addSource('kommuner', { type: 'geojson', data: EMPTY, cluster: true, clusterMaxZoom: PUNKT_ZOOM - 1, clusterRadius: 50,
+    clusterProperties: { n: ['+', ['get', 'n']] } });
+  map.addLayer({ id: 'kommun-kluster', type: 'circle', source: 'kommuner',
+    paint: { 'circle-color': css('--c1'), 'circle-opacity': 0.85, 'circle-stroke-width': 2, 'circle-stroke-color': css('--map-kant'),
+      'circle-radius': ['step', ['get', 'n'], 13, 100, 17, 1000, 22, 10000, 28] } });
+  map.addLayer({ id: 'kommun-antal', type: 'symbol', source: 'kommuner',
+    layout: { 'text-field': ['number-format', ['get', 'n'], { locale: 'sv-SE' }], 'text-font': ['Noto Sans Regular'], 'text-size': 12 },
+    paint: { 'text-color': css('--map-kant') } });
+  map.on('click', 'kommun-kluster', async (e) => {
+    const f = e.features[0];
+    if (f.properties.cluster_id === undefined) return zoomaTillOmrade(f.properties.kommun);
+    const zoom = await map.getSource('kommuner').getClusterExpansionZoom(f.properties.cluster_id);
+    map.easeTo({ center: f.geometry.coordinates, zoom });
+  });
+  for (const id of ['punkt', 'punkt-kluster', 'kommun-kluster']) {
     map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
   }
@@ -307,14 +322,14 @@ function fyllKommuner() {
   for (const k of kommunInfo.filter((k) => !lan || k.lan === lan)) filterForm.kommun.add(new Option(k.namn, k.namn));
   filterForm.kommun.value = [...filterForm.kommun.options].some((o) => o.value === vald) ? vald : '';
 }
-function zoomaTillOmrade() {
-  const lan = filterForm.lan.value, kommun = filterForm.kommun.value;
+function zoomaTillOmrade(kommun = filterForm.kommun.value) {
+  const lan = filterForm.lan.value;
   const k = kommunInfo.filter((x) => (kommun ? x.namn === kommun : lan && x.lan === lan));
   if (k.length) flyToBbox([Math.min(...k.map((x) => x.minx)), Math.min(...k.map((x) => x.miny)),
     Math.max(...k.map((x) => x.maxx)), Math.max(...k.map((x) => x.maxy))].join(','));
 }
 filterForm.lan.addEventListener('change', () => { fyllKommuner(); zoomaTillOmrade(); });
-filterForm.kommun.addEventListener('change', zoomaTillOmrade);
+filterForm.kommun.addEventListener('change', () => zoomaTillOmrade());
 filterForm.addEventListener('submit', (e) => e.preventDefault());
 // Filter från en delad länk. Användning och ägartyp sätts när listorna har laddats (se status).
 for (const el of filterForm.querySelectorAll('input[name]')) el.value = START.get(el.name) ?? '';
@@ -323,13 +338,13 @@ if ([...START.keys()].some((k) => filterForm.elements[k])) filterForm.closest('d
 let loadSeq = 0;
 // Orgnr för det markerade bolaget: utzoomat visas då bara dess fastigheter (se markera()).
 let markeradOrg = null;
-// Från zoom 14 visas fastighetsgränser, från PUNKT_ZOOM prickar (kluster), annars inget
+// Från zoom 14 visas fastighetsgränser, från PUNKT_ZOOM prickar (kluster), annars antal per kommun
 // (utom ett markerat bolags fastigheter, som visas som prickar på alla nivåer).
 async function loadVisible() {
   const z = map.getZoom();
-  const lage = z >= MIN_ZOOM ? 'granser' : z >= PUNKT_ZOOM || markeradOrg ? 'punkter' : 'inget';
+  const lage = z >= MIN_ZOOM ? 'granser' : z >= PUNKT_ZOOM || markeradOrg ? 'punkter' : 'kommuner';
   $('#zoom-hint').hidden = lage === 'granser';
-  $('#zoom-hint').textContent = lage === 'inget' ? 'Zooma in för att se fastigheter'
+  $('#zoom-hint').textContent = lage === 'kommuner' ? 'Antal fastigheter per kommun. Zooma in för att se dem.'
     : markeradOrg && z < PUNKT_ZOOM ? 'Visar bara bolagets fastigheter. Zooma in för att se alla.'
       : 'Zooma in för att se fastighetsgränser';
   const seq = ++loadSeq;
@@ -338,24 +353,28 @@ async function loadVisible() {
   const b = map.getBounds();
   const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((n) => n.toFixed(5)).join(',');
   const urval = `bbox=${bbox}${filterQuery()}${lage === 'punkter' && z < PUNKT_ZOOM ? `&org=${markeradOrg}` : ''}`;
-  const [fc, pkt, planer] = await Promise.all([
+  const [fc, pkt, kom, planer] = await Promise.all([
     lage === 'granser' ? api(`/api/fastigheter?${urval}`) : EMPTY,
     lage === 'punkter' ? api(`/api/punkter?${urval}`) : { p: [] },
+    lage === 'kommuner' ? api(`/api/kommunkluster?${filterQuery().slice(1)}`) : { k: [] },
     planToggle.on && lage === 'granser' ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
   if (seq !== loadSeq) return;
   for (const { properties: p } of fc.features) Object.assign(p, kategorier(p));
   const punkter = { type: 'FeatureCollection', features: pkt.p.map(([lon, lat, beteckning, varde_tkr, typ, agartyp, kop_ar, demo, areal_m2]) => ({
     type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] },
     properties: { beteckning, varde_tkr, kop_ar, demo, ...kategorier({ typ, agartyp, varde_tkr, areal_m2 }) } })) };
-  const n = fc.features.length + punkter.features.length;
-  const sumTkr = [...fc.features, ...punkter.features].reduce((s, f) => s + (f.properties.varde_tkr ?? 0), 0);
-  $('#filter-hits').textContent = lage === 'inget' ? 'Zooma in för att se träffar'
-    : `${fc.truncated || pkt.truncated ? 'Minst ' : ''}${n.toLocaleString('sv-SE')} ${n === 1 ? 'fastighet' : 'fastigheter'} i kartutsnittet`
+  const kommuner = { type: 'FeatureCollection', features: kom.k.map(([lon, lat, kommun, n]) => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] }, properties: { kommun, n } })) };
+  const n = fc.features.length + punkter.features.length + kom.k.reduce((s, k) => s + k[3], 0);
+  const sumTkr = [...fc.features, ...punkter.features].reduce((s, f) => s + (f.properties.varde_tkr ?? 0), 0)
+    + kom.k.reduce((s, k) => s + (k[4] ?? 0), 0);
+  $('#filter-hits').textContent = `${fc.truncated || pkt.truncated ? 'Minst ' : ''}${n.toLocaleString('sv-SE')} ${n === 1 ? 'fastighet' : 'fastigheter'} ${lage === 'kommuner' ? 'i hela landet' : 'i kartutsnittet'}`
       + (sumTkr ? `, taxerade till ${mkr(sumTkr)}` : '');
   $('#filter-csv').href = `data/horos-traffar.csv?${urval}`;
-  $('#filter-csv').hidden = lage === 'inget';   // kartan visar inga träffar då
+  $('#filter-csv').hidden = lage === 'kommuner';   // exporten gäller kartutsnittet, som här kan vara hela landet
   map.getSource('fastigheter').setData(fc);
   map.getSource('punkter').setData(punkter);
+  map.getSource('kommuner').setData(kommuner);
   map.getSource('planer').setData(planer);
   if (selected) map.setFeatureState({ source: 'fastigheter', id: selected }, { selected: true });
 }

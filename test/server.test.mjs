@@ -109,6 +109,14 @@ test('prickar och bolagsurval', async () => {
   assert.equal((await json(`/api/punkter?${BBOX}&org=556000-0001`)).p.length, 2);
 });
 
+test('kommunkluster räknar med filtren i hela landet', async () => {
+  const [[lon, lat, kommun, n, tkr]] = (await json('/api/kommunkluster')).k;
+  assert.deepEqual([kommun, n, tkr], ['Testkommun', 3, 260000]);
+  assert.ok(lon > 18 && lon < 18.011 && lat > 59 && lat < 59.0005);
+  assert.equal((await json('/api/kommunkluster?anv=Hyreshusenhet%2C%20lokaler')).k[0][3], 2);
+  assert.deepEqual((await json('/api/kommunkluster?kommun=Annan')).k, []);
+});
+
 test('affärer räknar en paketaffär en gång', async () => {
   const a = await json('/api/affarer');
   assert.deepEqual(a.arLista, ['2024', '2020']);

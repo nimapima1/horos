@@ -228,7 +228,7 @@ const counts = db.prepare(`SELECT ${countReal('bolag')} AS bolag, ${countReal('f
 
 // Fastigheter i en bbox med kartfiltren (se FILTER): med geometri för kartan, annars bara
 // mittpunkten (bboxens mitt) för prickarna vid låg zoom.
-const inBboxSql = (geometri, limit) => db.prepare(`
+const inBboxSql = (geometri, limit) => `
     SELECT * FROM (SELECT f.beteckning, f.kommun,
       ${geometri ? 'f.geojson' : '(f.minx + f.maxx) / 2 AS lon, (f.miny + f.maxy) / 2 AS lat'},
       f.demo, f.areal_m2, ${SENASTE_VARDE} AS varde_tkr,
@@ -245,7 +245,7 @@ const inBboxSql = (geometri, limit) => db.prepare(`
     WHERE ${overlapar('fastighet', 'f')}
       AND (? IS NULL OR f.beteckning IN (SELECT beteckning FROM agande WHERE orgnr = ?))) v
     WHERE 1 ${FILTER.map(([, , villkor]) => `AND (? IS NULL OR ${villkor})`).join('\n      ')}
-    LIMIT ${limit}`);
+    LIMIT ${limit}`;
 
 // Bolagets fastigheter: lagfaren ägare eller ägare i taxeringen (parametrar: orgnr, orgnr).
 const BOLAGETS = `f.beteckning IN (SELECT beteckning FROM agande WHERE orgnr = ?
@@ -253,8 +253,12 @@ const BOLAGETS = `f.beteckning IN (SELECT beteckning FROM agande WHERE orgnr = ?
 const BOLAG_LISTA = 500;   // fastigheter i bolagspanelens lista
 
 const q = {
-  inBbox: inBboxSql(true, MAX_FEATURES + 1),
-  punkter: inBboxSql(false, MAX_PUNKTER + 1),
+  inBbox: db.prepare(inBboxSql(true, MAX_FEATURES + 1)),
+  punkter: db.prepare(inBboxSql(false, MAX_PUNKTER + 1)),
+  // Översikt under prickarnas zoom: antal per kommun i hela landet, placerat i fastigheternas medelpunkt.
+  kommunKluster: db.prepare(`SELECT kommun, count(*) AS n, sum(varde_tkr) AS varde_tkr,
+      round(avg(lon), 4) AS lon, round(avg(lat), 4) AS lat
+    FROM (${inBboxSql(false, -1)}) WHERE kommun IS NOT NULL GROUP BY kommun`),
   typer: db.prepare('SELECT DISTINCT typ FROM taxering WHERE typ IS NOT NULL ORDER BY typ'),
   agartyper: db.prepare(`SELECT DISTINCT b.jurform FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
     WHERE b.jurform IS NOT NULL ORDER BY b.jurform`),
@@ -363,6 +367,10 @@ const KOMMUNER = q.kommuner.all().map((r) => r.kommun);
 const KOMMUN_BBOX = db.prepare(`SELECT kommun AS namn, min(minx) AS minx, min(miny) AS miny, max(maxx) AS maxx, max(maxy) AS maxy
   FROM fastighet WHERE kommun IS NOT NULL GROUP BY kommun ORDER BY kommun`).all()
   .map((k) => ({ ...k, lan: LAN_FOR_KOMMUN.get(k.namn) ?? null }));
+
+// Kommunklustren läser hela landet; datan ändras bara med en omstart (som TYPER), så svaren sparas per filter.
+// shortcut: ett nytt filter räknas om över alla fastigheter vid första anropet; förberäkna i build-public om det blir långsamt.
+const klusterCache = new Map();
 
 // Fastigheterna i kartutsnittet (bbox) med filtren, eller null om bbox saknas.
 function traffar(url, stmt = q.inBbox) {
@@ -653,6 +661,17 @@ const routes = [
     const p = rows.slice(0, MAX_PUNKTER).map((r) => [+r.lon.toFixed(5), +r.lat.toFixed(5), r.beteckning, r.varde_tkr,
       r.typ, r.agartyp, r.kop_dag ? Number(r.kop_dag.slice(0, 4)) : null, r.demo, r.areal_m2 && Math.round(r.areal_m2)]);
     return [200, { truncated: rows.length > MAX_PUNKTER, p }];
+  }],
+
+  // Antal per kommun med kartfiltren (bbox ignoreras): [lon, lat, kommun, antal, värde (tkr)].
+  [/^\/api\/kommunkluster$/, 'api', (_m, url) => {
+    const nyckel = filterParams(url).join('|');
+    if (!klusterCache.has(nyckel)) {
+      if (klusterCache.size >= 500) klusterCache.clear();
+      klusterCache.set(nyckel, q.kommunKluster.all(-180, 180, -90, 90, null, null, ...filterParams(url))
+        .map((r) => [r.lon, r.lat, r.kommun, r.n, r.varde_tkr]));
+    }
+    return [200, { k: klusterCache.get(nyckel) }];
   }],
 
   [/^\/api\/fastighet\/(.+)$/, 'api', (m) => {

@@ -72,7 +72,7 @@ adressökning (120 177 OSM-adresser) och panel med Ägare/Användning/Senaste k�
 Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, bara gränssnittet tittat på):
 - Kartan: filter (län och kommun (`lib/kommuner.mjs`, zoomar dit), ägare (namn/org.nr), ägarkategori, användning, lokalslag, upplåtelseform (tomträtt/äganderätt), ägartyp, värde, köpår, köpeskilling, tomtyta och uppskattad LOA från/till) med antal träffar och
   CSV-nedladdning (`/data/horos-traffar.csv`); "Färga efter" värde, värde/m², användning, ägartyp,
-  köpår; prickar/kluster zoom 10–14 (`/api/punkter`); hovringsruta; delbar adress (`?l=&f=&farg=` + filter).
+  köpår; prickar/kluster zoom 10–14 (`/api/punkter`), antal per kommun under zoom 10 (`/api/kommunkluster`); hovringsruta; delbar adress (`?l=&f=&farg=` + filter).
 - Panelvyer: Affärer (`#affarer`, `/api/affarer`: volym, per användning/kommun, köpare, största,
   senaste, säljare) och Största ägare (`#agare`, `/api/storsta-agare`, även i kartutsnittet).
 - Fastighetspanelen: ägare sedan, köp/m², K/T-kvot, taxeringsändring, säljare, grannar, köp i närheten.
@@ -113,8 +113,8 @@ bygg med `build-public` och publicera.
 
 ## Att göra
 
-- Rikstäckning: prickar/kluster finns från zoom 10 (`/api/punkter`, högst 30 000); under zoom 10 visas
-  inget (behöver förberäknade kluster eller vektorrutor för hela landet);
+- Rikstäckning: prickar/kluster från zoom 10 (`/api/punkter`, högst 30 000); under zoom 10 antal per
+  kommun (`/api/kommunkluster`, hela landet med filtren, sparas per filter i minnet; mät med verklig data);
   historiska flygfoton och OSM-adresserna är fortfarande avgränsade till Stockholm; texter säger
   "i Stockholm" (stämmer tills annan data finns).
 - Planer: länk till kommunens plandokument (insynsbk för Stockholm) när kolumnerna i filen är kända.
