@@ -41,7 +41,8 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 ## Server
 
 - Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3.
-  Ingen domän än (horos.se verkade ledig 2026-10-09), alltså bara http.
+  Domän horos.se (Loopia, LoopiaDNS, köpt 2026-10-10; A-post @ -> servern, www pekar på Loopias parkering).
+  E-post: kontakt@horos.se vidarebefordras till Gmail; Gmail skickar som den via smtp.gmail.com (SPF inkluderar Google).
 - Internt heter allt fortfarande `fastighetskarta` (tjänst, `/opt/fastighetskarta`,
   `/var/lib/fastighetskarta`, `/usr/local/sbin/fastighetskarta-admin`).
 - Publicera: `deploy/deploy.sh deploy@37.27.152.172 [--data]`. SSH-nyckeln har lösenfras, så det
@@ -127,7 +128,6 @@ bygg med `build-public` och publicera.
 - Planer: länk till kommunens plandokument (insynsbk för Stockholm) när kolumnerna i filen är kända.
 
 - Domän + HTTPS: `fastighetskarta-admin set-domain <domän>` när A/AAAA-posten pekar på servern.
-- Kontaktuppgift på metodsidan (platshållare "kontaktuppgift kommer").
 - Vid nästa serverändring: ta bort längdutskriften i `set-secret` och Caddys `Via`-huvud.
 - När Byggnad beviljas: importera ändamål och visa som "Användning" (före taxeringstypen).
 - När Belägenhetsadress beviljas: byt OSM-adresserna (`kalla='osm'`) mot Lantmäteriets.
