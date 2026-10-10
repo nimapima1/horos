@@ -69,7 +69,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 
 ## Status (2026-10-10)
 
-Live: ny design och logotyp, bakgrundsväljare (karta, satellit 2025, flygfoton 2005/1995/1975/1960),
+Live på https://horos.se (sedan 2026-10-10; http://37.27.152.172 fungerar inte längre): ny design och logotyp, bakgrundsväljare (karta, satellit 2025, flygfoton 2005/1995/1975/1960),
 adressökning (120 177 OSM-adresser) och panel med Ägare/Användning/Senaste köp först.
 Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, bara gränssnittet tittat på):
 - Kartan: filter (län och kommun (`lib/kommuner.mjs`, zoomar dit), ägare (namn/org.nr), ägarkategori, användning, lokalslag, upplåtelseform (tomträtt/äganderätt), ägartyp, värde, köpår, köpeskilling, tomtyta och uppskattad LOA från/till) med antal träffar och
@@ -128,7 +128,7 @@ bygg med `build-public` och publicera.
   "i Stockholm" (stämmer tills annan data finns).
 - Planer: länk till kommunens plandokument (insynsbk för Stockholm) när kolumnerna i filen är kända.
 
-- Domän + HTTPS: `fastighetskarta-admin set-domain <domän>` när A/AAAA-posten pekar på servern.
+- www.horos.se: pekar på Loopias parkering. Lägg till www i Caddy (set-domain tar bara en domän) och peka www mot servern.
 - Vid nästa serverändring: ta bort längdutskriften i `set-secret` och Caddys `Via`-huvud.
 - När Byggnad beviljas: importera ändamål och visa som "Användning" (före taxeringstypen).
 - När Belägenhetsadress beviljas: byt OSM-adresserna (`kalla='osm'`) mot Lantmäteriets.
