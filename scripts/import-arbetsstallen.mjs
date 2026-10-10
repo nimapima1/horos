@@ -5,12 +5,13 @@
 // fiktiva arbetsställen (rörlig personal) och arbetsställen med reklamspärr. Telefon, e-post och
 // postadress sparas inte.
 //
-//   node scripts/import-arbetsstallen.mjs [--dry]
+//   node scripts/import-arbetsstallen.mjs [--dry] [--sidor N]
 //   node scripts/import-arbetsstallen.mjs --fil sidor.json [--sni koder.json] [--dry]
 //
 // Utan --fil hämtas hela landet från https://apiafr.scb.se/v1/arbetsstallen/full (bara den
 // varianten har koordinater) med nyckeln i miljövariabeln SCB_API_KEY, annars frågar skriptet
 // efter den utan att visa den. Nyckeln är personlig och får inte delas.
+// --sidor N: bara de N första sidorna (5 000 per sida), för att prova nyckeln och fälten.
 // --fil: ett sparat svar ({arbetsstallen: [...]}) eller en lista av sådana. --sni: kodtabellen.
 import { readFileSync } from 'node:fs';
 import { openDb, normOrgnr, rebuildRtree } from '../lib/db.mjs';
@@ -25,6 +26,7 @@ const LIMIT = 5000;
 const PAUS_MS = 250;   // SCB tillåter 5 anrop per sekund och nyckel
 
 const nyckel = args.fil ? null : process.env.SCB_API_KEY || await promptHidden('SCB API-nyckel: ');
+if (nyckel != null && !/^[!-~]+$/.test(nyckel)) throw new Error('API-nyckeln är tom eller har ogiltiga tecken. Klistra in med högerklick och tryck Enter.');
 const vanta = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function hamta(path) {
@@ -44,11 +46,11 @@ async function* sidor() {
     yield* (Array.isArray(d) ? d : [d]).map((s) => s.arbetsstallen ?? []);
     return;
   }
-  let cursor = null;
+  let cursor = null, antal = 0;
   do {
     const s = await hamta(`/arbetsstallen/full?limit=${LIMIT}${cursor != null ? `&cursorId=${cursor}` : ''}`);
     yield s.arbetsstallen ?? [];
-    cursor = s.pagination?.hasMore ? s.pagination.nextCursorId : null;
+    cursor = s.pagination?.hasMore && !(args.sidor && ++antal >= Number(args.sidor)) ? s.pagination.nextCursorId : null;
     if (cursor != null) await vanta(PAUS_MS);
   } while (cursor != null);
 }
