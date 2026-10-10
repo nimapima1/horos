@@ -43,8 +43,10 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 
 ## Server
 
-- Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3. www-blocket från v4 väntar på att läggas in som root via Hetzners konsol: `sed -i '1i www.__SITE__ {\n  redir https://__SITE__{uri} permanent\n}' /etc/caddy/Caddyfile.template && fastighetskarta-admin set-domain horos.se`.
-  Domän horos.se (Loopia, LoopiaDNS, köpt 2026-10-10; A-post @ -> servern, www pekar på Loopias parkering).
+- Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3 plus www-blocket från v4 (inlagt som root 2026-10-10).
+  Hetzners webbkonsol tappar Skift vid inklistring (`_ { } : &` blir `- [ ] ; 7`): skriv dem som
+  `\x5f \x7b \x7d \x3a` i sed och kör kommandon var för sig i stället för med `&&`.
+  Domän horos.se (Loopia, LoopiaDNS, köpt 2026-10-10; A-post @ och www -> servern; www skickas vidare till horos.se).
   E-post: kontakt@horos.se vidarebefordras till Gmail; Gmail skickar som den via smtp.gmail.com (SPF inkluderar Google).
 - Internt heter allt fortfarande `fastighetskarta` (tjänst, `/opt/fastighetskarta`,
   `/var/lib/fastighetskarta`, `/usr/local/sbin/fastighetskarta-admin`).
@@ -122,7 +124,6 @@ bygg med `build-public` och publicera.
   "i Stockholm" (stämmer tills annan data finns).
 - Planer: länk till kommunens plandokument (insynsbk för Stockholm) när kolumnerna i filen är kända.
 
-- www.horos.se: se till att www-posten i Loopia pekar på servern (Caddy skickar www vidare till horos.se).
 - Vid nästa serverändring: ta bort längdutskriften i `set-secret` och Caddys `Via`-huvud.
 - När Byggnad beviljas: importera ändamål och visa som "Användning" (före taxeringstypen).
 - När Belägenhetsadress beviljas: byt OSM-adresserna (`kalla='osm'`) mot Lantmäteriets.
