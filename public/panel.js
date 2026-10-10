@@ -162,6 +162,8 @@ async function openFastighet(bet, adress) {
         <td>${x.forvarvare_orgnr ? bolagLink(x.forvarvare_orgnr, x.forvarvare_namn) : '–'}<div class="muted small">${[esc(x.art ?? ''), fran].filter(Boolean).join(' · ')}</div></td>
         <td class="num">${kr(x.kopeskilling_kr)}</td></tr>`;
     }), 'Inga registrerade överlåtelser.')}
+    ${f.nyheter.length ? `<h3>I pressmeddelanden</h3>
+    ${table('<th class="num">Datum</th><th>Affär</th><th class="num">Pris</th>', f.nyheter.map(nyhetRad), '')}` : ''}
     <h3>Köp i närheten</h3>
     <div class="meta small">Inom cirka 300 meter, senaste först.</div>
     ${table('<th class="num">Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', f.narKop.map((x) =>
@@ -282,6 +284,13 @@ const affarRad = (r) => `<tr><td class="num">${esc(r.dag ?? '')}</td>
   <td>${fastighetLink(r)}<div class="muted small">${r.orgnr ? bolagLink(r.orgnr, r.namn, r.demo) : '–'}${r.saljare_orgnr && r.saljare_orgnr !== r.orgnr ? ` från ${bolagLink(r.saljare_orgnr, r.saljare)}` : ''}</div></td>
   <td class="num">${mkr(r.kr / 1000)}</td></tr>`;
 
+// Affär ur ett pressmeddelande: rubriken länkar till källan, "Visa på kartan" ramar in fastigheterna.
+const nyhetRad = (n) => `<tr><td class="num">${esc(n.dag ?? '')}</td>
+  <td><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.rubrik)}</a>
+    <div class="muted small">${esc(n.utgivare)} ${n.typ === 'kop' ? 'köper' : 'säljer'}${n.kommun ? ` · ${esc(n.kommun)}` : ''}${n.minx != null
+      ? ` · <a data-ram="${[n.minx, n.miny, n.maxx, n.maxy].join(',')}" data-markera="${esc(JSON.stringify(n.beteckningar))}">Visa på kartan</a>` : ''}</div></td>
+  <td class="num">${n.pris_kr ? mkr(n.pris_kr / 1000) : '–'}</td></tr>`;
+
 // Affärer: volym, antal och de senaste och största köpen, som Datschas transaktionsöversikt.
 async function openAffarer(p = {}) {
   const [s, a] = await Promise.all([statusP, apiPanel(`/api/affarer?${new URLSearchParams(p)}`)]);
@@ -302,6 +311,9 @@ async function openAffarer(p = {}) {
       ${field('År', 'ar', options(a.arLista, a.ar))}
       ${field('Köpeskilling', 'min', options([[0, 'Alla affärer'], [10, 'Över 10 Mkr'], [40, 'Över 40 Mkr'], [100, 'Över 100 Mkr']], a.min))}
     </form>
+    ${a.nyheter.length ? `<h3>Senaste i pressmeddelanden</h3>
+    <div class="meta small">Fastighetsbolagens egna pressmeddelanden (Cision). Pris enligt pressmeddelandet; affären syns i lagfarterna några månader senare.</div>
+    ${table('<th class="num">Datum</th><th>Affär</th><th class="num">Pris</th>', a.nyheter.map(nyhetRad), '')}` : ''}
     ${a.ar ? `
     ${stats([[`Volym ${a.ar}`, mkr((a.summa.kr ?? 0) / 1000)], [`Affärer ${a.ar}`, n(a.summa.antal)],
       ['Senaste 30 dagarna', `${n(a.dagar30.antal)} st · ${mkr((a.dagar30.kr ?? 0) / 1000)}`]])}

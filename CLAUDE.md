@@ -18,6 +18,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   `lib/geo.mjs` (SWEREF99 TM → WGS84, GPKG, punkt-i-polygon), `lib/csv.mjs`,
   `lib/typkoder.mjs` (Skatteverkets typkoder → klartext per taxeringsår; används av import-taxering),
   `lib/lokaltyp.mjs` (arbetsställe → lokaltyp och uppskattad LOA; sparas i `arbetsstalle` vid importen).
+  `lib/nyheter.mjs` (pressmeddelanden: RSS, utläsning av typ/pris/kommun/beteckning/adress, nyhetsrummen på Cision).
 - Kartfiltren: `FILTER` i `server.mjs`, `[parameter, omvandling, SQL-villkor]`; WHERE-delen byggs ur listan.
 - `public/`: `index.html` + `panel.js` (panelvyerna, bara deklarationer, laddas först) + `app.js` (karta,
   filter, sök, status och all inkoppling), `metod.html`, `style.css`
@@ -25,7 +26,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   inga inline-skript.
 - Importskript i `scripts/`: `import-bolag`, `import-fastigheter` (GPKG), `import-taxering`,
   `import-lagfarter`, `import-adresser` (OSM via Overpass, eller `--fil`), `import-planer`
-  (Markreglerande bestämmelse, GPKG per kommun), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
+  (Markreglerande bestämmelse, GPKG per kommun), `import-nyheter` (pressmeddelanden från Cision → `nyhet`/`nyhet_plats`, bara fakta och länk), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
   `SCB_API_KEY`, kopplas till fastighet med punkt-i-polygon), `demo-data` (även påhittade planer och arbetsställen).
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
@@ -78,6 +79,12 @@ Lokalt, inte publicerat än (2026-10-09, idéer från Datscha/Property Intel, ba
 - Fastighetspanelen: ägare sedan, köp/m², K/T-kvot, taxeringsändring, säljare, grannar, köp i närheten.
 - Bolagspanelen: tomtareal, köp, sålt, "Visa alla på kartan" (`/api/fastigheter?org=`).
 - Sök: ägare först med antal fastigheter (ägarlistan i minnet). Servertester i `test/server.test.mjs`.
+- Pressmeddelanden (2026-10-10): `import-nyheter` hämtar 14 nyhetsrum på Cision; listan "Senaste i
+  pressmeddelanden" i Affärer och "I pressmeddelanden" i fastighetspanelen, "Visa på kartan" ramar in.
+  Privatperson som säljare: affären visas, namnet aldrig; försäljning till privatperson tas inte med.
+  **MFN förbjuder automatisk hämtning** (robots.txt: `*.rss`, `*.xml`, `*.json`): inte med förrän Modular
+  Finance gett tillstånd. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
+  efterfrågas (mejlutkast i `UTKAST-mejl-nyheter.md`). Körs bara manuellt än; behöver ett schemalagt jobb på servern.
 - Företag på adressen (SCB-arbetsställen, 2026-10-10): tabell `arbetsstalle`, import, panel i fastighet och
   bolag, uppskattad användning från branscher. Väntar på API-nyckel och SCB:s villkor, se `OVERLAMNING-hyresgaster.md`.
 - Fastighetspanelen (2026-10-10): rutan Användning (lokaltyper, uppskattad LOA), tomtareal, LOA/BOA,

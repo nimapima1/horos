@@ -117,6 +117,19 @@ test('kommunkluster räknar med filtren i hela landet', async () => {
   assert.deepEqual((await json('/api/kommunkluster?kommun=Annan')).k, []);
 });
 
+test('pressmeddelanden i Affärer och på fastigheten', async () => {
+  const db = openDb({ path: DB });
+  db.exec(`INSERT INTO nyhet (url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun) VALUES
+    ('https://news.cision.com/se/a/r/1', 'cision', 'Alfa', 'Alfa köper', '2026-09-01T06:00:00Z', 'kop', 300000000, 'Testkommun');
+    INSERT INTO nyhet_plats (url, beteckning, adress, lon, lat) VALUES
+    ('https://news.cision.com/se/a/r/1', 'T 1:1', NULL, NULL, NULL), ('https://news.cision.com/se/a/r/1', 'FINNS INTE 1', NULL, NULL, NULL)`);
+  db.close();
+  const [n] = (await json('/api/affarer')).nyheter;
+  assert.deepEqual([n.dag, n.beteckningar, n.minx, n.maxx], ['2026-09-01', ['T 1:1'], 18.000, 18.001]);
+  assert.equal((await json('/api/fastighet/T%201%3A1')).nyheter[0].rubrik, 'Alfa köper');
+  assert.deepEqual((await json('/api/fastighet/T%201%3A2')).nyheter, []);
+});
+
 test('affärer räknar en paketaffär en gång', async () => {
   const a = await json('/api/affarer');
   assert.deepEqual(a.arLista, ['2024', '2020']);

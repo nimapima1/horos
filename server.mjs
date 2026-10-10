@@ -23,6 +23,7 @@ const HAS_PLAN = hasTable('plan');   // saknas i publika databaser byggda före 
 // Arbetsställen (SCB) med minst en rad: den publika databasen har tabellen men inga rader förrän
 // build-public körs med --scb-villkor, och då ska inget om företag visas.
 const HAS_AE = hasTable('arbetsstalle') && !!db.prepare('SELECT 1 FROM arbetsstalle LIMIT 1').get();
+const HAS_NYHET = hasTable('nyhet');   // saknas i publika databaser byggda före pressmeddelandena
 const HAS_TOMTRATT = !!db.prepare("SELECT 1 FROM pragma_table_info('agande') WHERE name = 'tomtratt'").get();
 
 // Rumsliga index. build-public bygger dem i den publika databasen; lokalt byggs de om vid
@@ -401,6 +402,20 @@ const AFFAR_RAD = `SELECT a.dag, a.kr, a.orgnr, a.beteckning, a.antal, a.demo, b
   LEFT JOIN bolag sb ON sb.orgnr = (SELECT p.forvarvare_orgnr FROM transaktion p
     WHERE p.beteckning = a.beteckning AND p.inskrivningsdag < a.dag ORDER BY p.inskrivningsdag DESC LIMIT 1)
   JOIN fastighet f ON f.beteckning = a.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr`;
+// Affärer i pressmeddelanden, senaste först, med fastigheterna som finns i Horos (eller adresspunkten)
+// som bbox och beteckningar för kartan.
+const NYHET_KOLUMNER = 'n.url, n.utgivare, n.rubrik, substr(n.datum, 1, 10) AS dag, n.typ, n.pris_kr, n.kommun';
+const qn = HAS_NYHET && {
+  senaste: db.prepare(`SELECT ${NYHET_KOLUMNER},
+      min(coalesce(f.minx, p.lon)) AS minx, min(coalesce(f.miny, p.lat)) AS miny,
+      max(coalesce(f.maxx, p.lon)) AS maxx, max(coalesce(f.maxy, p.lat)) AS maxy,
+      json_group_array(f.beteckning) FILTER (WHERE f.beteckning IS NOT NULL) AS beteckningar
+    FROM nyhet n LEFT JOIN nyhet_plats p ON p.url = n.url LEFT JOIN fastighet f ON f.beteckning = p.beteckning
+    WHERE (? IS NULL OR n.kommun = ?) GROUP BY n.url ORDER BY n.datum DESC LIMIT 30`),
+  fastighet: db.prepare(`SELECT ${NYHET_KOLUMNER} FROM nyhet n
+    WHERE n.url IN (SELECT url FROM nyhet_plats WHERE beteckning = ?) ORDER BY n.datum DESC`),
+};
+
 const qa = {
   ar: db.prepare(`${AFFAR} SELECT DISTINCT substr(dag, 1, 4) AS ar FROM affar WHERE dag IS NOT NULL ORDER BY ar DESC`),
   summa: db.prepare(`${AFFAR} SELECT count(*) AS antal, sum(kr) AS kr FROM affar WHERE substr(dag, 1, 4) = ?`),
@@ -457,6 +472,7 @@ function affarer(url) {
       perTyp: ar ? qa.perTyp.all(...p, ar) : [],
       kopare: ar ? qa.kopare.all(...p, ar) : [],
       perKommun: ar && !kommun ? qa.perKommun.all(...p, ar) : [],
+      nyheter: qn ? qn.senaste.all(kommun, kommun).map((n) => ({ ...n, beteckningar: JSON.parse(n.beteckningar) })) : [],
     };
   });
 }
@@ -680,6 +696,7 @@ const routes = [
     if (!f) return [404, { error: 'Fastigheten finns inte' }];
     return [200, { ...f, upplatelse: q.upplatelse.get(bet).u, adresser: adresserPa(bet), planer: planerPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet),
       hyresgaster: q.hyresgaster ? q.hyresgaster.all(bet) : [], anvandning: q.anvandning ? q.anvandning.all(bet) : [],
+      nyheter: qn ? qn.fastighet.all(bet) : [],
       ...omgivning(bet) }];
   }],
 

@@ -70,6 +70,11 @@ withTransaction(db, () => {
     -- Alla adresser (öppna OSM-data, inga personuppgifter), så att sökningen även kan svara
     -- att en adress inte har någon fastighet i Horos.
     INSERT INTO adress SELECT * FROM src.adress;
+    -- Pressmeddelanden (öppna, utan texten). Platserna bara på tillåtna fastigheter, eller en
+    -- adresspunkt utan fastighet i Horos.
+    INSERT INTO nyhet SELECT * FROM src.nyhet;
+    INSERT INTO nyhet_plats SELECT * FROM src.nyhet_plats
+      WHERE beteckning IN (SELECT beteckning FROM tillaten) OR (beteckning IS NULL AND lon IS NOT NULL);
     ${args['lm-planer'] ? 'INSERT INTO plan SELECT * FROM src.plan WHERE demo = 0;' : ''}
     CREATE TABLE meta (nyckel TEXT PRIMARY KEY, varde TEXT);
   `);
@@ -90,8 +95,8 @@ db.exec('PRAGMA journal_mode = DELETE; VACUUM;');
 
 const c = db.prepare(`SELECT (SELECT count(*) FROM fastighet) f, (SELECT count(*) FROM bolag) b,
   (SELECT count(*) FROM taxering) t, (SELECT count(*) FROM agande) a, (SELECT count(*) FROM transaktion) x,
-  (SELECT count(*) FROM adress) ad, (SELECT count(*) FROM plan) p, (SELECT count(*) FROM arbetsstalle) ae`).get();
+  (SELECT count(*) FROM adress) ad, (SELECT count(*) FROM plan) p, (SELECT count(*) FROM arbetsstalle) ae, (SELECT count(*) FROM nyhet) n`).get();
 db.close();
-console.log(`Klart: ${OUT}\n  ${c.f} fastigheter, ${c.b} bolag, ${c.t} taxeringar, ${c.a} ägarposter, ${c.x} överlåtelser, ${c.ad} adresser, ${c.p} planer, ${c.ae} arbetsställen`);
+console.log(`Klart: ${OUT}\n  ${c.f} fastigheter, ${c.b} bolag, ${c.t} taxeringar, ${c.a} ägarposter, ${c.x} överlåtelser, ${c.ad} adresser, ${c.p} planer, ${c.ae} arbetsställen, ${c.n} affärer i pressmeddelanden`);
 if (!c.f) console.log('  (Inga fastigheter ännu: väntar på Lantmäteriet/Skatteverket. Sidan blir en tom karta'
   + (args['alla-bolag'] ? ' med bolagssök.)' : '; kör med --alla-bolag för att kunna söka bland alla bolag.)'));

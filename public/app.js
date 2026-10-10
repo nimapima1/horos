@@ -517,6 +517,7 @@ statusP.then((s) => {
 $('#panel').addEventListener('click', (e) => {
   const ram = e.target.closest('[data-ram]');
   if (ram) flyToBbox(ram.dataset.ram);
+  if (ram?.dataset.markera) markera(JSON.parse(ram.dataset.markera));   // fastigheterna i ett pressmeddelande
   const copy = e.target.closest('[data-copy]');
   if (copy) {
     navigator.clipboard.writeText(location.href).then(() => { copy.textContent = 'Länken är kopierad'; },
