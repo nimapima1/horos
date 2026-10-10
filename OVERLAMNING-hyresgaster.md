@@ -118,7 +118,8 @@ används till** (kontor, lager, butik …), som Datscha/Property Intel gör.
    eller kör skriptet utan variabel så frågar det dolt.
 2. `npm run import:arbetsstallen -- --dry` först. Kontrollera att fältnamnen stämmer (antal "utan koordinater"
    ska vara litet, branscher ska ha klartext). Ändra i `rad()` om svaret skiljer sig från specen.
-3. Kontrollera SNI 2025-avdelningarna i `AVDELNINGAR` (lib/lokaltyp.mjs) mot `avdelningText` i kodtabellen.
+3. ~~Kontrollera SNI 2025-avdelningarna~~ Gjort 2026-10-10: `AVDELNINGAR`, aeStat, aeTyp, anstKl och reklamspärr
+   stämmer mot SCB:s kodtabeller (bara reklamspärr var fel i PDF:en: 1/2, inte 3/4). Handel (G) har bara 46/47.
 4. ~~Läs SCB:s villkor~~ (gjort 2026-10-10, se ovan); därefter `build-public --scb-villkor`.
 
 ## Föreslagen lösning (ursprunglig plan)
