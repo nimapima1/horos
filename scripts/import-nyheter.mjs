@@ -26,10 +26,18 @@ const delPlats = db.prepare('DELETE FROM nyhet_plats WHERE url = ?');
 const delNyhet = db.prepare('DELETE FROM nyhet WHERE url = ?');
 const insPlats = db.prepare('INSERT INTO nyhet_plats (url, beteckning, adress, lon, lat) VALUES (?, ?, ?, ?, ?)');
 
-// Adressen i texten -> en punkt: en enda träff, annars den i en kommun som texten nämner.
+const fastighetensKommun = db.prepare('SELECT kommun FROM fastighet WHERE beteckning = ?');
+
+// Adressen i texten -> en punkt i den kommun som texten nämner. Adresstabellen täcker inte hela landet,
+// så en ensam träff på samma gatunamn kan ligga i en annan stad (Kungsgatan 44 i Göteborg ≠ i Stockholm).
+// Kommunen tas från fastigheten under punkten, annars från adressens ort.
 function adressPunkt({ gata, nummer }, kommun) {
-  const t = adresser.all(gata, nummer);
-  return t.length === 1 ? t[0] : t.find((a) => kommun && a.ort === kommun) ?? null;
+  if (!kommun) return null;
+  for (const a of adresser.all(gata, nummer)) {
+    const bet = fastighetVid(a.lon, a.lat);
+    if ((bet ? fastighetensKommun.get(bet)?.kommun : a.ort) === kommun) return { ...a, bet };
+  }
+  return null;
 }
 
 let antal = 0, medPlats = 0;
@@ -46,7 +54,7 @@ for (const [namn, utgivare] of CISION) {
       const platser = n.beteckningar.map((b) => [b, null, null, null]);
       for (const a of n.adresser) {
         const p = adressPunkt(a, n.kommun);
-        if (p) platser.push([fastighetVid(p.lon, p.lat), `${a.gata} ${a.nummer}`, p.lon, p.lat]);
+        if (p) platser.push([p.bet, `${a.gata} ${a.nummer}`, p.lon, p.lat]);
       }
       const kopplade = platser.filter(([b, , lon]) => lon != null || finnsFastighet.get(b)).length;
       antal++; if (kopplade) medPlats++;

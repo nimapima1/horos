@@ -68,7 +68,8 @@ Sidan finns nu på `http://<IP>` (utan HTTPS tills en domän är satt).
 ## 4. Domän och HTTPS
 
 1. Köp en domän (t.ex. en .se-domän) och peka en **A-post** (och gärna **AAAA**) mot
-   serverns IPv4/IPv6.
+   serverns IPv4/IPv6, både för domänen och för **www**. Servern skickar www vidare till domänen och
+   behöver ett certifikat även för www; saknas www-posten försöker Caddy om och om igen.
 2. När DNS slagit igenom:
    ```sh
    ssh deploy@<IP> sudo /usr/local/sbin/fastighetskarta-admin set-domain fastighetskarta.se

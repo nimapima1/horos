@@ -42,7 +42,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 
 ## Server
 
-- Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3 (+ www-blocket från v4, lagt in för hand som root 2026-10-10).
+- Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3. www-blocket från v4 väntar på att läggas in som root via Hetzners konsol: `sed -i '1i www.__SITE__ {\n  redir https://__SITE__{uri} permanent\n}' /etc/caddy/Caddyfile.template && fastighetskarta-admin set-domain horos.se`.
   Domän horos.se (Loopia, LoopiaDNS, köpt 2026-10-10; A-post @ -> servern, www pekar på Loopias parkering).
   E-post: kontakt@horos.se vidarebefordras till Gmail; Gmail skickar som den via smtp.gmail.com (SPF inkluderar Google).
 - Internt heter allt fortfarande `fastighetskarta` (tjänst, `/opt/fastighetskarta`,

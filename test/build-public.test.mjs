@@ -1,5 +1,5 @@
 // build-public: pressmeddelandenas platser får bara följa med för tillåtna fastigheter (juridisk ägare,
-// ingen privat ägare) eller som ren adresspunkt. Åtagandet i ansökan till Lantmäteriet.
+// ingen privat ägare), aldrig som en adress utan fastighet i Horos. Åtagandena i ansökan till Lantmäteriet.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -10,7 +10,7 @@ import { ROOT, openDb } from '../lib/db.mjs';
 const SRC = join(ROOT, 'data', '_test', 'bp-src.sqlite');
 const OUT = join(ROOT, 'data', '_test', 'bp-pub.sqlite');
 
-test('nyhet_plats: bara tillåtna fastigheter och adresspunkter blir publika', () => {
+test('nyhet_plats: bara tillåtna fastigheter blir publika', () => {
   for (const f of [SRC, OUT]) for (const ext of ['', '-wal', '-shm']) rmSync(f + ext, { force: true });
   const src = openDb({ path: SRC });
   src.exec(`INSERT INTO bolag (orgnr, namn) VALUES ('5560000001', 'Alfa AB');
@@ -32,8 +32,8 @@ test('nyhet_plats: bara tillåtna fastigheter och adresspunkter blir publika', (
   const pub = openDb({ path: OUT, readOnly: true });
   try {
     assert.equal(pub.prepare('SELECT count(*) AS n FROM nyhet').get().n, 1);
-    assert.deepEqual(pub.prepare('SELECT beteckning, adress FROM nyhet_plats ORDER BY adress').all().map((r) => ({ ...r })),
-      [{ beteckning: 'T 1:1', adress: null }, { beteckning: null, adress: 'Testgatan 1' }]);
+    assert.deepEqual(pub.prepare('SELECT beteckning, adress FROM nyhet_plats').all().map((r) => ({ ...r })),
+      [{ beteckning: 'T 1:1', adress: null }]);
   } finally {
     pub.close();
   }

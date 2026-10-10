@@ -70,11 +70,11 @@ withTransaction(db, () => {
     -- Alla adresser (öppna OSM-data, inga personuppgifter), så att sökningen även kan svara
     -- att en adress inte har någon fastighet i Horos.
     INSERT INTO adress SELECT * FROM src.adress;
-    -- Pressmeddelanden (öppna, utan texten). Platserna bara på tillåtna fastigheter, eller en
-    -- adresspunkt utan fastighet i Horos.
+    -- Pressmeddelanden (öppna, utan texten). Platserna bara på tillåtna fastigheter: en adress utan
+    -- fastighet i Horos visas inte på kartan (åtagandet för belägenhetsadresser), och en fastighet som
+    -- sålts till en privatperson finns inte bland de tillåtna.
     INSERT INTO nyhet SELECT * FROM src.nyhet;
-    INSERT INTO nyhet_plats SELECT * FROM src.nyhet_plats
-      WHERE beteckning IN (SELECT beteckning FROM tillaten) OR (beteckning IS NULL AND lon IS NOT NULL);
+    INSERT INTO nyhet_plats SELECT * FROM src.nyhet_plats WHERE beteckning IN (SELECT beteckning FROM tillaten);
     ${args['lm-planer'] ? 'INSERT INTO plan SELECT * FROM src.plan WHERE demo = 0;' : ''}
     CREATE TABLE meta (nyckel TEXT PRIMARY KEY, varde TEXT);
   `);
