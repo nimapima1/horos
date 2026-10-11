@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree } from './lib/db.mjs';
-import { innerPoints, pointInGeom } from './lib/geo.mjs';
+import { avstandM, innerPoints, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN } from './lib/kommuner.mjs';
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
 
@@ -23,7 +23,10 @@ const HAS_PLAN = hasTable('plan');   // saknas i publika databaser byggda före 
 // Arbetsställen (SCB) med minst en rad: den publika databasen har tabellen men inga rader förrän
 // build-public körs med --scb-villkor, och då ska inget om företag visas.
 const HAS_AE = hasTable('arbetsstalle') && !!db.prepare('SELECT 1 FROM arbetsstalle LIMIT 1').get();
-const HAS_NYHET = hasTable('nyhet');   // saknas i publika databaser byggda före pressmeddelandena
+const HAS_NYHET = hasTable('nyhet');
+// Miljö och risk: bara med rader, så att en databas utan importen inte svarar "inga i närheten".
+const harRader = (t) => hasTable(t) && !!db.prepare(`SELECT 1 FROM ${t} LIMIT 1`).get();
+const HAS_FORORENAT = harRader('fororenat'), HAS_UTSATT = harRader('utsatt_omrade');   // saknas i publika databaser byggda före pressmeddelandena
 // Kolumner som saknas i publika databaser byggda före dem (servern läser dem utan att lägga till kolumner).
 const HAS_TOMTRATT = hasColumn(db, 'agande', 'tomtratt');
 const HAS_AGARKONTROLL = hasColumn(db, 'bolag', 'agarkontroll');
@@ -341,6 +344,8 @@ const q = {
     WHERE ${overlapar('fastighet', 'f')} LIMIT 100`),
   adresserIBbox: HAS_ADRESS && db.prepare(`SELECT gata, nummer, lon, lat FROM adress
     WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? LIMIT 2000`),
+  fororenatNara: HAS_FORORENAT && db.prepare(`SELECT ebh_id, bransch, bransch2, status, riskklass, lon, lat FROM fororenat
+    WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? LIMIT 500`),
   fastighetGeom: db.prepare('SELECT geojson, minx, miny, maxx, maxy FROM fastighet WHERE beteckning = ?'),
   // En rad per granne med (första) ägaren.
   grannar: db.prepare(`SELECT f.beteckning, f.minx, f.miny, f.maxx, f.maxy, min(a.orgnr) AS orgnr, b.namn AS agare, b.demo
@@ -573,6 +578,26 @@ function planerPa(bet) {
     .map(({ geojson, ...p }) => p);
 }
 
+// Förorenade områden inom FORORENAT_M från fastighetens gräns (högst riskklass först, oklassade sist) och
+// utsatta områden inom UTSATT_M från dess mitt, närmast först. null = datan saknas i databasen.
+const FORORENAT_M = 150, UTSATT_M = 5000;
+const UTSATTA = HAS_UTSATT ? db.prepare('SELECT id, namn, kategori, ort, polisomrade, datum, geojson FROM utsatt_omrade').all()
+  .map(({ geojson, ...u }) => ({ ...u, geom: JSON.parse(geojson) })) : [];
+const narmast = (a, b) => a.avstand_m - b.avstand_m;
+function miljoRisk(bet) {
+  const f = q.fastighetGeom.get(bet);
+  if (!f) return { fororenade: null, utsatta: null };
+  const geom = JSON.parse(f.geojson);
+  const mitt = [(f.minx + f.maxx) / 2, (f.miny + f.maxy) / 2];
+  return {
+    fororenade: HAS_FORORENAT ? q.fororenatNara.all(...runt(f, FORORENAT_M))
+      .map(({ lon, lat, ...r }) => ({ ...r, avstand_m: Math.round(avstandM([lon, lat], geom)) }))
+      .filter((r) => r.avstand_m <= FORORENAT_M).sort((a, b) => (a.riskklass ?? 9) - (b.riskklass ?? 9) || narmast(a, b)) : null,
+    utsatta: HAS_UTSATT ? UTSATTA.map(({ geom: g, ...u }) => ({ ...u, avstand_m: Math.round(avstandM(mitt, g)) }))
+      .filter((u) => u.avstand_m <= UTSATT_M).sort(narmast) : null,
+  };
+}
+
 function adresserPa(bet) {
   const f = q.adresserIBbox && q.fastighetGeom.get(bet);
   if (!f) return [];
@@ -703,7 +728,7 @@ const routes = [
     return [200, { ...f, upplatelse: q.upplatelse.get(bet).u, adresser: adresserPa(bet), planer: planerPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet),
       hyresgaster: q.hyresgaster ? q.hyresgaster.all(bet) : [], anvandning: q.anvandning ? q.anvandning.all(bet) : [],
       nyheter: qn ? qn.fastighet.all(bet) : [],
-      ...omgivning(bet) }];
+      ...omgivning(bet), ...miljoRisk(bet) }];
   }],
 
   [/^\/api\/planer$/, 'api', (_m, url) => {

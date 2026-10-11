@@ -60,6 +60,12 @@
       <tr><td>Affärer i pressmeddelanden: rubrik, länk, datum, pris och fastighet enligt pressmeddelandet</td>
           <td>Fastighetsbolagens nyhetsrum på Cision</td>
           <td>Hämtas från de öppna RSS-flödena. Bara rubriken och uppgifterna om affären sparas, inte texten; länken går till pressmeddelandet.</td></tr>
+      <tr><td>Förorenade områden: bransch, status och riskklass</td>
+          <td>Länsstyrelserna, EBH-stödet (potentiellt förorenade områden)</td>
+          <td>Öppna data (CC BY 4.0), en punkt per objekt utan fastighetsbeteckning</td></tr>
+      <tr><td>Utsatta områden</td>
+          <td>Polisen, lägesbild över utsatta områden</td>
+          <td>Områdesgränserna som Polisen publicerar som geodata</td></tr>
       <tr><td>Adresser i sökningen</td>
           <td>© OpenStreetMap-bidragsgivare. Ersätts av Lantmäteriets belägenhetsadresser när den ansökan är beviljad.</td>
           <td>Öppna kartdata (ODbL), hämtade via Overpass</td></tr>
@@ -121,6 +127,11 @@
       <li><strong>Bolagsaffärer syns inte.</strong> När ett fastighetsägande bolag säljs (paketering) byts ingen
         lagfart, så köpet syns inte i fastighetsregistret. Lagfaren ägare kan då vara ett dotterbolag vars
         moderbolag har bytt ägare.</li>
+      <li><strong>Förorenade områden och utsatta områden räknas på avstånd.</strong> Fastighetspanelen visar
+        objekt i länsstyrelsernas register vars punkt ligger inom 150 meter från fastighetens gräns, och Polisens
+        utsatta områden inom 5 km från fastighetens mitt. Ett objekt i registret betyder att verksamheten kan ha
+        förorenat marken, inte att den är förorenad; riskklassen (1 mycket stor till 4 liten risk) finns bara för
+        objekt som har inventerats.</li>
       <li><strong>Uppgifterna har ett datum.</strong> Horos uppdateras när nya uttag görs från myndigheterna, inte
         i realtid. Datum för senaste uppdatering står överst på sidan.</li>
     </ul>

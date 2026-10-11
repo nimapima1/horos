@@ -27,13 +27,13 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   inga inline-skript.
 - Importskript i `scripts/`: `import-bolag`, `import-fastigheter` (GPKG), `import-taxering`,
   `import-lagfarter`, `import-adresser` (OSM via Overpass, eller `--fil`), `import-planer`
-  (Markreglerande bestämmelse, GPKG per kommun), `import-nyheter` (pressmeddelanden från Cision → `nyhet`/`nyhet_plats`, bara fakta och länk), `import-agarkontroll` (SCB:s ägarkontroll → `bolag.agarkontroll`; statligt/kommunalt/regionägt i ägarkategorin), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
+  (Markreglerande bestämmelse, GPKG per kommun), `import-nyheter` (pressmeddelanden från Cision → `nyhet`/`nyhet_plats`, bara fakta och länk), `import-agarkontroll` (SCB:s ägarkontroll → `bolag.agarkontroll`; statligt/kommunalt/regionägt i ägarkategorin), `import-fororenade` (länsstyrelsernas EBH, .dbf, CC BY 4.0) och `import-utsatta` (Polisens utsatta områden, GeoJSON) för panelens rutor Förorenade områden (150 m) och Utsatta områden (5 km), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
   `SCB_API_KEY`, kopplas till fastighet med punkt-i-polygon), `demo-data` (även påhittade planer och arbetsställen).
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
 - Tester: `npm test` (node:test, `test/`).
   `build-public.mjs` bygger `data/public.sqlite` med bara tillåtna fastigheter; Lantmäteriets
-  data kräver `--lm-beslut <ärendenr>`, planerna `--lm-planer <ärendenr>`, arbetsställena `--scb-villkor`. Live byggs med `--alla-bolag`.
+  data kräver `--lm-beslut <ärendenr>`, planerna `--lm-planer <ärendenr>`, arbetsställena `--scb-villkor`, Polisens utsatta områden `--polisen-uso` (villkor för geodatan saknas på polisen.se; fråga Polisen). Live byggs med `--alla-bolag`.
 - Lokalt: `node --disable-warning=ExperimentalWarning server.mjs` (PATH: `/c/Program Files/nodejs`).
   Använd en annan port än 3000 (`PORT=3005`) om användaren har en egen server igång.
   SQLite-filer för test i `data/_test/` (långa sökvägar i scratchpad fungerar inte).
@@ -130,5 +130,10 @@ bygg med `build-public` och publicera.
   "i Stockholm" (stämmer tills annan data finns).
 - Planer: länk till kommunens plandokument (insynsbk för Stockholm) när kolumnerna i filen är kända.
 
+- ESG (vilande tills Lantmäteriet/Skatteverket finns): energideklarationer från Boverket, antingen uttag som
+  allmän handling eller API (avtal kräver organisationsnummer, t.ex. en ideell förening; 1 500 anrop/dag).
+  Certifieringar: SGBC har inget öppet register (BGO bara egna projekt). Förfrågningar till Boverket
+  (allmän handling) och SGBC skickade 2026-10-11, se `PRIVAT.md`.
+  Ingen hämtning via Boverkets e-tjänst eller BGO. Översvämning (MSB/SMHI) är inte gjord.
 - När Byggnad beviljas: importera ändamål och visa som "Användning" (före taxeringstypen).
 - När Belägenhetsadress beviljas: byt OSM-adresserna (`kalla='osm'`) mot Lantmäteriets.

@@ -22,6 +22,10 @@ const dagCell = (d) => {
 const stats = (items) => `<div class="stats">${items.map(([label, value, sub]) =>
   `<div class="stat"><div class="stat-label">${label}</div><div class="stat-value">${value}</div>${sub ? `<div class="fact-sub">${sub}</div>` : ''}</div>`).join('')}</div>`;
 
+// MIFO-riskklasser i länsstyrelsernas EBH-stöd.
+const RISKKLASS = { 1: '1, mycket stor risk', 2: '2, stor risk', 3: '3, måttlig risk', 4: '4, liten risk' };
+const avstand = (m, inuti) => (m === 0 ? inuti : m < 1000 ? `${m} m` : `${(m / 1000).toLocaleString('sv-SE', { maximumFractionDigits: 1 })} km`);
+
 // Hämtar från API:t; vid fel visas felet i panelen och null returneras.
 async function apiPanel(path) {
   try { return await api(path); }
@@ -184,11 +188,27 @@ async function openFastighet(bet, adress) {
         <td class="num">${mkr(x.kr / 1000)}<div class="muted small">${x.paket ? 'paketaffär'
           : x.areal_m2 && (!x.andel || x.andel === '1/1') ? `${kr(x.kr / x.areal_m2)}/m²` : ''}</div></td></tr>`),
       'Inga registrerade köp i närheten.')}
+    ${f.fororenade ? `<h3>Förorenade områden</h3>
+    <div class="meta small">${f.fororenade.length > 10 ? `${f.fororenade.length} objekt, de 10 med högst riskklass visas. ` : ''}Objekt i
+      länsstyrelsernas register inom 150 meter. Att ett objekt finns med betyder inte att marken är förorenad, och mark kan
+      vara förorenad utan att finnas med.</div>
+    ${table('<th>Bransch</th><th>Riskklass</th><th class="num">Avstånd</th>', f.fororenade.slice(0, 10).map((x) =>
+      `<tr><td>${esc(x.bransch ?? '–')}<div class="muted small">${[x.status, x.bransch2].filter(Boolean).map(esc).join(' · ')}</div></td>
+        <td>${RISKKLASS[x.riskklass] ?? 'Ej klassad'}</td><td class="num">${avstand(x.avstand_m, 'på fastigheten')}</td></tr>`),
+      'Inga registrerade objekt inom 150 meter.')}` : ''}
+    ${f.utsatta ? `<h3>Utsatta områden</h3>
+    <div class="meta small">Polisens lägesbild över utsatta områden, inom 5 km från fastigheten.</div>
+    ${table('<th>Område</th><th class="num">Avstånd</th>', f.utsatta.map((u) =>
+      `<tr><td>${esc(u.namn)}<div class="muted small">${[u.kategori, u.ort, u.datum && `sedan ${u.datum}`].filter(Boolean).map(esc).join(' · ')}</div></td>
+        <td class="num">${avstand(u.avstand_m, 'inom området')}</td></tr>`),
+      'Inga utsatta områden inom 5 km.')}` : ''}
     <button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>
     <p class="muted small" style="margin-top:16px">${[
       `Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}`,
       f.planer.length && `planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}`,
       f.adresser.length && 'adresser: © OpenStreetMap-bidragsgivare',
+      f.fororenade?.length && 'förorenade områden: Länsstyrelserna, EBH-stödet (CC BY 4.0)',
+      f.utsatta?.length && 'utsatta områden: Polisen',
       f.hyresgaster.length && `företag: ${f.hyresgaster.some((h) => h.demo) ? 'påhittade (exempel)' : SCB_KALLA}`,
     ].filter(Boolean).join(' · ')}</p>
   `);
@@ -276,6 +296,7 @@ async function openOm() {
       <dt>Ägare, köp</dt><dd>Lantmäteriet, allmänna handlingar</dd>
       <dt>Planer</dt><dd>Lantmäteriet, Markreglerande bestämmelse</dd>
       ${s.foretag ? `<dt>Företag</dt><dd>${SCB_KALLA}, arbetsställen</dd>` : ''}
+      <dt>Förorenade områden</dt><dd>Länsstyrelserna, EBH-stödet (CC BY 4.0)</dd>
       <dt>Adresser</dt><dd>© OpenStreetMap-bidragsgivare (ODbL)</dd>
       <dt>Karta</dt><dd>OpenFreeMap, © OpenStreetMap-bidragsgivare</dd>
       <dt>Satellit</dt><dd>EOxCloudless 2025 (Copernicus Sentinel-2)</dd>
