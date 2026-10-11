@@ -202,7 +202,7 @@ async function openFastighet(bet, adress) {
       `<tr><td>${esc(u.namn)}<div class="muted small">${[u.kategori, u.ort, u.datum && `sedan ${u.datum}`].filter(Boolean).map(esc).join(' · ')}</div></td>
         <td class="num">${avstand(u.avstand_m, 'inom området')}</td></tr>`),
       'Inga utsatta områden inom 5 km.')}` : ''}
-    <div class="sc-knappar"><button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>${scenarioKnapp(f.beteckning)}</div>
+    <div class="knappar"><button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>${scenarioKnapp(f.beteckning)}</div>
     ${googleLankar(mittpunkt(f))}
     <p class="muted small" style="margin-top:16px">${[
       `Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}`,
@@ -231,7 +231,7 @@ async function openBolag(orgnr) {
     <div class="meta">${fmtOrgnr(b.orgnr)}${b.avregistrerad ? ` · <strong>avregistrerad ${esc(b.avregistrerad)}</strong>` : ''}</div>
     ${stats([['Fastigheter', s.antal.toLocaleString('sv-SE')], ['Taxeringsvärde', s.varde_tkr ? mkr(s.varde_tkr) : '–'],
       ['Tomtareal', s.areal_m2 ? `${Math.round(s.areal_m2).toLocaleString('sv-SE')} m²` : '–']])}
-    ${ram ? `<div class="sc-knappar"><button type="button" class="copy" data-ram="${ram}">Visa alla på kartan</button>
+    ${ram ? `<div class="knappar"><button type="button" class="copy" data-ram="${ram}">Visa alla på kartan</button>
       <button type="button" class="copy" data-sc="bolag">Räkna på innehavet</button></div>
       <div class="meta small">Bolagets fastigheter är inramade i orange.</div>` : ''}
     <dl>

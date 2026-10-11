@@ -346,7 +346,7 @@ const filterForm = $('#filter');
 let filterTimer;
 function filterQuery() {
   const p = new URLSearchParams([...new FormData(filterForm)].filter(([, v]) => v.trim()));
-  $('#filter-count').textContent = p.size ? `(${p.size})` : '';
+  $('#filter-count').textContent = p.size ? String(p.size) : '';
   return p.size ? `&${p}` : '';
 }
 filterForm.addEventListener('input', () => { clearTimeout(filterTimer); filterTimer = setTimeout(loadVisible, 300); });
@@ -368,6 +368,10 @@ function zoomaTillOmrade(kommun = filterForm.kommun.value) {
 filterForm.lan.addEventListener('change', () => { fyllKommuner(); zoomaTillOmrade(); });
 filterForm.kommun.addEventListener('change', () => zoomaTillOmrade());
 filterForm.addEventListener('submit', (e) => e.preventDefault());
+// Filter-fliken fäller ut och ihop formuläret (details, vars egen rubrik är dold).
+const filterDetails = filterForm.closest('details');
+$('#filter-knapp').addEventListener('click', () => { filterDetails.open = !filterDetails.open; });
+filterDetails.addEventListener('toggle', () => $('#filter-knapp').setAttribute('aria-expanded', String(filterDetails.open)));
 // Filter från en delad länk. Användning och ägartyp sätts när listorna har laddats (se status).
 for (const el of filterForm.querySelectorAll('input[name]')) el.value = START.get(el.name) ?? '';
 if ([...START.keys()].some((k) => filterForm.elements[k])) filterForm.closest('details').open = true;
@@ -440,8 +444,17 @@ function select(beteckning) {
   updateUrl();
 }
 
+// Markerar fliken för den öppna vyn (#affarer, #agare, #scenario och scenariolänkarna).
+function markeraFlik(oppen = true) {
+  const vy = arScenarioLank(location.hash) ? '#scenario' : location.hash;
+  for (const a of document.querySelectorAll('.verktyg a')) {
+    if (oppen && a.hash === vy) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  }
+}
+
 function showPanel(html) {
   streetView.visa(null);   // openFastighet visar den igen för sin fastighet
+  markeraFlik();
   $('#panel-body').innerHTML = html;
   $('#panel').hidden = false;
   $('#panel').scrollTop = 0;
@@ -454,6 +467,7 @@ $('#close').addEventListener('click', () => {
   markera([]);
   adressMarker?.remove();
   rensaVy();
+  markeraFlik(false);
 });
 // Tar bort vyn (#affarer m.fl.) ur adressen, så att den inte öppnas igen när sidan laddas om.
 function rensaVy() {
@@ -585,7 +599,7 @@ $('#panel').addEventListener('change', (e) => {
   if (e.target.matches('[data-sc-fil]') && e.target.files[0]) lasScenarioFil(e.target.files[0]);
 });
 $('#panel').addEventListener('input', (e) => { if (e.target.dataset.k && scenario) scenarioInput(e.target); });
-for (const a of document.querySelectorAll('.links a[href^="#"]')) {
+for (const a of document.querySelectorAll('.topbar a[href^="#"]')) {
   a.addEventListener('click', (e) => { e.preventDefault(); history.replaceState(null, '', a.hash); VIEWS[a.hash](); });
 }
 VIEWS['#scenario'] = openScenarier;

@@ -26,12 +26,9 @@
             <circle class="wm-node" cx="131" cy="39.5" r="2.5"/>
           </svg>
         </a>
-        <nav class="links" aria-label="Sidor">
-          <a href="#affarer">Affärer</a>
-          <a href="#agare">Ägare</a>
-          <a href="#scenario">Scenarier</a>
+        <nav class="links" aria-label="Om Horos">
           <a id="om" href="#om">Om</a>
-          <a class="wide-only" href="metod.html">Metod</a>
+          <a href="metod.html">Metod</a>
           <a class="wide-only" href="metod.html#data">Data</a>
         </nav>
       </div>
@@ -41,8 +38,15 @@
         <input id="q" type="search" placeholder="Sök adress, bolag eller fastighet" autocomplete="off" aria-label="Sök adress, bolag, organisationsnummer eller fastighet">
         <ul id="results" class="results" hidden></ul>
       </div>
+      <!-- Verktygen som flikar: Filter fäller ut formuläret nedanför, de andra öppnar en vy i panelen. -->
+      <nav class="verktyg" aria-label="Verktyg">
+        <button id="filter-knapp" type="button" aria-expanded="false" aria-controls="filter">Filter<span id="filter-count"></span></button>
+        <a href="#affarer">Affärer</a>
+        <a href="#agare">Ägare</a>
+        <a href="#scenario">Scenarier</a>
+      </nav>
       <details class="filters">
-        <summary>Filter <span id="filter-count"></span></summary>
+        <summary>Filter</summary>
         <form id="filter">
           <label>Län<select name="lan"><option value="">Alla län</option></select></label>
           <label>Kommun<select name="kommun"><option value="">Alla kommuner</option></select></label>

@@ -79,95 +79,112 @@ async function nyttScenarioFran(namn, bet) {
 const talFalt = (vag, varde, platshallare, etikett) => `<input type="number" step="any" inputmode="decimal"
   data-k="${esc(JSON.stringify(vag))}" value="${varde ?? ''}" placeholder="${esc(platshallare ?? '')}"${etikett ? ` aria-label="${esc(etikett)}"` : ''}>`;
 const andel = (x) => (x == null || !Number.isFinite(x) ? '–' : `${(x * 100).toLocaleString('sv-SE', { maximumFractionDigits: 1 })} %`);
-const tkrCell = (v) => `<td class="num">${Math.round(v / 1000).toLocaleString('sv-SE')}</td>`;
+const heltal = (x) => Math.round(x).toLocaleString('sv-SE');
+// Belopp i tkr; exakt noll visas som streck, som i en kalkyl på papper.
+const tkrCell = (v, extra = '') => `<td class="num${extra}">${v === 0 ? '–' : heltal(v / 1000)}</td>`;
 
+// Scenariovyn, uppifrån: namn och omfattning, knapparna, resultatet (nyckeltal och kassaflöde), antagandena
+// och fastigheterna. Bara resultatet ritas om när ett fält ändras (se uppdateraResultat).
 async function visaScenario() {
   const s = await statusP, sc = scenario, d = sc.data, slag = lokalslag(s);
   select(null);
   history.replaceState(null, '', `${location.pathname}${location.search}${sc.lank ? new URL(sc.lank).hash : '#scenario'}`);
   const ytaPerSlag = Object.fromEntries(slag.map((x) => [x, 0]));
   for (const f of sc.underlag) for (const [x, m2] of Object.entries(ytor(f, d.egna[f.beteckning]))) ytaPerSlag[x] = (ytaPerSlag[x] ?? 0) + (Number(m2) || 0);
-  const u = sc.underlag;
+  const u = sc.underlag, g = d.gemensamt;
   const ram = u.length && [Math.min(...u.map((f) => f.minx)), Math.min(...u.map((f) => f.miny)),
     Math.max(...u.map((f) => f.maxx)), Math.max(...u.map((f) => f.maxy))].join(',');
-  const g = d.gemensamt;
+  // Lokalslag med yta (eller egna antaganden) visas direkt, övriga under "Fler lokalslag".
+  const anvands = (x) => ytaPerSlag[x] > 0 || Object.keys(d.antaganden[x] ?? {}).length > 0;
+  const slagRad = (x) => `<tr><th scope="row">${esc(x)}</th><td class="num">${heltal(ytaPerSlag[x])}</td>
+    ${ANTAGANDEN.map(([k, rubrik, ph]) => `<td>${talFalt(['antaganden', x, k], d.antaganden[x]?.[k], ph, `${x}: ${rubrik}`)}</td>`).join('')}</tr>`;
+  const slagTabell = (lista) => `<div class="sc-tabell"><table class="sc-antaganden">
+    <tr><th>Lokalslag</th><th class="num">Yta, m²</th>${ANTAGANDEN.map(([, rubrik]) => `<th class="num">${rubrik}</th>`).join('')}</tr>
+    ${lista.map(slagRad).join('')}</table></div>`;
+  const ovriga = slag.filter((x) => !anvands(x));
   showPanel(`<div class="scenario">
-    <h2><input class="sc-namn" data-k='["namn"]' value="${esc(d.namn)}" maxlength="100" aria-label="Scenariots namn" placeholder="Namnlöst scenario"></h2>
-    <div class="meta">${u.length.toLocaleString('sv-SE')} ${u.length === 1 ? 'fastighet' : 'fastigheter'}${sc.byggd ? ` · underlag från ${esc(sc.byggd.slice(0, 10))}` : ''}${ram
+    <input class="sc-namn" data-k='["namn"]' value="${esc(d.namn)}" maxlength="100" aria-label="Scenariots namn" placeholder="Namnlöst scenario">
+    <div class="meta">${heltal(u.length)} ${u.length === 1 ? 'fastighet' : 'fastigheter'} · <span id="sc-yta"></span>${sc.byggd ? ` · underlag ${esc(sc.byggd.slice(0, 10))}` : ''}${ram
       ? ` · <a data-ram="${ram}" data-markera="${esc(JSON.stringify(u.map((f) => f.beteckning)))}">Visa på kartan</a>` : ''}</div>
     ${d.underlagFran && sc.byggd && d.underlagFran !== sc.byggd ? `<p class="notice small">Horos data har uppdaterats sedan scenariot sparades
       (${esc(d.underlagFran.slice(0, 10))}). Ytor och taxering är hämtade på nytt; dina egna värden är kvar.</p>` : ''}
-    <p class="meta small">Värdet bygger helt på dina antaganden. Horos har inga marknadshyror, vakanser, driftkostnader eller
-      avkastningskrav: fyll i dem nedan. Ytan är Horos uppskattning från företagen på fastigheten, eller din egen.</p>
+    <div class="knappar">
+      <button type="button" class="copy primar" data-sc="spara">Spara och kopiera länk</button>
+      <button type="button" class="copy" data-sc="csv">Excel (CSV)</button>
+      <button type="button" class="copy" data-sc="fil">Scenariofil</button>
+      <button type="button" class="copy" data-sc="lista">Mina scenarion</button>
+      <button type="button" class="copy" data-sc="stang">Stäng</button>
+    </div>
+    <input id="sc-lank" class="sc-lank" readonly aria-label="Länk till scenariot" value="${esc(sc.lank ?? '')}"${sc.lank ? '' : ' hidden'}>
     <div id="sc-resultat"></div>
+
     <h3>Antaganden</h3>
+    <div class="meta small">Horos har inga marknadshyror, vakanser, driftkostnader eller avkastningskrav: värdet bygger
+      helt på det du fyller i. Tomma fält räknas med värdet i grått.</div>
     <div class="sc-grid">
       <label>Startår${talFalt(['start'], d.start)}</label>
       <label>Kalkylperiod, år${talFalt(['ar'], d.ar)}</label>
+      <label>Direktavkastningskrav, %${talFalt(['gemensamt', 'direktavk'], g.direktavk, 't.ex. 4,5')}</label>
       <label>Hyresutveckling, %/år${talFalt(['gemensamt', 'hyresutv'], g.hyresutv, '0')}</label>
       <label>Kostnadsutveckling, %/år${talFalt(['gemensamt', 'kostutv'], g.kostutv, '0')}</label>
-      <label>Direktavkastningskrav, %${talFalt(['gemensamt', 'direktavk'], g.direktavk, 't.ex. 4,5')}</label>
       <label>Kalkylränta, %${talFalt(['gemensamt', 'kalkylranta'], g.kalkylranta, '')}</label>
     </div>
-    <div class="sc-tabell"><table>
-      <tr><th>Lokalslag</th><th class="num">Yta, m²</th>${ANTAGANDEN.map(([, rubrik]) => `<th>${rubrik}</th>`).join('')}</tr>
-      ${slag.map((x) => `<tr><td>${esc(x)}</td><td class="num">${Math.round(ytaPerSlag[x]).toLocaleString('sv-SE')}</td>
-        ${ANTAGANDEN.map(([k, rubrik, ph]) => `<td>${talFalt(['antaganden', x, k], d.antaganden[x]?.[k], ph, `${x}: ${rubrik}`)}</td>`).join('')}</tr>`).join('')}
-    </table></div>
+    ${slagTabell(slag.filter(anvands))}
+    ${ovriga.length ? `<details class="sc-fler"><summary>Fler lokalslag (${ovriga.length})</summary>${slagTabell(ovriga)}</details>` : ''}
+
     <h3>Fastigheter</h3>
-    <div class="meta small">Klicka på en fastighet för att ändra ytor, fastighetsskatt och tomträttsavgäld. Tomma fält använder värdet i grått.</div>
-    ${u.map((f) => { const e = d.egna[f.beteckning] ?? {};
-      return `<details class="sc-fastighet"><summary><span>${esc(f.beteckning)}${demoTag(f.demo)}</span><span class="num" data-varde="${esc(f.beteckning)}"></span></summary>
+    <div class="meta small">Ytan är Horos uppskattning från företagen på fastigheten. Öppna en fastighet för att ange egna
+      ytor, fastighetsskatt och tomträttsavgäld.</div>
+    ${u.length ? '<div class="sc-rad sc-rubrik"><span>Fastighet</span><span class="num">Yta, m²</span><span class="num">Värde</span></div>' : ''}
+    ${u.map((f) => { const e = d.egna[f.beteckning] ?? {}, bet = esc(f.beteckning);
+      return `<details class="sc-fastighet"><summary class="sc-rad"><span>${bet}${demoTag(f.demo)}</span>
+          <span class="num" data-yta="${bet}"></span><span class="num" data-varde="${bet}"></span></summary>
+        <div class="meta small">${fastighetLink(f)} · ${esc(f.typ ?? 'taxering saknas')} · taxeringsvärde ${mkr(f.varde_tkr)}</div>
         <div class="sc-grid">
-          ${slag.map((x) => `<label>${esc(x)}, m²${talFalt(['egna', f.beteckning, 'yta', x], e.yta?.[x], f.loa[x] ? Math.round(f.loa[x]) : '0')}</label>`).join('')}
-          <label>Fastighetsskatt, kr/år${talFalt(['egna', f.beteckning, 'skatt'], e.skatt, standardSkatt(f))}</label>
-          <label>Tomträttsavgäld, kr/år${talFalt(['egna', f.beteckning, 'avgald'], e.avgald, f.upplatelse === 'tomtratt' ? 'tomträtt: fyll i' : '0')}</label>
+          ${slag.map((x) => `<label>${esc(x)}, m²${talFalt(['egna', f.beteckning, 'yta', x], e.yta?.[x], f.loa[x] ? heltal(f.loa[x]) : '0')}</label>`).join('')}
+          <label>Fastighetsskatt, kr/år${talFalt(['egna', f.beteckning, 'skatt'], e.skatt, heltal(standardSkatt(f)))}</label>
+          <label>Tomträttsavgäld, kr/år${talFalt(['egna', f.beteckning, 'avgald'], e.avgald, f.upplatelse === 'tomtratt' ? 'tomträtt: ange' : '0')}</label>
         </div>
-        <p class="small">${fastighetLink(f)} · ${esc(f.typ ?? 'taxering saknas')} · taxeringsvärde ${mkr(f.varde_tkr)}
-          · <a data-sc="ta-bort" data-bet="${esc(f.beteckning)}">Ta bort ur scenariot</a></p>
+        <button type="button" class="copy" data-sc="ta-bort" data-bet="${bet}">Ta bort ur scenariot</button>
       </details>`; }).join('')}
     ${sc.saknas.length ? `<p class="meta small">Finns inte längre i Horos: ${esc(sc.saknas.join(', '))}</p>` : ''}
     ${!u.length ? '<p class="empty">Inga fastigheter ännu. Öppna en fastighet och välj <strong>Lägg till i scenariot</strong>.</p>' : ''}
-    <h3>Spara och dela</h3>
-    <div class="meta small">Länken visar scenariot som det var när du sparade; ändrar du något blir det en ny länk.
-      Mina scenarion finns bara i den här webbläsaren.</div>
-    <div class="sc-knappar">
-      <button type="button" class="copy" data-sc="spara">Spara och kopiera länk</button>
-      <button type="button" class="copy" data-sc="csv">Ladda ner tabell (CSV)</button>
-      <button type="button" class="copy" data-sc="fil">Ladda ner scenariofil</button>
-      <button type="button" class="copy" data-sc="lista">Mina scenarion</button>
-      <button type="button" class="copy" data-sc="stang">Stäng scenariot</button>
-    </div>
-    <input id="sc-lank" class="sc-lank" readonly aria-label="Länk till scenariot" value="${esc(sc.lank ?? '')}"${sc.lank ? '' : ' hidden'}>
+    <p class="meta small">Länken visar scenariot som det var när du sparade; ändrar du något blir det en ny länk.
+      Mina scenarion finns bara i den här webbläsaren.</p>
   </div>`);
   uppdateraResultat();
 }
 
 // Räknar om och visar nyckeltal, kassaflöde och värdet per fastighet (formuläret ritas inte om, så fokus stannar).
 function uppdateraResultat() {
-  const d = scenario.data, k = berakna(d, scenario.underlag), t = nyckeltal(k);
+  const d = scenario.data, k = berakna(d, scenario.underlag), t = nyckeltal(k), sista = d.ar;
+  const rest = (i) => (i === sista ? ' rest' : '');
   $('#sc-resultat').innerHTML = `${stats([
-    ['Värde', k.varde == null ? '–' : mkr(k.varde / 1000), k.varde == null ? 'Ange avkastningskrav' : k.yta ? `${kr(k.varde / k.yta)}/m²` : ''],
+    ['Värde', k.varde == null ? '–' : mkr(k.varde / 1000), k.varde == null ? 'Ange direktavkastningskrav' : `Kalkylränta ${andel(k.kalkylranta)}`],
+    ['Värde per m²', k.varde == null || !k.yta ? '–' : kr(k.varde / k.yta)],
     ['Driftnetto år 1', mkr(k.total.dn[0] / 1000)],
     ['Direktavkastning år 1', andel(t.direktavkastning)],
-    ['Yta', `${Math.round(k.yta).toLocaleString('sv-SE')} m²`],
-    ['Vakanstålighet', andel(t.vakanstalighet), `Vakans nu ${andel(t.vakans)}`],
+    ['Vakanstålighet', andel(t.vakanstalighet), `Vakans år 1: ${andel(t.vakans)}`],
     ['DoU-tålighet', andel(t.doutalighet)],
   ])}
-  <div class="sc-tabell"><table>
-    <tr><th>tkr</th>${k.ar.map((a, i) => `<th class="num">${a}${i === d.ar ? '*' : ''}</th>`).join('')}</tr>
-    ${KALKYL_RADER.map(([key, rubrik, summa]) => `<tr${summa ? ' class="anv-summa"' : ''}><td>${rubrik}</td>${k.total[key].map(tkrCell).join('')}</tr>`).join('')}
+  <h3>Kassaflöde, tkr</h3>
+  <div class="sc-tabell"><table class="sc-kassaflode">
+    <tr><th></th>${k.ar.map((a, i) => `<th class="num${rest(i)}">${a}${i === sista ? '*' : ''}</th>`).join('')}</tr>
+    ${KALKYL_RADER.map(([key, rubrik, summa]) => `<tr${summa ? ' class="summa"' : ''}><th scope="row">${rubrik}</th>${k.total[key]
+      .map((v, i) => tkrCell(v, rest(i))).join('')}</tr>`).join('')}
   </table></div>
-  <div class="meta small">* Året efter kalkylperioden: restvärdet är dess driftnetto delat med direktavkastningskravet.
+  <div class="meta small">* Året efter kalkylperioden. Restvärdet är dess driftnetto delat med direktavkastningskravet.
     Kalkylränta ${andel(k.kalkylranta)}${d.gemensamt.kalkylranta == null ? ' (direktavkastningskrav plus hyresutveckling)' : ''}.
-    Tåligheterna gäller år 1 och utan lån.</div>`;
+    Tåligheterna gäller år 1, utan lån.</div>`;
+  $('#sc-yta').textContent = `${heltal(k.yta)} m²`;
   const ranta = document.querySelector('[data-k=\'["gemensamt","kalkylranta"]\']');
   if (ranta) ranta.placeholder = (k.kalkylranta * 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 });
   const perBet = new Map(k.per.map((p) => [p.beteckning, p]));
   for (const el of document.querySelectorAll('[data-varde]')) {
     const p = perBet.get(el.dataset.varde);
-    el.textContent = p?.varde == null ? `${Math.round(p?.yta ?? 0).toLocaleString('sv-SE')} m²` : mkr(p.varde / 1000);
+    el.textContent = p?.varde == null ? '–' : mkr(p.varde / 1000);
   }
+  for (const el of document.querySelectorAll('[data-yta]')) el.textContent = heltal(perBet.get(el.dataset.yta)?.yta ?? 0);
 }
 
 // Ett fält i scenariot ändrades (se talFalt).
