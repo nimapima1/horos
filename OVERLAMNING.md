@@ -1,7 +1,7 @@
-# Överlämning 2026-10-11
+# Överlämning 2026-10-11 (kväll)
 
 Läs `CLAUDE.md` först (regler, teknik, server) och `PRIVAT.md` (inte i git: mejlkontakter, myndighetsärenden,
-kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 och vad som ska göras härnäst.
+kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 och 2026-10-11 och vad som ska göras härnäst.
 Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNING-hyresgaster.md`.
 
 ## Läget
@@ -11,18 +11,43 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
 - **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt.
-  - Koden till och med df2dee1 (deployad 2026-10-10 22:04 UTC).
+  - Koden till och med 5960ea9 (PR #7, deployad 2026-10-11 ca 19:30 UTC). Däri också PR #2–#4 från andra
+    sessioner 2026-10-11: alltid mörkt läge, mobilrättningar, Förorenade och Utsatta områden i panelen.
   - Publik databas byggd 2026-10-10 14:25 med `--alla-bolag`, publicerad med `--data`: 0 fastigheter,
     2,2 miljoner bolag (ägarkontrollen som ord: `stat`, `kommun`, `region` …), 120 177 adresser, inga
     arbetsställen (byggt utan `--scb-villkor`), 127 affärer ur pressmeddelanden (uppdateras av cron).
   - Servern: cloud-init v3 + ändringarna i v4–v5 inlagda för hand (www-blocket, inget `Via`-huvud,
-    `set-secret` utan längdutskrift). Root-lösenordet återställdes 2026-10-10 (Hetzner > Rescue); användaren har det.
-- `npm test`: 33 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
+    `set-secret` utan längdutskrift), plus `frame-src https://www.google.com` i CSP:n (2026-10-11, i
+    `/etc/caddy/Caddyfile.template` och `set-domain horos.se`). Root-lösenordet återställdes 2026-10-10
+    (Hetzner > Rescue); användaren har det.
+  - `secrets.env`: GEOTORGET_USER/PASS och GOOGLE_EMBED_KEY.
+- `npm test`: 36 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
   av en annan session). Starta om servern efter import eller demo-data.
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
   terminal (lösenfras **direkt**, annars stänger servern anslutningen; det hände två gånger 2026-10-10). Deploy
   laddar upp arbetskatalogen som den är: kontrollera `git status` först så att ingen annan sessions ocommittade
   ändringar följer med.
+
+## Gjort 2026-10-11 (kväll): Google Maps och Street View (PR #5–#7)
+
+- **Länkar** längst ner i fastighetspanelen: "Öppna i Google Maps · Street View" (Googles öppna URL-format, ingen
+  nyckel, `noreferrer`). Punkten är mitten av fastighetens bbox (`mittpunkt` i `panel.js`; `shortcut:` för
+  L-formade fastigheter). `/api/fastighet` skickar därför med `minx/miny/maxx/maxy`.
+- **Street View-rutan**: kartkontroll under Detaljplaner (`StreetView` i `app.js`), syns bara när en fastighet är
+  öppen och `GOOGLE_EMBED_KEY` finns (`/api/status` → `streetview`). Två klick: knappen "Street View" (förklaring i
+  `title`), iframen (Maps Embed API, `referrerPolicy: strict-origin`) skapas först vid klick och följer sedan med
+  till nästa fastighet tills "Stäng Street View". Döljs på mobil (länkarna räcker). I fönster under 700 px höjd
+  döljs Färga efter medan rutan är utfälld.
+- **Kartkontrollerna** Karta/Detaljplaner/Street View är lika breda (104 px); bakgrundens alternativ kortade till
+  "Satellit 25" och "Foto 2005/1995/1975/1960" (ett längre namn kapas).
+- **Integritetstexterna** (Om-vyn och `metod.html`) säger att Street View laddas från Google först vid klick.
+- **Google Cloud**: användarens projekt (provperiod), Maps Embed API aktiverat, nyckeln låst till
+  `horos.se/*` och bara Maps Embed API. Provat: nyckeln godtas med hänvisare horos.se och avvisas från andra
+  webbplatser; på horos.se visade rutan riktig Street View (4 Riddargatan) via konsolen
+  (`streetView.visa('59.335001,18.075138', (await statusP).streetview)`), eftersom live saknar fastigheter.
+- Juridik i korthet (resonemang, inte juridisk rådgivning): visningen skickar IP och plats till Google LLC (USA,
+  Data Privacy Framework). Därför två klick i stället för automatisk inbäddning; Horos är gemensamt ansvarig för
+  insamlingen (Fashion ID).
 
 ## Gjort 2026-10-10 (eftermiddag och kväll)
 
@@ -69,6 +94,12 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
    fastigheter och med `--scb-villkor`, så i dag ger det inget). Nyckeln är personlig och
    `secrets.env` kan inte läsas av deploy; fråga användaren hur den ska förvaras.
 5. Planer: länk till kommunens plandokument när kolumnerna i planfilen är kända (filen finns inte i `data/raw/` än).
+6. **Google-provperioden går ut 2026-12-31.** Utan uppgradering pausar Google projektet och Street View-rutan
+   slutar fungera (länkarna fungerar ändå). Embed API har varit gratis: be användaren uppgradera i god tid och
+   lägga en budgetvarning (Set up budget alerts). Kontrollera Googles aktuella villkor och priser först.
+7. När fastigheterna finns live: öppna några och klicka Street View (stadskärna, industriområde, stor tomt).
+   Okänt hur rutan ser ut när bilden saknas nära mittpunkten; byt `mittpunkt` mot en punkt i polygonen om
+   L-formade eller stora fastigheter hamnar fel.
 
 ## Kom ihåg när data kommer
 
@@ -96,6 +127,13 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
 - Hetzners webbkonsol tappar Skift vid inklistring, även för versaler: skriv kommandon utan Skift-tecken
   (`.` i regexar, `\x53` för `S` i sed-ersättningar) och prova sed-raden lokalt på en kopia först.
 - Subagenter (code-review max) kan stoppas av sessionsgränsen (429); gör då vinklarna själv.
+- Auto-läget stoppar `gh pr merge` och `deploy.sh` om användaren inte uttryckligen bett om just det i sitt senaste
+  meddelande ("merga och publicera" fungerade). `git checkout`/`git pull` som egna kommandon, inte kedjade.
+  Deploy startas med `run_in_terminal` i en ny flik; användaren skriver lösenfrasen där, Claude läser av fliken.
+- Hetzners konsol: `sed -i 's,a,b,' fil` med `,` som avgränsare och `\x3a` för kolon fungerade utan Skift
+  (2026-10-11). Konsolen nås via knappen `>_` uppe till höger på serversidan.
+- Den lokala servern har ingen Google-nyckel: prova rutan genom att sätta `(await statusP).streetview = 'x'` i
+  konsolen och öppna en fastighet (Google svarar "API key is invalid", det är väntat).
 
 ## Kända brister
 
@@ -110,3 +148,5 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   rikstäckande data (förberäkna i build-public om det blir långsamt).
 - Uppskattad LOA kan bli orimlig (stora arbetsgivare, lokaler utan företag); tumreglerna står på metodsidan.
 - Filtren räknar per fastighet i kartutsnittet vid varje anrop; län och kommun är bara provade med Stockholm.
+- Street View pekar på bboxens mitt och kameran har Googles standardriktning, inte mot byggnaden.
+  Färga efter kan växa och då krocka med utfälld Street View även över 700 px fönsterhöjd.
