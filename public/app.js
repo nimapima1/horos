@@ -523,6 +523,14 @@ $('#panel').addEventListener('click', (e) => {
     navigator.clipboard.writeText(location.href).then(() => { copy.textContent = 'Länken är kopierad'; },
       () => { copy.textContent = 'Kunde inte kopiera, kopiera adressfältet'; });
   }
+  const sv = e.target.closest('[data-streetview]');
+  if (sv) {
+    const iframe = Object.assign(document.createElement('iframe'), {
+      src: sv.dataset.streetview, title: 'Street View från Google', allowFullscreen: true,
+      referrerPolicy: 'strict-origin',   // Google får domänen (för nyckelns hänvisarlås), inte vilken fastighet
+    });
+    sv.parentElement.replaceChildren(iframe);
+  }
   const a = e.target.closest('a');
   if (!a) return;
   if (a.dataset.bolag) openBolag(a.dataset.bolag);

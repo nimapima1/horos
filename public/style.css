@@ -216,6 +216,7 @@ button { font: inherit; color: inherit; }
   background: var(--accent-soft); color: var(--accent-strong); font-weight: 600;
 }
 .copy:hover { background: var(--accent); color: var(--surface-solid); }
+.streetview iframe { display: block; width: 100%; aspect-ratio: 4 / 3; margin-top: 16px; border: 0; border-radius: var(--radius-sm); }
 .bar { height: 5px; margin-top: 5px; border-radius: 3px; background: var(--surface-sunken); }
 .bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
 .panel table { width: 100%; border-collapse: collapse; font-size: 14px; }
