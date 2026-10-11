@@ -202,7 +202,7 @@ async function openFastighet(bet, adress) {
       `<tr><td>${esc(u.namn)}<div class="muted small">${[u.kategori, u.ort, u.datum && `sedan ${u.datum}`].filter(Boolean).map(esc).join(' · ')}</div></td>
         <td class="num">${avstand(u.avstand_m, 'inom området')}</td></tr>`),
       'Inga utsatta områden inom 5 km.')}` : ''}
-    <button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>
+    <div class="sc-knappar"><button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>${scenarioKnapp(f.beteckning)}</div>
     ${googleLankar(mittpunkt(f))}
     <p class="muted small" style="margin-top:16px">${[
       `Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}`,
@@ -224,13 +224,15 @@ async function openBolag(orgnr) {
   // Summor, inramning och markering gäller alla fastigheter; listan nedan är kapad (b.summa.antal).
   const s = b.summa;
   markera(s.beteckningar, s.antal ? b.orgnr : null);
+  bolagUrval = { namn: b.namn, bet: s.beteckningar };
   const ram = s.antal && [s.minx, s.miny, s.maxx, s.maxy].join(',');
   showPanel(`
     <h2>${esc(b.namn)}${demoTag(b.demo)}</h2>
     <div class="meta">${fmtOrgnr(b.orgnr)}${b.avregistrerad ? ` · <strong>avregistrerad ${esc(b.avregistrerad)}</strong>` : ''}</div>
     ${stats([['Fastigheter', s.antal.toLocaleString('sv-SE')], ['Taxeringsvärde', s.varde_tkr ? mkr(s.varde_tkr) : '–'],
       ['Tomtareal', s.areal_m2 ? `${Math.round(s.areal_m2).toLocaleString('sv-SE')} m²` : '–']])}
-    ${ram ? `<button type="button" class="copy" data-ram="${ram}">Visa alla på kartan</button>
+    ${ram ? `<div class="sc-knappar"><button type="button" class="copy" data-ram="${ram}">Visa alla på kartan</button>
+      <button type="button" class="copy" data-sc="bolag">Räkna på innehavet</button></div>
       <div class="meta small">Bolagets fastigheter är inramade i orange.</div>` : ''}
     <dl>
       <dt>Form</dt><dd>${esc(b.jurform ?? '–')}</dd>
@@ -288,6 +290,8 @@ async function openOm() {
         och ladda ner träffarna som CSV.</li>
       <li>Byt <strong>Färga efter</strong> i teckenförklaringen för att se värde, användning, ägartyp eller köpår.</li>
       <li><a href="#affarer">Affärer</a> och <a href="#agare">Ägare</a> sammanfattar köpen och de största ägarna.</li>
+      <li><a href="#scenario">Scenarier</a>: räkna kassaflöde och värde för en eller flera fastigheter med egna antaganden,
+        och spara kalkylen som en länk.</li>
       <li>Adressen i webbläsaren sparar kartläge, filter och vald fastighet, så att du kan dela länken.</li>
     </ul>
     <h3>Källor</h3>
@@ -307,7 +311,8 @@ async function openOm() {
     <h3>Integritet</h3>
     <p>Horos visar bara fastigheter som ägs av juridiska personer. Uppgifter om privatpersoner
       samlas inte in och visas inte. Sidan använder inga kakor och sparar inte besökarnas IP-adresser.
-      Street View laddas från Google först när du klickar på knappen.</p>
+      Street View laddas från Google först när du klickar på knappen. Ett scenario som du sparar lagras på servern
+      utan koppling till dig, och alla som har länken kan se det; Mina scenarion finns bara i din webbläsare.</p>
     <p><a href="metod.html">Metod, begränsningar och nedladdning av datan →</a></p>
   `);
 }
@@ -414,4 +419,4 @@ async function openAgare(p = {}) {
   `);
 }
 
-const VIEWS = { '#om': openOm, '#affarer': openAffarer, '#agare': openAgare };
+const VIEWS = { '#om': openOm, '#affarer': openAffarer, '#agare': openAgare };   // och #scenario (scenario.js, se app.js)

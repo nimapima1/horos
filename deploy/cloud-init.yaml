@@ -1,6 +1,7 @@
 #cloud-config
-# Horos – serverkonfiguration, version 5 (www skickas vidare till domänen; inget Via-huvud,
-# set-secret skriver inte ut hemlighetens längd).
+# Horos – serverkonfiguration, version 6 (skrivbar katalog för sparade scenarier,
+# StateDirectory=horos-scenarion). Version 5: www skickas vidare till domänen; inget Via-huvud,
+# set-secret skriver inte ut hemlighetens längd.
 # Klistra in hela filen under "Cloud config" när servern skapas i Hetzner Cloud Console.
 # Ubuntu 24.04. Installerar Node 24 (NodeSource) och Caddy (HTTPS, från Caddys officiella
 # releaser på GitHub) med automatiska uppdateringar, brandvägg, skapar användaren "deploy"
@@ -175,9 +176,11 @@ write_files:
       ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server.mjs
       Restart=on-failure
       RestartSec=3
-      # Diskcache för kartrutor (Lantmäteriets visningstjänster); det enda appen får skriva till.
+      # Diskcache för kartrutor (Lantmäteriets visningstjänster), och besökarnas sparade scenarier
+      # (/var/lib/horos-scenarion, STATE_DIRECTORY); det enda appen får skriva till.
       CacheDirectory=fastighetskarta
-      # Härdning: appen läser kod och data, skriver bara i cachen.
+      StateDirectory=horos-scenarion
+      # Härdning: appen läser kod och data, skriver bara i cachen och scenarierna.
       NoNewPrivileges=yes
       ProtectSystem=strict
       ProtectHome=yes

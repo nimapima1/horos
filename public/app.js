@@ -5,7 +5,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const fmtOrgnr = (d) => (d && d.length === 10 ? `${d.slice(0, 6)}-${d.slice(6)}` : d ?? '');
 const kr = (n) => (n == null ? '–' : `${Math.round(n).toLocaleString('sv-SE')} kr`);
 const mkr = (tkr) => (tkr == null ? '–' : `${(tkr / 1000).toLocaleString('sv-SE', { maximumFractionDigits: 1 })} Mkr`);
-const api = (path) => fetch(path).then((r) => (r.ok ? r.json() : r.json().then((e) => Promise.reject(new Error(e.error)))));
+// GET, eller POST med JSON-kropp om body anges.
+const api = (path, body) => fetch(path, body && { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => (r.ok ? r.json() : r.json().then((e) => Promise.reject(new Error(e.error)))));
 
 // CSP-versionen av MapLibre laddar sin worker från en fil i stället för blob:.
 maplibregl.setWorkerUrl('vendor/maplibre-gl-csp-worker.js');
@@ -337,7 +338,7 @@ map.on('load', () => {
   map.on('moveend', loadVisible);
   applyBasemap(basemap.select.value);
   loadVisible();
-  if (START.get('f') && !VIEWS[location.hash]) openFastighet(START.get('f'));
+  if (START.get('f') && !VIEWS[location.hash] && !arScenarioLank(location.hash)) openFastighet(START.get('f'));
 });
 
 // Kartfiltren: formulärets ifyllda fält skickas som parametrar till /api/fastigheter.
@@ -372,6 +373,12 @@ for (const el of filterForm.querySelectorAll('input[name]')) el.value = START.ge
 if ([...START.keys()].some((k) => filterForm.elements[k])) filterForm.closest('details').open = true;
 
 let loadSeq = 0;
+// Beteckningarna i kartutsnittet med filtren, för "Räkna på träffarna" (scenario.js).
+let traffar = [];
+$('#filter-scenario').addEventListener('click', () => {
+  filterForm.closest('details').open = false;   // annars täcker filtret panelen
+  nyttScenarioFran('Träffar i kartutsnittet', traffar);
+});
 // Orgnr för det markerade bolaget: utzoomat visas då bara dess fastigheter (se markera()).
 let markeradOrg = null;
 // Från zoom 14 visas fastighetsgränser, från PUNKT_ZOOM prickar (kluster), annars antal per kommun
@@ -408,6 +415,8 @@ async function loadVisible() {
       + (sumTkr ? `, taxerade till ${mkr(sumTkr)}` : '');
   $('#filter-csv').href = `data/horos-traffar.csv?${urval}`;
   $('#filter-csv').hidden = lage === 'kommuner';   // exporten gäller kartutsnittet, som här kan vara hela landet
+  $('#filter-scenario').hidden = lage === 'kommuner';
+  traffar = [...fc.features, ...punkter.features].map((f) => f.properties.beteckning);
   map.getSource('fastigheter').setData(fc);
   map.getSource('punkter').setData(punkter);
   map.getSource('kommuner').setData(kommuner);
@@ -561,6 +570,8 @@ $('#panel').addEventListener('click', (e) => {
     navigator.clipboard.writeText(location.href).then(() => { copy.textContent = 'Länken är kopierad'; },
       () => { copy.textContent = 'Kunde inte kopiera, kopiera adressfältet'; });
   }
+  const sc = e.target.closest('[data-sc]');
+  if (sc) return scenarioKlick(sc);
   const a = e.target.closest('a');
   if (!a) return;
   if (a.dataset.bolag) openBolag(a.dataset.bolag);
@@ -571,9 +582,14 @@ $('#panel').addEventListener('click', (e) => {
 $('#panel').addEventListener('change', (e) => {
   const form = e.target.closest('form[data-view]');
   if (form) VIEWS[`#${form.dataset.view}`](Object.fromEntries([...new FormData(form)].filter(([, v]) => v !== '')));
+  if (e.target.matches('[data-sc-fil]') && e.target.files[0]) lasScenarioFil(e.target.files[0]);
 });
+$('#panel').addEventListener('input', (e) => { if (e.target.dataset.k && scenario) scenarioInput(e.target); });
 for (const a of document.querySelectorAll('.links a[href^="#"]')) {
   a.addEventListener('click', (e) => { e.preventDefault(); history.replaceState(null, '', a.hash); VIEWS[a.hash](); });
 }
-VIEWS[location.hash]?.();
-addEventListener('hashchange', () => VIEWS[location.hash]?.());
+VIEWS['#scenario'] = openScenarier;
+// Vyerna och scenariolänkarna (#s=kort id, #sd=scenariot i länken).
+const visaVy = () => (arScenarioLank(location.hash) ? oppnaScenarioLank(location.hash) : VIEWS[location.hash]?.());
+visaVy();
+addEventListener('hashchange', visaVy);

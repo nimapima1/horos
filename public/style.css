@@ -216,6 +216,28 @@ button { font: inherit; color: inherit; }
   background: var(--accent-soft); color: var(--accent-strong); font-weight: 600;
 }
 .copy:hover { background: var(--accent); color: var(--surface-solid); }
+label.copy { display: inline-flex; align-items: center; }
+.sc-knappar { display: flex; flex-wrap: wrap; gap: 0 8px; }
+
+/* Scenarier (scenario.js): bredare panel för kassaflödet, fält i rutnät, tabeller som rullar i sidled. */
+@media (min-width: 641px) { .sidebar:has(#panel:not([hidden]) .scenario) { width: min(720px, calc(100vw - 32px)); } }
+.scenario input { width: 100%; height: 36px; padding: 0 8px; font: inherit; font-size: 14px; color: var(--text);
+  background: var(--surface-sunken); border: 1px solid transparent; border-radius: var(--radius-sm); }
+.scenario input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.scenario input::placeholder { color: var(--subtle); opacity: .7; }
+.scenario .sc-namn { height: 40px; padding: 0 10px; margin-right: 40px; width: calc(100% - 40px);
+  font: 600 21px var(--font-head); background: transparent; border-color: var(--border); }
+.sc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 10px; margin: 10px 0; }
+.sc-grid label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.sc-tabell { overflow-x: auto; margin: 10px 0 6px; }
+.sc-tabell table { min-width: 520px; }
+.sc-tabell td input { min-width: 80px; }
+.sc-fastighet { border-top: 1px solid var(--border); }
+.sc-fastighet summary { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; cursor: pointer; font-weight: 600; }
+.sc-fastighet summary .num { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 400; }
+.sc-lank { margin-top: 10px; }
+.scenario .stats { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.panel .notice { border-radius: var(--radius-sm); }
 .bar { height: 5px; margin-top: 5px; border-radius: 3px; background: var(--surface-sunken); }
 .bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
 .panel table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -300,7 +322,7 @@ button { font: inherit; color: inherit; }
   .tagline { display: none; }
   .brand-row { margin-bottom: 10px; }
   .links a { padding: 10px 6px; }
-  .links .wide-only { display: none; }   /* samma sida som Metod; får inte plats */
+  .links .wide-only { display: none; }   /* får inte plats; Om länkar till Metod och datan */
   .search input { font-size: 16px; }   /* hindrar iOS från att zooma in vid fokus */
   .panel {
     position: fixed; left: 10px; right: 10px; bottom: 10px; max-height: 58vh;

@@ -29,8 +29,9 @@
         <nav class="links" aria-label="Sidor">
           <a href="#affarer">Affärer</a>
           <a href="#agare">Ägare</a>
+          <a href="#scenario">Scenarier</a>
           <a id="om" href="#om">Om</a>
-          <a href="metod.html">Metod</a>
+          <a class="wide-only" href="metod.html">Metod</a>
           <a class="wide-only" href="metod.html#data">Data</a>
         </nav>
       </div>
@@ -73,6 +74,7 @@
           <output id="filter-hits" class="hits" aria-live="polite"></output>
           <button type="reset">Rensa</button>
           <a id="filter-csv" class="wide small" href="data/horos-traffar.csv" download>Ladda ner träffarna (CSV)</a>
+          <button id="filter-scenario" type="button" class="wide">Räkna på träffarna</button>
         </form>
       </details>
     </header>
@@ -106,7 +108,9 @@
   </div>
 
   <script src="vendor/maplibre-gl-csp.js"></script>
+  <script src="kalkyl.js"></script>
   <script src="panel.js"></script>
+  <script src="scenario.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
