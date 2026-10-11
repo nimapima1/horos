@@ -39,6 +39,12 @@ before(async () => {
     (1, '7690000002', NULL, '47110', 'Livsmedelsbutik', 2, 'Testgatan 2', 'T 1:1', 'Butik', 100, 1),
     (2, '5560000001', 'Alfa City', '62100', 'Dataprogrammering', 5, 'Testgatan 1', 'T 1:1', 'Kontor', 690, 0),
     (3, '5560000001', NULL, NULL, NULL, 3, 'Annangatan 9', NULL, 'Övrigt', 210, 0)`);
+  // Förorenat: två objekt på 1:1 (det oklassade ska sorteras efter det med riskklass) och ett cirka 280 m norr om den. Utsatt område cirka 1,1 km öster om 1:1.
+  db.exec(`INSERT INTO fororenat (ebh_id, bransch, status, riskklass, lon, lat) VALUES
+    (3, 'Grafisk industri', 'Identifiering', NULL, 18.0004, 59.0001),
+    (1, 'Kemtvätt', 'Inventering', 2, 18.0005, 59.0002), (2, 'Drivmedelshantering', 'Identifiering', NULL, 18.0005, 59.003)`);
+  db.prepare("INSERT INTO utsatt_omrade (id, namn, kategori, ort, datum, geojson) VALUES (1, 'Testområdet', 'Utsatt område', 'Testort', '2025-12-01', ?)")
+    .run(rect(18.020, 59.000, 18.030, 59.001));
   db.close();
 
   server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(ROOT, 'server.mjs')], {
@@ -157,6 +163,14 @@ test('fastighet: grannar, paketaffär och köp i närheten', async () => {
   assert.deepEqual(f.grannar.map((g) => g.beteckning), ['T 1:2']);
   assert.equal(f.transaktioner[0].i_affar, 2);
   assert.deepEqual(f.narKop.map((x) => [x.beteckning, x.paket]), [['T 1:2', false]]);   // 1:3 ligger ca 560 m bort
+});
+
+test('fastighet: förorenade och utsatta områden med avstånd', async () => {
+  const f = await json(`/api/fastighet/${encodeURIComponent('T 1:1')}`);
+  assert.deepEqual(f.fororenade.map((x) => [x.ebh_id, x.avstand_m, x.riskklass]), [[1, 0, 2], [3, 0, null]]);
+  assert.deepEqual(f.utsatta.map((u) => u.namn), ['Testområdet']);
+  assert.ok(Math.abs(f.utsatta[0].avstand_m - 1118) < 20, `avstånd ${f.utsatta[0].avstand_m}`);
+  assert.equal(f.utsatta[0].geom, undefined);
 });
 
 test('företag på adressen och bolagets arbetsställen', async () => {

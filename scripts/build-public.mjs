@@ -9,7 +9,7 @@
 // Det motsvarar åtagandet i ansökan till Lantmäteriet.
 //
 //   node scripts/build-public.mjs [--lm-beslut <ärendenummer>] [--lm-planer <ärendenummer>]
-//                                 [--scb-villkor] [--alla-bolag] [--export-geometri] [--out data/public.sqlite]
+//                                 [--scb-villkor] [--polisen-uso] [--alla-bolag] [--export-geometri] [--out data/public.sqlite]
 //
 // --export-geometri gör fastighetsgränserna nedladdningsbara som GeoJSON. Ange det bara om
 // Lantmäteriets beslut tillåter vidarespridning av geometrierna.
@@ -18,7 +18,9 @@
 // när ansökan har beviljats. Läs beslutets villkor innan du publicerar. Planerna (Markreglerande
 // bestämmelse) är en egen licens och tas bara med om --lm-planer anges. Arbetsställena (SCB:s
 // företagsregister) tas bara med om --scb-villkor anges, dvs. när SCB:s användarvillkor är lästa
-// och tillåter publicering per adress.
+// och tillåter publicering per adress. Förorenade områden (länsstyrelserna, CC BY 4.0) tas alltid med;
+// Polisens utsatta områden bara med --polisen-uso, när Polisen har godkänt användningen (inga villkor för
+// geodatan står på polisen.se).
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { openDb, DB_PATH, ROOT, harJuridiskAgare, NYHET_PLATS_UTANFOR, rebuildAdressFts, rebuildBolagFts, rebuildRtree, withTransaction } from '../lib/db.mjs';
@@ -38,6 +40,8 @@ if (lmRader && !args['lm-beslut']) {
 const planRader = src.prepare('SELECT count(*) AS n FROM plan WHERE demo = 0').get().n;
 const aeRader = src.prepare('SELECT count(*) AS n FROM arbetsstalle WHERE demo = 0').get().n;
 if (aeRader && !args['scb-villkor']) console.log(`Hoppar över ${aeRader} arbetsställen: ange --scb-villkor när SCB:s villkor är lästa.`);
+const usoRader = src.prepare('SELECT count(*) AS n FROM utsatt_omrade').get().n;
+if (usoRader && !args['polisen-uso']) console.log(`Hoppar över ${usoRader} utsatta områden: ange --polisen-uso när Polisen har godkänt användningen.`);
 if (planRader && !args['lm-planer']) console.log(`Hoppar över ${planRader} planer: ange --lm-planer <ärendenr> när licensen finns.`);
 src.close();
 
@@ -76,6 +80,9 @@ withTransaction(db, () => {
     INSERT INTO nyhet SELECT * FROM src.nyhet;
     INSERT INTO nyhet_plats SELECT * FROM src.nyhet_plats WHERE NOT ${NYHET_PLATS_UTANFOR};   -- fastighet = de tillåtna
     ${args['lm-planer'] ? 'INSERT INTO plan SELECT * FROM src.plan WHERE demo = 0;' : ''}
+    -- Öppna data utan personuppgifter, för hela landet (avståndet räknas från de tillåtna fastigheterna).
+    INSERT INTO fororenat SELECT * FROM src.fororenat;
+    ${args['polisen-uso'] ? 'INSERT INTO utsatt_omrade SELECT * FROM src.utsatt_omrade;' : ''}
     CREATE TABLE meta (nyckel TEXT PRIMARY KEY, varde TEXT);
   `);
   const meta = db.prepare('INSERT INTO meta VALUES (?, ?)');
@@ -95,8 +102,9 @@ db.exec('PRAGMA journal_mode = DELETE; VACUUM;');
 
 const c = db.prepare(`SELECT (SELECT count(*) FROM fastighet) f, (SELECT count(*) FROM bolag) b,
   (SELECT count(*) FROM taxering) t, (SELECT count(*) FROM agande) a, (SELECT count(*) FROM transaktion) x,
-  (SELECT count(*) FROM adress) ad, (SELECT count(*) FROM plan) p, (SELECT count(*) FROM arbetsstalle) ae, (SELECT count(*) FROM nyhet) n`).get();
+  (SELECT count(*) FROM adress) ad, (SELECT count(*) FROM plan) p, (SELECT count(*) FROM arbetsstalle) ae, (SELECT count(*) FROM nyhet) n,
+  (SELECT count(*) FROM fororenat) fo, (SELECT count(*) FROM utsatt_omrade) uso`).get();
 db.close();
-console.log(`Klart: ${OUT}\n  ${c.f} fastigheter, ${c.b} bolag, ${c.t} taxeringar, ${c.a} ägarposter, ${c.x} överlåtelser, ${c.ad} adresser, ${c.p} planer, ${c.ae} arbetsställen, ${c.n} affärer i pressmeddelanden`);
+console.log(`Klart: ${OUT}\n  ${c.f} fastigheter, ${c.b} bolag, ${c.t} taxeringar, ${c.a} ägarposter, ${c.x} överlåtelser, ${c.ad} adresser, ${c.p} planer, ${c.ae} arbetsställen, ${c.n} affärer i pressmeddelanden, ${c.fo} förorenade områden, ${c.uso} utsatta områden`);
 if (!c.f) console.log('  (Inga fastigheter ännu: väntar på Lantmäteriet/Skatteverket. Sidan blir en tom karta'
   + (args['alla-bolag'] ? ' med bolagssök.)' : '; kör med --alla-bolag för att kunna söka bland alla bolag.)'));
