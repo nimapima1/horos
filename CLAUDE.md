@@ -21,7 +21,8 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   `lib/nyheter.mjs` (pressmeddelanden: RSS, utläsning av typ/pris/kommun/beteckning/adress, nyhetsrummen på Cision).
   `lib/scb.mjs` (SCB:s företagsregister: nyckeln, paus före varje anrop, sidhämtning; används av SCB-importerna).
 - Kartfiltren: `FILTER` i `server.mjs`, `[parameter, omvandling, SQL-villkor]`; WHERE-delen byggs ur listan.
-- `public/`: `index.html` + `panel.js` (panelvyerna, bara deklarationer, laddas först) + `app.js` (karta,
+- `public/`: `index.html` + `kalkyl.js` (kassaflödeskalkylen, utan DOM, testas i `test/kalkyl.test.mjs`) + `panel.js`
+  (panelvyerna, bara deklarationer) + `scenario.js` (scenarierna, bara deklarationer) + `app.js` (karta,
   filter, sök, status och all inkoppling), `metod.html`, `style.css`
   (ui-ux-pro-max: Swiss/minimalism + glas, Lexend/Source Sans 3, slate/#0369A1). CSP tillåter
   inga inline-skript.
@@ -29,6 +30,12 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   `import-lagfarter`, `import-adresser` (OSM via Overpass, eller `--fil`), `import-planer`
   (Markreglerande bestämmelse, GPKG per kommun), `import-nyheter` (pressmeddelanden från Cision → `nyhet`/`nyhet_plats`, bara fakta och länk), `import-agarkontroll` (SCB:s ägarkontroll → `bolag.agarkontroll`; statligt/kommunalt/regionägt i ägarkategorin), `import-fororenade` (länsstyrelsernas EBH, .dbf, CC BY 4.0) och `import-utsatta` (Polisens utsatta områden, GeoJSON) för panelens rutor Förorenade områden (150 m) och Utsatta områden (5 km), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
   `SCB_API_KEY`, kopplas till fastighet med punkt-i-polygon), `demo-data` (även påhittade planer och arbetsställen).
+- Scenarier (`#scenario`, som Datschas "Scenarion"): egen kassaflödeskalkyl för upp till 1 000 fastigheter, utan
+  inloggning. `POST /api/underlag` ger fastigheterna, `POST /api/scenario` sparar (id = hash av innehållet, så en
+  länk `#s=<id>` ändras aldrig) i en egen databas: `SCENARIO_DB`, annars `$STATE_DIRECTORY` (systemd), lokalt
+  `data/scenarion.sqlite`. Utan skrivbar plats blir länken `#sd=<scenariot komprimerat>`. Flera scenarier i
+  `localStorage` (`horos.scenarion` med data, sparas vid varje ändring; `horos.aktivt` = det öppna); export som CSV och scenariofil (JSON). Horos har inga marknadshyror eller
+  avkastningskrav: användaren fyller i dem.
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
 - Tester: `npm test` (node:test, `test/`).
@@ -82,13 +89,13 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
 - Kartan: filter (län och kommun (`lib/kommuner.mjs`, zoomar dit), ägare (namn/org.nr), ägarkategori, användning, lokalslag, upplåtelseform (tomträtt/äganderätt), ägartyp, värde, köpår, köpeskilling, tomtyta och uppskattad LOA från/till) med antal träffar och
   CSV-nedladdning (`/data/horos-traffar.csv`); "Färga efter" värde, värde/m², användning, ägartyp,
   köpår; prickar/kluster zoom 10–14 (`/api/punkter`), antal per kommun under zoom 10 (`/api/kommunkluster`); hovringsruta; delbar adress (`?l=&f=&farg=` + filter).
-- Panelvyer: Affärer (`#affarer`, `/api/affarer`: volym, per användning/kommun, köpare, största,
+- Panelvyer: Transaktioner (`#transaktioner`, hette Affärer, `#affarer` fungerar fortfarande; `/api/affarer`: volym, per användning/kommun, köpare, största,
   senaste, säljare) och Största ägare (`#agare`, `/api/storsta-agare`, även i kartutsnittet).
 - Fastighetspanelen: ägare sedan, köp/m², K/T-kvot, taxeringsändring, säljare, grannar, köp i närheten.
 - Bolagspanelen: tomtareal, köp, sålt, "Visa alla på kartan" (`/api/fastigheter?org=`).
 - Sök: ägare först med antal fastigheter (ägarlistan i minnet). Servertester i `test/server.test.mjs`.
 - Pressmeddelanden (2026-10-10): `import-nyheter` hämtar 14 nyhetsrum på Cision; listan "Senaste i
-  pressmeddelanden" i Affärer och "I pressmeddelanden" i fastighetspanelen, "Visa på kartan" ramar in.
+  pressmeddelanden" i Transaktioner och "I pressmeddelanden" i fastighetspanelen, "Visa på kartan" ramar in.
   Privatperson som säljare: affären visas, namnet aldrig; försäljning till privatperson tas inte med.
   **MFN förbjuder automatisk hämtning** (robots.txt: `*.rss`, `*.xml`, `*.json`): inte med förrän Modular
   Finance gett tillstånd. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
@@ -104,6 +111,9 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
 - Fastighetspanelen (2026-10-10): rutan Användning (lokaltyper, uppskattad LOA), tomtareal, LOA/BOA,
   exploateringstal, upplåtelseform (tomträtt/äganderätt). Typkoder → klartext i import-taxering.
   Senaste överlämning: `OVERLAMNING.md`.
+- Scenarier (2026-10-11, gren `scenarion`): korta länkar kräver `deploy/scenarion.conf` på servern (en gång som
+  root, se `deploy/DEPLOY.md`); utan den används `#sd=`-länkar. + i fastighetspanelen väljer scenario (eller nytt);
+  + i sökträffarna, bolaget och filtret lägger till i det öppna scenariot.
 Den publika databasen har **0 fastigheter** (bara bolag, adresser och pressmeddelanden) tills riktiga data finns.
 
 Väntar på:

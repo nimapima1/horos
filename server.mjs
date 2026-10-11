@@ -1,6 +1,9 @@
 // Liten server utan beroenden: statiska filer från public/ + JSON-API.
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { DatabaseSync } from 'node:sqlite';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree } from './lib/db.mjs';
 import { avstandM, innerPoints, pointInGeom } from './lib/geo.mjs';
@@ -65,9 +68,57 @@ if (PUBLIC_MODE) {
   }
 }
 
+// --- Scenarier (korta länkar) -----------------------------------------------------
+// Besökarnas sparade kalkyler (se panel.js) i en egen databas: den publika är skrivskyddad och byts vid
+// publicering. Ingen inloggning: id:t är en hash av innehållet, så ett sparat scenario ändras aldrig och
+// samma innehåll ger samma länk. På servern sätter systemd STATE_DIRECTORY (StateDirectory=horos-scenarion);
+// utan skrivbar plats stängs korta länkar av och klienten lägger scenariot i länken i stället.
+const SCENARIO_DB = process.env.SCENARIO_DB
+  ?? (process.env.STATE_DIRECTORY ? join(process.env.STATE_DIRECTORY, 'scenarion.sqlite') : PUBLIC_MODE ? null : join(ROOT, 'data', 'scenarion.sqlite'));
+const MAX_SCENARIO = 1000;            // fastigheter per scenario
+const MAX_SCENARIO_BYTE = 256 * 1024;
+const MAX_SCENARIER = 200_000;        // skydd mot att disken fylls
+let qs = null;
+try {
+  if (SCENARIO_DB) {
+    mkdirSync(dirname(SCENARIO_DB), { recursive: true });
+    const sdb = new DatabaseSync(SCENARIO_DB);
+    sdb.exec(`PRAGMA journal_mode = WAL;
+      CREATE TABLE IF NOT EXISTS scenario (id TEXT PRIMARY KEY, data TEXT NOT NULL, skapad TEXT NOT NULL) WITHOUT ROWID`);
+    qs = {
+      antal: sdb.prepare('SELECT count(*) AS n FROM scenario'),
+      spara: sdb.prepare("INSERT OR IGNORE INTO scenario (id, data, skapad) VALUES (?, ?, date('now'))"),
+      hamta: sdb.prepare('SELECT data FROM scenario WHERE id = ?'),
+    };
+  }
+} catch (e) {
+  console.error(`Korta länkar är avstängda (${SCENARIO_DB}): ${e.message}`);
+}
+// Scenariot tolkas aldrig av servern, men ska vara det klienten skickar: bara objekt, listor, korta strängar,
+// tal och null, inte för djupt, med fastigheterna i bet.
+const giltigt = (v, djup = 0) => v === null || (typeof v === 'number' && Number.isFinite(v))
+  || (typeof v === 'string' && v.length <= 100)
+  || (djup < 5 && typeof v === 'object' && Object.keys(v).length <= MAX_SCENARIO
+    && Object.entries(v).every(([k, x]) => k.length <= 100 && giltigt(x, djup + 1)));
+const giltigtScenario = (s) => s?.v === 1 && Array.isArray(s.bet) && s.bet.length <= MAX_SCENARIO && giltigt(s);
+
+// JSON-kropp på högst max byte. Kräver content-type application/json: ett formulär på en annan sida
+// kan inte skicka det utan CORS-förfrågan, som servern inte svarar på.
+async function lasJson(req, max) {
+  if (!/^application\/json\b/.test(req.headers['content-type'] ?? '')) return { fel: [415, { error: 'application/json krävs' }] };
+  const delar = [];
+  let n = 0;
+  for await (const d of req) {
+    if ((n += d.length) > max) return { fel: [413, { error: 'för stort' }] };
+    delar.push(d);
+  }
+  try { return { varde: JSON.parse(Buffer.concat(delar)) }; } catch { return { fel: [400, { error: 'ogiltig JSON' }] }; }
+}
+
 // Enkel hastighetsbegränsning per IP (skyddar en liten server mot massnedladdning).
 // Kartrutor har en egen, högre gräns eftersom en kartvy hämtar många på en gång.
-const RATE = { windowMs: 10_000, api: Number(process.env.RATE_MAX ?? 200), tiles: Number(process.env.RATE_TILES ?? 800) };
+const RATE = { windowMs: 10_000, api: Number(process.env.RATE_MAX ?? 200), tiles: Number(process.env.RATE_TILES ?? 800),
+  spara: Number(process.env.RATE_SPARA ?? 5) };
 const hits = new Map();
 function rateLimited(req, bucket) {
   const ip = (TRUST_PROXY && req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress;
@@ -347,6 +398,12 @@ const q = {
   fororenatNara: HAS_FORORENAT && db.prepare(`SELECT ebh_id, bransch, bransch2, status, riskklass, lon, lat FROM fororenat
     WHERE lon BETWEEN ? AND ? AND lat BETWEEN ? AND ? LIMIT 500`),
   fastighetGeom: db.prepare('SELECT geojson, minx, miny, maxx, maxy FROM fastighet WHERE beteckning = ?'),
+  // Underlag för scenarierna: fastigheterna i listan (JSON) med värde, typ, upplåtelseform och uppskattad LOA.
+  underlag: db.prepare(`SELECT f.beteckning, f.kommun, f.areal_m2, f.demo, f.minx, f.miny, f.maxx, f.maxy,
+      ${SENASTE_VARDE} AS varde_tkr, ${SENASTE_TYP} AS typ, ${UPPLATELSE} AS upplatelse
+    FROM fastighet f WHERE f.beteckning IN (SELECT value FROM json_each(?))`),
+  underlagLoa: HAS_AE && db.prepare(`SELECT beteckning, lokaltyp, sum(loa_m2) AS m2 FROM arbetsstalle
+    WHERE beteckning IN (SELECT value FROM json_each(?)) GROUP BY beteckning, lokaltyp`),
   // En rad per granne med (första) ägaren.
   grannar: db.prepare(`SELECT f.beteckning, f.minx, f.miny, f.maxx, f.maxy, min(a.orgnr) AS orgnr, b.namn AS agare, b.demo
     FROM fastighet f LEFT JOIN agande a ON a.beteckning = f.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr
@@ -672,8 +729,8 @@ function json(res, status, body) {
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 }
 
-// Varje rutt: [mönster, hastighetsgräns, hanterare]. Hanteraren returnerar [status, body]
-// (skickas som JSON) eller skriver själv till res (kartrutor, nedladdningar).
+// Varje rutt: [mönster, hastighetsgräns, hanterare, metod (GET om den saknas)]. Hanteraren returnerar
+// [status, body] (skickas som JSON) eller skriver själv till res (kartrutor, nedladdningar).
 const routes = [
   [/^\/api\/status$/, 'api', () => [200, {
     ...(statusCounts ?? counts.get()),
@@ -692,7 +749,42 @@ const routes = [
     historiska: HIST_AUTH ? Object.keys(HIST_LAYERS).map(Number) : [],
     // Nyckel till Googles Maps Embed API. Den syns ändå i iframens adress; skyddet är hänvisarlåset hos Google.
     streetview: process.env.GOOGLE_EMBED_KEY || null,
+    kortlankar: !!qs,   // scenarier kan sparas som korta länkar
+    maxScenario: MAX_SCENARIO,
   }]],
+
+  // Scenarier: underlaget för fastigheterna i ett scenario ({bet: [...]}), och spara/hämta (korta länkar).
+  [/^\/api\/underlag$/, 'api', async (_m, _url, _res, req) => {
+    const { varde, fel } = await lasJson(req, MAX_SCENARIO_BYTE);
+    if (fel) return fel;
+    const bet = varde?.bet;
+    if (!Array.isArray(bet) || bet.length > MAX_SCENARIO || !bet.every((b) => typeof b === 'string')) {
+      return [400, { error: `bet: högst ${MAX_SCENARIO} beteckningar` }];
+    }
+    const lista = JSON.stringify(bet.map(normBeteckning));
+    const loa = new Map();
+    for (const r of q.underlagLoa ? q.underlagLoa.all(lista) : []) (loa.get(r.beteckning) ?? loa.set(r.beteckning, {}).get(r.beteckning))[r.lokaltyp] = r.m2;
+    return [200, { fastigheter: q.underlag.all(lista).map((f) => ({ ...f, loa: loa.get(f.beteckning) ?? {} })), byggd: META.byggd ?? null }];
+  }, 'POST'],
+
+  [/^\/api\/scenario$/, 'spara', async (_m, _url, _res, req) => {
+    if (!qs) return [503, { error: 'Korta länkar är inte tillgängliga på servern.' }];
+    const { varde, fel } = await lasJson(req, MAX_SCENARIO_BYTE);
+    if (fel) return fel;
+    if (!giltigtScenario(varde)) return [400, { error: 'ogiltigt scenario' }];
+    const data = JSON.stringify(varde);
+    const id = createHash('sha256').update(data).digest('base64url').slice(0, 10);
+    if (!qs.hamta.get(id)) {
+      if (qs.antal.get().n >= MAX_SCENARIER) return [507, { error: 'Lagringen för scenarier är full.' }];
+      qs.spara.run(id, data);
+    }
+    return [200, { id }];
+  }, 'POST'],
+
+  [/^\/api\/scenario\/([\w-]{10})$/, 'api', (m) => {
+    const r = qs?.hamta.get(m[1]);
+    return r ? [200, r.data] : [404, { error: 'Scenariot finns inte' }];
+  }],
 
   [/^\/api\/fastigheter$/, 'api', (_m, url) => {
     const rows = traffar(url);
@@ -812,12 +904,13 @@ async function serveStatic(res, pathname) {
 
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'endast GET' });
   const route = routes.find(([re]) => re.test(url.pathname));
+  const metod = route?.[3] ?? 'GET';
+  if (req.method !== metod && !(metod === 'GET' && req.method === 'HEAD')) return json(res, 405, { error: `endast ${metod}` });
   if (rateLimited(req, route?.[1] ?? 'api')) return json(res, 429, { error: 'för många förfrågningar, försök igen om en stund' });
   try {
     if (route) {
-      const out = await route[2](url.pathname.match(route[0]), url, res);
+      const out = await route[2](url.pathname.match(route[0]), url, res, req);
       if (out) json(res, ...out);
       return;
     }

@@ -103,9 +103,10 @@ button { font: inherit; color: inherit; }
 .wm-text { fill: var(--text); font: 600 44px var(--font-head); letter-spacing: -0.5px; }
 .wm-line { stroke: var(--line); stroke-width: 2.5; stroke-linecap: round; }
 .wm-node { fill: var(--line); }
-.links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0; }
+/* Informationslänkar uppe till höger: små och dämpade; verktygen ligger i flikraden under sökfältet. */
+.links { display: flex; justify-content: flex-end; gap: 0; }
 .links a {
-  padding: 6px 7px; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--muted);
+  padding: 6px 8px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted);
 }
 .links a:hover { background: var(--accent-soft); color: var(--accent-strong); text-decoration: none; }
 .tagline { margin: 6px 0 12px; font-size: 14px; color: var(--muted); }
@@ -133,18 +134,44 @@ button { font: inherit; color: inherit; }
   min-height: 44px; padding: 11px 10px; border-radius: 7px; cursor: pointer;
 }
 .results li[data-kind]:hover { background: var(--accent-soft); }
+/* +: lägg till i ett scenario (sökträffarna och fastighetspanelen). */
+.lagg-till { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px;
+  cursor: pointer; font: 600 18px/1 var(--font-body); background: var(--accent-soft); color: var(--accent-strong); }
+.lagg-till:hover { background: var(--accent); color: var(--surface-solid); }
+.lagg-till:disabled { cursor: default; background: none; color: var(--muted); }
+.results .lagg-till { margin: -6px 0 -6px auto; align-self: center; }
+/* +-menyn i fastighetspanelen, bredvid stängknappen: välj scenario. */
+.sc-meny { float: right; position: relative; margin: -2px 8px 0 0; }
+.sc-meny > summary { width: 40px; height: 40px; border-radius: 50%; list-style: none; }
+.sc-meny > summary::-webkit-details-marker { display: none; }
+.sc-meny[open] > summary { background: var(--accent); color: var(--surface-solid); }
+.sc-meny-lista { position: absolute; z-index: 3; top: 46px; right: 0; width: 240px; padding: 6px;
+  background: var(--surface-solid); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow); }
+.sc-meny-rubrik { padding: 6px 10px 4px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle); }
+.sc-meny-lista button { display: block; width: 100%; min-height: 40px; padding: 8px 10px; border: 0; border-radius: 7px;
+  background: none; cursor: pointer; text-align: left; font-size: 14px; font-weight: 600; }
+.sc-meny-lista button:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.sc-meny-lista .klar { color: var(--muted); font-weight: 400; }
+.sc-meny-lista .ny { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 7px 7px; color: var(--accent); }
 .results .group {
   min-height: 0; padding: 10px 10px 4px; cursor: default;
   font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle);
 }
 
-.filters { margin-top: 10px; }
-.filters summary {
-  display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 6px 10px; margin-left: -10px;
-  border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted);
+/* Verktygen som en segmenterad flikrad: Filter, Affärer, Ägare, Scenarier. */
+.verktyg { display: flex; gap: 4px; margin-top: 10px; padding: 4px;
+  border-radius: var(--radius-sm); background: var(--surface-sunken); }
+.verktyg > * {
+  flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 6px;
+  border: 0; border-radius: 7px; background: none; cursor: pointer;
+  font: 600 14px var(--font-body); color: var(--muted);
 }
-.filters summary:hover { background: var(--accent-soft); color: var(--accent-strong); }
-.filters[open] summary { color: var(--text); }
+.verktyg > :hover { background: var(--accent-soft); color: var(--accent-strong); text-decoration: none; }
+.verktyg [aria-current="page"], .verktyg [aria-expanded="true"] { background: var(--surface-solid); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+#filter-count:not(:empty) { min-width: 18px; padding: 0 5px; border-radius: 9px; font-size: 12px; line-height: 18px;
+  background: var(--accent); color: var(--surface-solid); }
+.filters > summary { display: none; }   /* öppnas med Filter-fliken */
+.filters[open] { margin-top: 10px; }
 /* Formuläret scrollar själv: sidan är låst (kartan) och filtret kan vara högre än fönstret. Padding så
    att fokusringen inte klipps. */
 #filter { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin: 4px -4px 0; padding: 4px;
@@ -183,10 +210,11 @@ button { font: inherit; color: inherit; }
 .panel .meta { font-size: 14px; color: var(--muted); }
 .panel p { margin: 8px 0; }
 
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin-top: 16px; }
-.stat { padding: 11px 12px; border-radius: var(--radius-sm); background: var(--surface-sunken); }
+/* Nyckeltal: fast rutnät (två kolumner i den smala panelen, tre i den breda), lika höga rutor. */
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 16px; }
+.stat { min-width: 0; padding: 11px 12px; border-radius: var(--radius-sm); background: var(--surface-sunken); }
 .stat-label { font-size: 12px; font-weight: 600; color: var(--subtle); }
-.stat-value { font-family: var(--font-head); font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stat-value { font-family: var(--font-head); font-size: 18px; font-weight: 600; line-height: 1.35; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
 .facts { margin-top: 16px; border-radius: var(--radius-sm); background: var(--surface-sunken); }
 .fact { padding: 11px 12px; }
@@ -216,6 +244,64 @@ button { font: inherit; color: inherit; }
   background: var(--accent-soft); color: var(--accent-strong); font-weight: 600;
 }
 .copy:hover { background: var(--accent); color: var(--surface-solid); }
+label.copy { display: inline-flex; align-items: center; }
+/* Knapprad: lika höga knappar med jämnt mellanrum; .primar är radens huvudhandling. */
+.knappar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.knappar .copy { margin-top: 0; }
+.copy.primar { background: var(--accent); color: var(--surface-solid); }
+.copy.primar:hover { background: var(--accent-strong); }
+
+/* Scenarier (scenario.js): bredare panel för kassaflödet. Alla siffror högerställda i tabulära siffror,
+   fälten i ett rutnät med etikett ovanför, tabellerna rullar i sidled med radrubriken fast. */
+@media (min-width: 641px) { .sidebar:has(#panel:not([hidden]) .scenario) { width: min(720px, calc(100vw - 32px)); } }
+.scenario .stats { grid-template-columns: repeat(3, 1fr); }
+.scenario input { width: 100%; height: 36px; padding: 0 10px; font: inherit; font-size: 14px; color: var(--text);
+  background: var(--surface-sunken); border: 1px solid transparent; border-radius: var(--radius-sm); }
+.scenario input[type="number"] { text-align: right; font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
+.scenario input::-webkit-inner-spin-button, .scenario input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.scenario input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.scenario input::placeholder { color: var(--subtle); opacity: .6; }
+/* Namnet ser ut som en rubrik och blir ett fält först vid hovring och fokus. */
+.scenario .sc-namn { width: calc(100% - 48px); height: 40px; margin: -4px 0 2px -10px; padding: 0 10px;
+  font: 600 21px var(--font-head); letter-spacing: -0.01em; background: transparent; }
+.scenario .sc-namn:hover { border-color: var(--border); }
+.sc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 12px; margin: 12px 0; }
+.sc-grid label { display: grid; gap: 4px; align-content: start; font-size: 13px; color: var(--muted); }
+.sc-tabell { overflow-x: auto; margin: 8px 0; }
+.sc-tabell table { min-width: 100%; }
+.panel .sc-tabell th[scope="row"] { padding: 7px 12px 7px 0; border-top: 1px solid var(--border); vertical-align: middle;
+  font-size: 14px; font-weight: 400; color: var(--text); white-space: nowrap; }
+/* Kassaflödet: summarader i fetstil med linje ovanför, restvärdesåret dämpat. */
+.panel .sc-kassaflode td { padding-top: 7px; padding-bottom: 7px; }
+.panel .sc-kassaflode td.num, .panel .sc-kassaflode th.num { min-width: 64px; padding-left: 8px; }
+.panel .sc-kassaflode .summa th, .panel .sc-kassaflode .summa td { font-weight: 700; border-top: 1px solid var(--muted); }
+.panel .sc-kassaflode .rest { color: var(--muted); }
+/* Antaganden per lokalslag: smala sifferkolumner med fälten i samma linje som rubrikerna. */
+.panel .sc-antaganden { table-layout: fixed; }
+.panel .sc-antaganden th:first-child { width: 30%; }
+.panel .sc-antaganden td { padding: 5px 0 5px 8px; vertical-align: middle; }
+.panel .sc-antaganden th.num { padding-left: 8px; white-space: normal; vertical-align: bottom; }
+.sc-fler summary, .sc-fastighet summary { cursor: pointer; }
+.sc-fler summary { padding: 6px 0; font-size: 14px; font-weight: 600; color: var(--accent); }
+/* Fastighetslistan: samma tre kolumner i rubrikraden och i varje rad. */
+.sc-rad { display: grid; grid-template-columns: 1fr 110px 110px; gap: 12px; align-items: baseline; }
+.sc-rad .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sc-rubrik { margin-top: 12px; padding-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--subtle); }
+.sc-fastighet { border-top: 1px solid var(--border); }
+.sc-fastighet summary { padding: 9px 0; list-style: none; font-weight: 600; }
+.sc-fastighet summary::-webkit-details-marker { display: none; }
+.sc-fastighet summary .num { font-weight: 400; color: var(--muted); }
+.sc-fastighet[open] { padding-bottom: 12px; }
+.sc-fastighet .copy { margin-top: 0; }
+.sc-lank { margin-top: 10px; }
+.panel .notice { border-radius: var(--radius-sm); }
+@media (max-width: 640px) {
+  .scenario .stats, .sc-grid { grid-template-columns: repeat(2, 1fr); }
+  .panel .sc-antaganden { min-width: 560px; }
+  .sc-rad { grid-template-columns: 1fr 84px 84px; }
+  /* Tabellerna rullar i sidled här: radrubriken står kvar. */
+  .panel .sc-tabell th:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface-solid); }
+}
 .bar { height: 5px; margin-top: 5px; border-radius: 3px; background: var(--surface-sunken); }
 .bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
 .panel table { width: 100%; border-collapse: collapse; font-size: 14px; }

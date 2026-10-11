@@ -8,13 +8,14 @@ import { join } from 'node:path';
 import { ROOT, openDb } from '../lib/db.mjs';
 
 const DB = join(ROOT, 'data', '_test', 'server-test.sqlite');
+const SCENARIO_DB = join(ROOT, 'data', '_test', 'scenario-test.sqlite');
 const PORT = 3017;
 let server;
 
 const rect = (x0, y0, x1, y1) => JSON.stringify({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
 
 before(async () => {
-  for (const ext of ['', '-wal', '-shm']) rmSync(DB + ext, { force: true });
+  for (const ext of ['', '-wal', '-shm']) for (const fil of [DB, SCENARIO_DB]) rmSync(fil + ext, { force: true });
   const db = openDb({ path: DB });
   db.exec(`INSERT INTO bolag (orgnr, namn, jurform, sni, agarkontroll) VALUES
     ('5560000001', 'Alfa AB', 'Aktiebolag', '68201', 'kommun'), ('7690000002', 'Brf Beta', 'Bostadsrättsförening', NULL, 'privat')`);
@@ -48,7 +49,7 @@ before(async () => {
   db.close();
 
   server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(ROOT, 'server.mjs')], {
-    env: { ...process.env, PORT: String(PORT), FASTIGHETSKARTA_DB: DB, PUBLIC_MODE: '' },
+    env: { ...process.env, PORT: String(PORT), FASTIGHETSKARTA_DB: DB, SCENARIO_DB, PUBLIC_MODE: '', RATE_SPARA: '50' },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   await new Promise((resolve, reject) => {
@@ -231,4 +232,33 @@ test('bolag: summor och inramning över alla fastigheter, även när listan är 
   assert.equal(g.summa.areal_m2, 5010);
   assert.equal(g.summa.beteckningar.length, 501);
   assert.equal(g.summa.maxx, 20.5015);
+});
+
+const post = (path, body, typ = 'application/json') =>
+  fetch(`http://127.0.0.1:${PORT}${path}`, { method: 'POST', headers: { 'content-type': typ }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+
+test('scenarier: underlag för fastigheterna', async () => {
+  const r = await post('/api/underlag', { bet: ['t 1:1', 'T 1:2', 'FINNS INTE 1'] }).then((x) => x.json());
+  const t11 = r.fastigheter.find((f) => f.beteckning === 'T 1:1');
+  assert.equal(r.fastigheter.length, 2);
+  assert.deepEqual([t11.varde_tkr, t11.typ, t11.upplatelse, t11.loa], [50000, 'Hyreshusenhet, lokaler', 'tomtratt', { Butik: 100, Kontor: 690 }]);
+  assert.equal((await post('/api/underlag', { bet: 'T 1:1' })).status, 400);
+  assert.equal((await get('/api/underlag')).status, 405);
+});
+
+test('scenarier: korta länkar', async () => {
+  const sc = { v: 1, namn: 'Test', start: 2026, ar: 5, bet: ['T 1:1'], gemensamt: { hyresutv: 2 }, antaganden: { Kontor: { hyra: 2000 } }, egna: {} };
+  const { id } = await post('/api/scenario', sc).then((r) => r.json());
+  assert.match(id, /^[A-Za-z0-9_-]{10}$/);
+  assert.equal((await post('/api/scenario', sc).then((r) => r.json())).id, id);   // samma innehåll, samma länk
+  assert.deepEqual(await json(`/api/scenario/${id}`), sc);
+  assert.equal((await get('/api/scenario/xxxxxxxxxx')).status, 404);
+  assert.equal((await post('/api/scenario', sc, 'text/plain')).status, 415);   // ett formulär från en annan sida
+  assert.equal((await post('/api/scenario', '{inte json')).status, 400);
+  assert.equal((await post('/api/scenario', { ...sc, v: 2 })).status, 400);
+  assert.equal((await post('/api/scenario', { ...sc, namn: 'x'.repeat(101) })).status, 400);
+  assert.equal((await post('/api/scenario', { ...sc, egna: { a: { b: { c: { d: { e: 1 } } } } } })).status, 400);   // för djupt
+  assert.equal((await post('/api/scenario', { ...sc, bet: Array(1001).fill('T 1:1') })).status, 400);
+  assert.equal((await post('/api/scenario', { ...sc, namn: 'x'.repeat(300_000) })).status, 413);
+  assert.equal((await json('/api/status')).kortlankar, true);
 });

@@ -92,6 +92,24 @@ node scripts/build-public.mjs --lm-beslut <ärendenummer>
 deploy/deploy.sh deploy@<IP> --data
 ```
 
+## Sparade scenarier (korta länkar)
+
+Besökarnas sparade scenarier ligger i `/var/lib/horos-scenarion/scenarion.sqlite`, utanför
+den publika databasen, så de följer inte med vid `--data` och skrivs inte över. Katalogen
+skapas av systemd (`StateDirectory=horos-scenarion`, cloud-init v6). På en server från v5 eller
+äldre läggs inställningen in en gång som root i Hetzners webbkonsol, efter en publicering
+(kommandona har inga tecken som kräver Skift):
+
+```sh
+install -D -m 644 /opt/fastighetskarta/current/deploy/scenarion.conf /etc/systemd/system/fastighetskarta.service.d/scenarion.conf
+systemctl daemon-reload
+systemctl restart fastighetskarta
+```
+
+Utan den fungerar scenarierna ändå, men länken innehåller då hela scenariot (`#sd=…`) i stället
+för ett kort id (`#s=…`); `/api/status` visar `"kortlankar": true` när det är på plats.
+Filen säkerhetskopieras inte; kopiera den vid byte av server.
+
 ## Hemligheter (inloggning till Lantmäteriets tjänster m.m.)
 
 Hemligheter skickas direkt från din terminal till servern och sparas i
@@ -145,5 +163,6 @@ ssh deploy@<IP> 'ln -sfn /opt/fastighetskarta/releases/<äldre> /opt/fastighetsk
 | App | Node 24, systemd-tjänst med härdning (skrivskyddat filsystem, inga privilegier), lyssnar bara på 127.0.0.1:3000 |
 | Webbserver | Caddy: HTTPS, komprimering, säkerhetshuvuden (CSP m.m.), ingen åtkomstlogg |
 | Data | `/var/lib/fastighetskarta/public.sqlite`, öppnas skrivskyddat |
+| Scenarier | `/var/lib/horos-scenarion/scenarion.sqlite`, det enda appen skriver utöver kartcachen |
 | Cron (deploy) | `deploy/nyheter.sh` 05:15 och 15:15 UTC: nya pressmeddelanden, byter databasen och startar om om något ändrats; logg i `/var/lib/fastighetskarta/nyheter.log` (läggs in av `deploy.sh`) |
 | Integritet | Inga besökar-IP:n loggas; MapLibre serveras från egen server. Bakgrundskartan hämtas från OpenFreeMap (tredje part: besökarens webbläsare kontaktar deras servrar) |
