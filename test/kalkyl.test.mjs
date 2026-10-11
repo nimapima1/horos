@@ -52,3 +52,19 @@ test('fastighetsskatt efter taxeringstyp', () => {
   assert.equal(standardSkatt({ varde_tkr: 10000, typ: 'Hyreshusenhet, bostäder' }), 30_000);
   assert.equal(standardSkatt({ varde_tkr: null, typ: null }), 0);
 });
+
+test('fastighetsskatt som text i en importerad fil ger inte NaN', () => {
+  const k = berakna(scenario({ egna: { 'T 1:1': { skatt: 'abc' } } }), [fastighet]);
+  assert.equal(k.total.skatt[0], 0);
+  assert.equal(berakna(scenario({ egna: { 'T 1:1': { skatt: '1000' } } }), [fastighet]).total.skatt[0], -1000);
+});
+
+// #sd=-länkarna (public/scenario.js): scenariot ska komma tillbaka oförändrat, också med å, ä, ö.
+test('scenario i länken: packa och packa upp', async () => {
+  const { packa, packaUpp } = vm.runInNewContext(`${readFileSync(join(ROOT, 'public', 'scenario.js'), 'utf8')}\n({ packa, packaUpp })`,
+    { CompressionStream, DecompressionStream, Response, Blob, btoa, atob, Uint8Array, JSON, String });
+  const s = scenario({ namn: 'Fastigheter på Söder', bet: Array.from({ length: 500 }, (_, i) => `SÖDER ${i}:1`) });
+  const lank = await packa(s);
+  assert.match(lank, /^[\w-]+$/);   // bara tecken som får stå i en adress
+  assert.deepEqual(JSON.parse(JSON.stringify(await packaUpp(lank))), s);
+});

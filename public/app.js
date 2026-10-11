@@ -47,7 +47,7 @@ const HISTORISKA = { 2005: 'Foto 2005', 1995: 'Foto 1995', 1975: 'Foto 1975', 19
 
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
-  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* privat läge */ } },
+  set: (k, v) => { try { localStorage.setItem(k, v); return true; } catch { return false; } },   // false: privat läge eller fullt
 };
 
 class BasemapSelect {

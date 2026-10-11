@@ -13,17 +13,20 @@ const lokalslag = (s) => ['Bostäder', ...s.lokaltyper];
 const ANTAGANDEN = [['hyra', 'Hyra, kr/m²', 't.ex. 2 000'], ['vakans', 'Vakans, %', '0'], ['drift', 'Drift, kr/m²', '0'], ['uh', 'Underhåll, kr/m²', '0']];
 const normBet = (b) => String(b).trim().replace(/\s+/g, ' ').toUpperCase();   // som normBeteckning på servern
 
-// Mina scenarion: [{nyckel, namn, data, lank, andrad, antal}], senast ändrade först. lank är den delade länken,
+// Mina scenarion: [{nyckel, namn, data, lank, andrad, antal}], senast använda först (andrad = senast öppnat eller ändrat). lank är den delade länken,
 // null om scenariot har ändrats sedan dess. horos.aktivt är nyckeln till det öppna scenariot.
 // shortcut: högst 50 scenarier, det äldsta faller bort tyst; varna om någon når gränsen.
 const minaScenarion = () => { try { return JSON.parse(store.get('horos.scenarion')) ?? []; } catch { return []; } };
 const sparaMina = (l) => store.set('horos.scenarion', JSON.stringify(l.slice(0, 50)));
+let sparatLokalt = true;   // senaste sparningen i webbläsaren lyckades (se #sc-varning)
 function sparaLokalt() {
   if (!scenario) return store.set('horos.aktivt', '');
   const d = scenario.data;
-  sparaMina([{ nyckel: scenario.nyckel, namn: d.namn, data: d, lank: scenario.lank, andrad: new Date().toISOString().slice(0, 10), antal: d.bet.length },
-    ...minaScenarion().filter((x) => x.nyckel !== scenario.nyckel)]);
-  store.set('horos.aktivt', scenario.nyckel);
+  sparatLokalt = sparaMina([{ nyckel: scenario.nyckel, namn: d.namn, data: d, lank: scenario.lank, andrad: new Date().toISOString().slice(0, 10), antal: d.bet.length },
+    ...minaScenarion().filter((x) => x.nyckel !== scenario.nyckel)]) && store.set('horos.aktivt', scenario.nyckel);
+  // Full eller avstängd lagring (vissa privata lägen): säg det, annars försvinner scenariot tyst vid omladdning.
+  const varning = $('#sc-varning');
+  if (varning) varning.hidden = sparatLokalt;
 }
 // Läser in det öppna scenariot efter en omladdning, utan att byta vy, så att + och Lägg till fungerar direkt.
 function aterstallAktivt() {
@@ -62,7 +65,10 @@ async function oppnaScenario(data, { nyckel, lank, visa = true } = {}) {
   d.start = Math.min(2100, Math.max(1900, Math.round(d.start) || new Date().getFullYear()));
   for (const k of ['gemensamt', 'antaganden', 'egna']) if (typeof d[k] !== 'object' || !d[k]) d[k] = {};
   let u;
-  try { u = await api('/api/underlag', { bet: d.bet }); } catch (e) { return showPanel(`<p class="empty">${esc(e.message)}</p>`); }
+  try { u = await api('/api/underlag', { bet: d.bet }); } catch (e) {
+    if (!visa) throw e;   // i bakgrunden (+-menyn): den som anropade visar felet
+    return showPanel(`<p class="empty">${esc(e.message)}</p>`);
+  }
   const finns = new Set(u.fastigheter.map((f) => f.beteckning));
   scenario = {
     data: d, underlag: u.fastigheter.sort((a, b) => (b.varde_tkr ?? 0) - (a.varde_tkr ?? 0)),
@@ -132,6 +138,8 @@ async function visaScenario() {
       <button type="button" class="copy" data-sc="lista">Mina scenarion</button>
       <button type="button" class="copy" data-sc="stang">Stäng</button>
     </div>
+    <p id="sc-varning" class="notice small"${sparatLokalt ? ' hidden' : ''}>Scenariot kunde inte sparas i webbläsaren (lagringen är full eller
+      avstängd). Ladda ner scenariofilen eller spara en länk, annars försvinner det när sidan laddas om.</p>
     <input id="sc-lank" class="sc-lank" readonly aria-label="Länk till scenariot" value="${esc(sc.lank ?? '')}"${sc.lank ? '' : ' hidden'}>
     <div id="sc-resultat"></div>
 
@@ -264,8 +272,10 @@ async function sparaScenario(knapp) {
 // Tabellen som CSV för Excel (BOM, semikolon och decimalkomma, som träff-exporten).
 function scenarioCsv(s) {
   const d = scenario.data, k = berakna(d, scenario.underlag), g = d.gemensamt;
+  // Text som börjar med = + - @ (t.ex. namnet från någon annans länk) blir annars en formel i Excel.
+  const text = (v) => (/^[=+\-@]/.test(v) ? `'${v}` : v);
   const cell = (v) => (v == null ? '' : typeof v === 'number' ? String(Math.round(v * 100) / 100).replace('.', ',')
-    : /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    : /[;"\n]/.test(v) ? `"${text(v).replace(/"/g, '""')}"` : text(v));
   const rader = [
     ['Scenario', d.namn], ['Startår', d.start], ['Kalkylperiod, år', d.ar], ['Hyresutveckling, %', g.hyresutv],
     ['Kostnadsutveckling, %', g.kostutv], ['Direktavkastningskrav, %', g.direktavk], ['Kalkylränta, %', k.kalkylranta * 100],
@@ -306,7 +316,7 @@ async function openScenarier({ lista = false } = {}) {
       eller filtret (<strong>Räkna på träffarna</strong>). Fyll i hyror, vakanser, kostnader och avkastningskrav, så räknar Horos
       fram kassaflöde och värde år för år. Allt sparas här i webbläsaren; <strong>Spara och kopiera länk</strong> ger en länk att dela.</p>
     <h3>Mina scenarion</h3>
-    ${table('<th>Scenario</th><th class="num">Ändrat</th><th></th>', mina.map((x) =>
+    ${table('<th>Scenario</th><th class="num">Senast använt</th><th></th>', mina.map((x) =>
       `<tr><td><a data-sc="oppna" data-nyckel="${esc(x.nyckel)}">${esc(x.namn || 'Namnlöst scenario')}</a>${x.nyckel === scenario?.nyckel ? ' <span class="tag">öppet</span>' : ''}
         <div class="muted small">${Number(x.antal).toLocaleString('sv-SE')} fastigheter · ${x.lank ? 'delad länk' : 'inte delat'}</div></td>
         <td class="num">${esc(x.andrad ?? x.sparad ?? '')}</td><td class="num"><a data-sc="glom" data-nyckel="${esc(x.nyckel)}">Ta bort</a></td></tr>`),
@@ -355,7 +365,10 @@ async function scenarioKlick(el) {
   // +-menyn i fastighetspanelen: lägg till i valt scenario, som då blir det öppna.
   if (a === 'lagg-i' && x) {
     el.disabled = true;
-    if (x.nyckel !== scenario?.nyckel) await oppnaPost(x, { visa: false });
+    if (x.nyckel !== scenario?.nyckel) {
+      try { await oppnaPost(x, { visa: false }); } catch { /* visas inte; kontrolleras nedan */ }
+      if (scenario?.nyckel !== x.nyckel) { el.textContent = 'Kunde inte öppnas, försök igen'; el.disabled = false; return; }   // annars hamnar fastigheten i fel scenario
+    }
     if ((await laggTillIScenario([el.dataset.bet]).catch(() => null)) === null) return;
     // Rita om menyn (bock och vilket som är öppet) och låt den stå öppen.
     const ny = document.createRange().createContextualFragment(scenarioMeny(el.dataset.bet)).firstElementChild;

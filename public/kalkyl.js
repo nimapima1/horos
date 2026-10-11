@@ -12,7 +12,8 @@ const procentTal = (v) => (Number(v) || 0) / 100;
 
 // Fastighetsskatt per år (kr) från taxeringsvärdet: 1 % för lokaler, 0,5 % för industri, 0,3 % för bostäder.
 // shortcut: bostäder har en avgift per lägenhet med 0,3 % som tak, och nybyggda är befriade; antalet lägenheter
-// finns inte i Horos, så taket används. Användaren kan skriva in det riktiga beloppet per fastighet.
+// finns inte i Horos, så taket används. "Bostäder och lokaler" får 1 % eftersom fördelningen mellan delarna saknas;
+// ta in bostads- och lokalvärdet var för sig när taxeringen har dem. Användaren kan skriva in det riktiga beloppet.
 function standardSkatt(f) {
   const t = (f.typ ?? '').toLowerCase();
   const sats = t.includes('industri') ? 0.005 : t.includes('lokal') ? 0.01 : t.includes('bostad') || t.includes('bostäder') ? 0.003 : 0;
@@ -45,7 +46,7 @@ function berakna(s, fastigheter) {
         rad.drift[ar] -= m * (Number(a.drift) || 0) * (1 + ku) ** ar;
         rad.uh[ar] -= m * (Number(a.uh) || 0) * (1 + ku) ** ar;
       }
-      rad.skatt[ar] = -(e.skatt ?? standardSkatt(f));
+      rad.skatt[ar] = -(Number(e.skatt ?? standardSkatt(f)) || 0);   // e kan komma från en handredigerad fil
       rad.avgald[ar] = -(Number(e.avgald) || 0);
       rad.netto[ar] = rad.hyra[ar] + rad.vakans[ar];
       rad.dn[ar] = rad.netto[ar] + rad.drift[ar] + rad.uh[ar] + rad.skatt[ar] + rad.avgald[ar];
