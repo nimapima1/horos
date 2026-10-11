@@ -35,14 +35,14 @@ const BASE = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
 const LM_ATTR = 'Flygfoto: <a href="https://www.lantmateriet.se" target="_blank" rel="noopener">© Lantmäteriet</a> (CC0)';
 const IMAGERY = {
   satellit: {
-    label: 'Satellit 2025 (10 m)',
+    label: 'Satellit 25',
     source: { tiles: [`${BASE}tiles/satellit/{z}/{x}/{y}.jpg`], maxzoom: 15,
       attribution: 'Satellit: <a href="https://cloudless.eox.at" target="_blank" rel="noopener">EOxCloudless</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2025)' },
     paint: { 'raster-contrast': 0.08, 'raster-saturation': 0.15 },   // lite krispigare Sentinel-bild
   },
 };
 // Historiska flygfoton som täcker hela Stockholm (Lantmäteriet, CC0). Läggs till om servern har inloggning.
-const HISTORISKA = { 2005: 'Flygfoto 2005 (färg, 0,5 m)', 1995: 'Flygfoto 1995 (sv/v)', 1975: 'Flygfoto 1975 (sv/v)', 1960: 'Flygfoto 1960-tal (sv/v)' };
+const HISTORISKA = { 2005: 'Foto 2005', 1995: 'Foto 1995', 1975: 'Foto 1975', 1960: 'Foto 1960' };   // kort: kontrollen är smal
 
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -118,6 +118,42 @@ class PlanToggle {
 }
 const planToggle = new PlanToggle();
 map.addControl(planToggle, 'top-right');
+
+// Street View för den öppna fastigheten, under Detaljplaner. Två klick: inget laddas från Google förrän
+// besökaren klickar på knappen; sedan följer bilden med till nästa fastighet tills rutan stängs.
+class StreetView {
+  onAdd() {
+    this.el = Object.assign(document.createElement('div'), { className: 'maplibregl-ctrl maplibregl-ctrl-group streetview', hidden: true });
+    this.el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-visa]')) { this.samtycke = true; this.visa(this.src); }
+      if (e.target.closest('[data-stang]')) { this.samtycke = false; this.visa(this.src); }
+    });
+    return this.el;
+  }
+  onRemove() { this.el.remove(); }
+  // p: "lat,lon" för fastigheten, nyckel: Maps Embed API (status.streetview). Utan någon av dem döljs rutan.
+  visa(p, nyckel = this.nyckel) {
+    this.nyckel = nyckel;
+    this.src = p;
+    this.el.hidden = !(p && nyckel);
+    if (this.el.hidden) return this.el.replaceChildren();
+    if (!this.samtycke) {
+      this.el.innerHTML = `<button type="button" data-visa
+        title="Bilden laddas från Google, som då får din IP-adress och platsen och kan sätta kakor.">Street View</button>`;
+      return;
+    }
+    const iframe = Object.assign(document.createElement('iframe'), {
+      src: `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(nyckel)}&location=${p}&fov=80`,
+      title: 'Street View från Google', allowFullscreen: true,
+      referrerPolicy: 'strict-origin',   // Google får domänen (för nyckelns hänvisarlås), inte vilken fastighet
+    });
+    const stang = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Stäng Street View' });
+    stang.dataset.stang = '';
+    this.el.replaceChildren(iframe, stang);
+  }
+}
+const streetView = new StreetView();
+map.addControl(streetView, 'top-right');
 
 const SEL = ['boolean', ['feature-state', 'selected'], false];
 const HOVER = ['boolean', ['feature-state', 'hover'], false];
@@ -396,6 +432,7 @@ function select(beteckning) {
 }
 
 function showPanel(html) {
+  streetView.visa(null);   // openFastighet visar den igen för sin fastighet
   $('#panel-body').innerHTML = html;
   $('#panel').hidden = false;
   $('#panel').scrollTop = 0;
@@ -403,6 +440,7 @@ function showPanel(html) {
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#panel').hidden && !e.target.closest?.('input, select')) $('#close').click(); });
 $('#close').addEventListener('click', () => {
   $('#panel').hidden = true;
+  streetView.visa(null);
   select(null);
   markera([]);
   adressMarker?.remove();
@@ -522,14 +560,6 @@ $('#panel').addEventListener('click', (e) => {
   if (copy) {
     navigator.clipboard.writeText(location.href).then(() => { copy.textContent = 'Länken är kopierad'; },
       () => { copy.textContent = 'Kunde inte kopiera, kopiera adressfältet'; });
-  }
-  const sv = e.target.closest('[data-streetview]');
-  if (sv) {
-    const iframe = Object.assign(document.createElement('iframe'), {
-      src: sv.dataset.streetview, title: 'Street View från Google', allowFullscreen: true,
-      referrerPolicy: 'strict-origin',   // Google får domänen (för nyckelns hänvisarlås), inte vilken fastighet
-    });
-    sv.parentElement.replaceChildren(iframe);
   }
   const a = e.target.closest('a');
   if (!a) return;

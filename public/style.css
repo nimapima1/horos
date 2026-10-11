@@ -216,7 +216,6 @@ button { font: inherit; color: inherit; }
   background: var(--accent-soft); color: var(--accent-strong); font-weight: 600;
 }
 .copy:hover { background: var(--accent); color: var(--surface-solid); }
-.streetview iframe { display: block; width: 100%; aspect-ratio: 4 / 3; margin-top: 16px; border: 0; border-radius: var(--radius-sm); }
 .bar { height: 5px; margin-top: 5px; border-radius: 3px; background: var(--surface-sunken); }
 .bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
 .panel table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -242,20 +241,29 @@ button { font: inherit; color: inherit; }
 .maplibregl-ctrl-group button + button { border-top-color: var(--border) !important; }
 .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1) hue-rotate(180deg); }
 .basemap-select select {
-  height: 40px; max-width: 230px; padding: 0 34px 0 14px; border: 0; cursor: pointer;
+  height: 40px; padding: 0 28px 0 14px; border: 0; cursor: pointer;
   font: 600 14px var(--font-body); color: var(--text); background-color: var(--surface-solid);
   appearance: none; -webkit-appearance: none;
   /* pil: inline-SVG som data-URI (tillåten av CSP: img-src data:) */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 10px center; background-size: 16px;
+  background-repeat: no-repeat; background-position: right 8px center; background-size: 14px;
 }
 .basemap-select select:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Bakgrund, Detaljplaner och Street View lika breda, efter "Detaljplaner"; bakgrundens alternativ hålls lika korta. */
+.basemap-select select, .plan-toggle button, .streetview button { width: 104px; }
 .plan-toggle button {
-  width: auto; height: 40px; padding: 0 14px; border-radius: 4px;
+  height: 40px; padding: 0 14px; border-radius: 4px; text-align: left;
   font: 600 14px var(--font-body); color: var(--text); background: var(--surface-solid);
 }
 .plan-toggle button[aria-pressed="true"] { color: var(--plan); box-shadow: inset 0 -3px 0 var(--plan); }
 .plan-toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.streetview button {
+  height: 40px; padding: 0 14px; text-align: left;
+  font: 600 14px var(--font-body); color: var(--text); background: var(--surface-solid);
+}
+.streetview button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.streetview iframe { display: block; width: 300px; aspect-ratio: 4 / 3; border: 0; }   /* utfälld */
+.streetview iframe + button { width: 100%; }
 .maplibregl-ctrl-attrib { font-family: var(--font-body); }
 .maplibregl-ctrl.maplibregl-ctrl-attrib { background: var(--surface-solid); color: var(--muted); }
 .maplibregl-ctrl-attrib a { color: var(--muted); }
@@ -297,10 +305,10 @@ button { font: inherit; color: inherit; }
   .notice { padding: 9px 12px; font-size: 13px; line-height: 1.4; }
   /* Kontrollerna nedtill till höger: överst skulle sökrutan och notisen täcka dem. */
   .maplibregl-ctrl-top-right { top: auto; bottom: 34px; right: 0; }
-  .basemap-select select { width: 150px; }
+  .streetview { display: none; }   /* ingen plats bredvid panelen; länkarna i panelen räcker */
   /* Teckenförklaringen (med Färga efter) nedtill när panelen är stängd, ovanför källhänvisningen och
-     till vänster om kontrollerna (150 px + marginaler). */
-  .legend { left: 10px; right: auto; bottom: 44px; width: calc(100vw - 186px); max-width: 220px; padding: 9px 11px; }
+     till vänster om kontrollerna (104 px + marginaler). */
+  .legend { left: 10px; right: auto; bottom: 44px; width: calc(100vw - 140px); max-width: 220px; padding: 9px 11px; }
   .legend-title { display: grid; gap: 4px; font-size: 13px; }
   .legend-scale { grid-template-columns: 1fr; gap: 3px; }
   .legend .counts { display: none; }
