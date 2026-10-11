@@ -33,7 +33,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
 - Tester: `npm test` (node:test, `test/`).
   `build-public.mjs` bygger `data/public.sqlite` med bara tillåtna fastigheter; Lantmäteriets
-  data kräver `--lm-beslut <ärendenr>`, planerna `--lm-planer <ärendenr>`, arbetsställena `--scb-villkor`, Polisens utsatta områden `--polisen-uso` (villkor för geodatan saknas på polisen.se; fråga Polisen). Live byggs med `--alla-bolag`.
+  data kräver `--lm-beslut <ärendenr>`, planerna `--lm-planer <ärendenr>`, arbetsställena `--scb-villkor`. Förorenade och utsatta områden tas alltid med (utsatta områden: Polisen anger inga villkor; användaren beslutade 2026-10-11 att publicera utan att fråga). Live byggs med `--alla-bolag`.
 - Lokalt: `node --disable-warning=ExperimentalWarning server.mjs` (PATH: `/c/Program Files/nodejs`).
   Använd en annan port än 3000 (`PORT=3005`) om användaren har en egen server igång.
   SQLite-filer för test i `data/_test/` (långa sökvägar i scratchpad fungerar inte).

@@ -9,7 +9,7 @@
 // Det motsvarar åtagandet i ansökan till Lantmäteriet.
 //
 //   node scripts/build-public.mjs [--lm-beslut <ärendenummer>] [--lm-planer <ärendenummer>]
-//                                 [--scb-villkor] [--polisen-uso] [--alla-bolag] [--export-geometri] [--out data/public.sqlite]
+//                                 [--scb-villkor] [--alla-bolag] [--export-geometri] [--out data/public.sqlite]
 //
 // --export-geometri gör fastighetsgränserna nedladdningsbara som GeoJSON. Ange det bara om
 // Lantmäteriets beslut tillåter vidarespridning av geometrierna.
@@ -18,9 +18,8 @@
 // när ansökan har beviljats. Läs beslutets villkor innan du publicerar. Planerna (Markreglerande
 // bestämmelse) är en egen licens och tas bara med om --lm-planer anges. Arbetsställena (SCB:s
 // företagsregister) tas bara med om --scb-villkor anges, dvs. när SCB:s användarvillkor är lästa
-// och tillåter publicering per adress. Förorenade områden (länsstyrelserna, CC BY 4.0) tas alltid med;
-// Polisens utsatta områden bara med --polisen-uso, när Polisen har godkänt användningen (inga villkor för
-// geodatan står på polisen.se).
+// och tillåter publicering per adress. Förorenade områden (länsstyrelserna, CC BY 4.0) och Polisens utsatta
+// områden (geodata som Polisen publicerar utan villkor) tas alltid med.
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { openDb, DB_PATH, ROOT, harJuridiskAgare, NYHET_PLATS_UTANFOR, rebuildAdressFts, rebuildBolagFts, rebuildRtree, withTransaction } from '../lib/db.mjs';
@@ -40,8 +39,6 @@ if (lmRader && !args['lm-beslut']) {
 const planRader = src.prepare('SELECT count(*) AS n FROM plan WHERE demo = 0').get().n;
 const aeRader = src.prepare('SELECT count(*) AS n FROM arbetsstalle WHERE demo = 0').get().n;
 if (aeRader && !args['scb-villkor']) console.log(`Hoppar över ${aeRader} arbetsställen: ange --scb-villkor när SCB:s villkor är lästa.`);
-const usoRader = src.prepare('SELECT count(*) AS n FROM utsatt_omrade').get().n;
-if (usoRader && !args['polisen-uso']) console.log(`Hoppar över ${usoRader} utsatta områden: ange --polisen-uso när Polisen har godkänt användningen.`);
 if (planRader && !args['lm-planer']) console.log(`Hoppar över ${planRader} planer: ange --lm-planer <ärendenr> när licensen finns.`);
 src.close();
 
@@ -82,7 +79,7 @@ withTransaction(db, () => {
     ${args['lm-planer'] ? 'INSERT INTO plan SELECT * FROM src.plan WHERE demo = 0;' : ''}
     -- Öppna data utan personuppgifter, för hela landet (avståndet räknas från de tillåtna fastigheterna).
     INSERT INTO fororenat SELECT * FROM src.fororenat;
-    ${args['polisen-uso'] ? 'INSERT INTO utsatt_omrade SELECT * FROM src.utsatt_omrade;' : ''}
+    INSERT INTO utsatt_omrade SELECT * FROM src.utsatt_omrade;
     CREATE TABLE meta (nyckel TEXT PRIMARY KEY, varde TEXT);
   `);
   const meta = db.prepare('INSERT INTO meta VALUES (?, ?)');
