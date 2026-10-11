@@ -33,8 +33,8 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 - Scenarier (`#scenario`, som Datschas "Scenarion"): egen kassaflödeskalkyl för upp till 1 000 fastigheter, utan
   inloggning. `POST /api/underlag` ger fastigheterna, `POST /api/scenario` sparar (id = hash av innehållet, så en
   länk `#s=<id>` ändras aldrig) i en egen databas: `SCENARIO_DB`, annars `$STATE_DIRECTORY` (systemd), lokalt
-  `data/scenarion.sqlite`. Utan skrivbar plats blir länken `#sd=<scenariot komprimerat>`. Mina scenarion och
-  utkastet i `localStorage`; export som CSV och scenariofil (JSON). Horos har inga marknadshyror eller
+  `data/scenarion.sqlite`. Utan skrivbar plats blir länken `#sd=<scenariot komprimerat>`. Flera scenarier i
+  `localStorage` (`horos.scenarion` med data, sparas vid varje ändring; `horos.aktivt` = det öppna); export som CSV och scenariofil (JSON). Horos har inga marknadshyror eller
   avkastningskrav: användaren fyller i dem.
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
@@ -112,8 +112,8 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
   exploateringstal, upplåtelseform (tomträtt/äganderätt). Typkoder → klartext i import-taxering.
   Senaste överlämning: `OVERLAMNING.md`.
 - Scenarier (2026-10-11, gren `scenarion`): korta länkar kräver `deploy/scenarion.conf` på servern (en gång som
-  root, se `deploy/DEPLOY.md`); utan den används `#sd=`-länkar. Fastigheter läggs till med + i sökträffarna, från
-  fastighetspanelen, ett bolag eller filtrets träffar (knapparna lägger till i det öppna scenariot om det finns ett).
+  root, se `deploy/DEPLOY.md`); utan den används `#sd=`-länkar. + i fastighetspanelen väljer scenario (eller nytt);
+  + i sökträffarna, bolaget och filtret lägger till i det öppna scenariot.
 Den publika databasen har **0 fastigheter** (bara bolag, adresser och pressmeddelanden) tills riktiga data finns.
 
 Väntar på:

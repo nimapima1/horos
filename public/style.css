@@ -134,11 +134,25 @@ button { font: inherit; color: inherit; }
   min-height: 44px; padding: 11px 10px; border-radius: 7px; cursor: pointer;
 }
 .results li[data-kind]:hover { background: var(--accent-soft); }
-/* Lägg till i det öppna scenariot, längst till höger i träffen. */
-.results .lagg-till { margin: -6px 0 -6px auto; align-self: center; width: 32px; height: 32px; border: 0; border-radius: 8px;
+/* +: lägg till i ett scenario (sökträffarna och fastighetspanelen). */
+.lagg-till { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px;
   cursor: pointer; font: 600 18px/1 var(--font-body); background: var(--accent-soft); color: var(--accent-strong); }
-.results .lagg-till:hover { background: var(--accent); color: var(--surface-solid); }
-.results .lagg-till:disabled { cursor: default; background: none; color: var(--muted); }
+.lagg-till:hover { background: var(--accent); color: var(--surface-solid); }
+.lagg-till:disabled { cursor: default; background: none; color: var(--muted); }
+.results .lagg-till { margin: -6px 0 -6px auto; align-self: center; }
+/* +-menyn i fastighetspanelen, bredvid stängknappen: välj scenario. */
+.sc-meny { float: right; position: relative; margin: -2px 8px 0 0; }
+.sc-meny > summary { width: 40px; height: 40px; border-radius: 50%; list-style: none; }
+.sc-meny > summary::-webkit-details-marker { display: none; }
+.sc-meny[open] > summary { background: var(--accent); color: var(--surface-solid); }
+.sc-meny-lista { position: absolute; z-index: 3; top: 46px; right: 0; width: 240px; padding: 6px;
+  background: var(--surface-solid); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow); }
+.sc-meny-rubrik { padding: 6px 10px 4px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle); }
+.sc-meny-lista button { display: block; width: 100%; min-height: 40px; padding: 8px 10px; border: 0; border-radius: 7px;
+  background: none; cursor: pointer; text-align: left; font-size: 14px; font-weight: 600; }
+.sc-meny-lista button:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.sc-meny-lista .klar { color: var(--muted); font-weight: 400; }
+.sc-meny-lista .ny { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 7px 7px; color: var(--accent); }
 .results .group {
   min-height: 0; padding: 10px 10px 4px; cursor: default;
   font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle);

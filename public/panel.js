@@ -116,6 +116,7 @@ async function openFastighet(bet, adress) {
   const rubrik = adress ?? f.adresser[0] ?? f.beteckning;
   const ovriga = f.adresser.filter((a) => a !== rubrik);
   showPanel(`
+    ${scenarioMeny(f.beteckning)}
     <h2>${esc(rubrik)}${demoTag(f.demo)}</h2>
     <div class="meta">${rubrik === f.beteckning ? '' : `${esc(f.beteckning)} · `}${esc(f.kommun ?? '')}</div>
     ${ovriga.length ? `<div class="meta small">Även ${esc(ovriga.join(', '))}</div>` : ''}
@@ -202,7 +203,7 @@ async function openFastighet(bet, adress) {
       `<tr><td>${esc(u.namn)}<div class="muted small">${[u.kategori, u.ort, u.datum && `sedan ${u.datum}`].filter(Boolean).map(esc).join(' · ')}</div></td>
         <td class="num">${avstand(u.avstand_m, 'inom området')}</td></tr>`),
       'Inga utsatta områden inom 5 km.')}` : ''}
-    <div class="knappar"><button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>${scenarioKnapp(f.beteckning)}</div>
+    <button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>
     ${googleLankar(mittpunkt(f))}
     <p class="muted small" style="margin-top:16px">${[
       `Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}`,
@@ -291,8 +292,8 @@ async function openOm() {
       <li>Byt <strong>Färga efter</strong> i teckenförklaringen för att se värde, användning, ägartyp eller köpår.</li>
       <li><a href="#transaktioner">Transaktioner</a> och <a href="#agare">Ägare</a> sammanfattar köpen och de största ägarna.</li>
       <li><a href="#scenario">Scenarier</a>: räkna kassaflöde och värde för en eller flera fastigheter med egna antaganden,
-        och spara kalkylen som en länk. Lägg till fastigheter med <strong>+</strong> i sökningen, från en fastighet,
-        ett bolag eller filtrets träffar.</li>
+        och dela kalkylen som en länk. Lägg till en fastighet med <strong>+</strong> i fastighetspanelen (välj scenario)
+        eller i sökningen (det öppna scenariot), eller ett helt bolag eller filtrets träffar.</li>
       <li>Adressen i webbläsaren sparar kartläge, filter och vald fastighet, så att du kan dela länken.</li>
     </ul>
     <h3>Källor</h3>

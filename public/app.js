@@ -504,7 +504,10 @@ $('#q').addEventListener('keydown', (e) => {
   if (e.key === 'Escape') $('#results').hidden = true;
   if (e.key === 'Enter') $('#results li[data-kind]')?.click();
 });
-document.addEventListener('click', (e) => { if (!e.target.closest('.search')) $('#results').hidden = true; });
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search')) $('#results').hidden = true;
+  for (const m of document.querySelectorAll('.sc-meny[open]')) if (!m.contains(e.target)) m.open = false;
+});
 
 async function runSearch() {
   const term = $('#q').value.trim();
@@ -620,4 +623,5 @@ VIEWS['#scenario'] = openScenarier;
 // Vyerna och scenariolänkarna (#s=kort id, #sd=scenariot i länken).
 const visaVy = () => (arScenarioLank(location.hash) ? oppnaScenarioLank(location.hash) : VIEWS[location.hash]?.());
 visaVy();
+if (!arScenarioLank(location.hash) && location.hash !== '#scenario') aterstallAktivt();   // de vyerna öppnar det själva
 addEventListener('hashchange', visaVy);

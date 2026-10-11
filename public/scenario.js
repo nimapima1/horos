@@ -1,7 +1,8 @@
 // Scenarier: egna kassaflödeskalkyler för en grupp fastigheter (som Datschas "Scenarion"), utan inloggning.
 // Ett scenario sparas som kort länk (/api/scenario; id:t är en hash av innehållet, så en delad länk ändras
-// aldrig), eller i själva länken (#sd=) om servern inte kan spara. Listan Mina scenarion och utkastet ligger
-// i webbläsaren, och scenariot kan laddas ner och öppnas som fil. Bara deklarationer; app.js kopplar in dem.
+// aldrig), eller i själva länken (#sd=) om servern inte kan spara. Alla scenarier finns i Mina scenarion i
+// webbläsaren och sparas där vid varje ändring; ett av dem är öppet och tar emot det som läggs till. Scenariot
+// kan också laddas ner och öppnas som fil. Bara deklarationer; app.js kopplar in dem.
 
 let scenario = null;     // öppet scenario: { data, underlag, saknas, byggd, nyckel, lank }
 let bolagUrval = null;   // senast öppnade bolagets fastigheter, för "Räkna på innehavet" (se openBolag)
@@ -12,12 +13,28 @@ const lokalslag = (s) => ['Bostäder', ...s.lokaltyper];
 const ANTAGANDEN = [['hyra', 'Hyra, kr/m²', 't.ex. 2 000'], ['vakans', 'Vakans, %', '0'], ['drift', 'Drift, kr/m²', '0'], ['uh', 'Underhåll, kr/m²', '0']];
 const normBet = (b) => String(b).trim().replace(/\s+/g, ' ').toUpperCase();   // som normBeteckning på servern
 
-// Mina scenarion och utkastet (det öppna scenariot, så att det finns kvar efter en omladdning).
+// Mina scenarion: [{nyckel, namn, data, lank, andrad, antal}], senast ändrade först. lank är den delade länken,
+// null om scenariot har ändrats sedan dess. horos.aktivt är nyckeln till det öppna scenariot.
+// shortcut: högst 50 scenarier, det äldsta faller bort tyst; varna om någon når gränsen.
 const minaScenarion = () => { try { return JSON.parse(store.get('horos.scenarion')) ?? []; } catch { return []; } };
 const sparaMina = (l) => store.set('horos.scenarion', JSON.stringify(l.slice(0, 50)));
-const utkast = () => { try { return JSON.parse(store.get('horos.utkast')); } catch { return null; } };
-const sparaUtkast = () => store.set('horos.utkast', scenario
-  ? JSON.stringify({ data: scenario.data, nyckel: scenario.nyckel, lank: scenario.lank }) : '');
+function sparaLokalt() {
+  if (!scenario) return store.set('horos.aktivt', '');
+  const d = scenario.data;
+  sparaMina([{ nyckel: scenario.nyckel, namn: d.namn, data: d, lank: scenario.lank, andrad: new Date().toISOString().slice(0, 10), antal: d.bet.length },
+    ...minaScenarion().filter((x) => x.nyckel !== scenario.nyckel)]);
+  store.set('horos.aktivt', scenario.nyckel);
+}
+// Läser in det öppna scenariot efter en omladdning, utan att byta vy, så att + och Lägg till fungerar direkt.
+function aterstallAktivt() {
+  const x = minaScenarion().find((m) => m.nyckel === store.get('horos.aktivt'));
+  if (x && !scenario) oppnaPost(x, { visa: false }).catch(() => {});
+}
+// Gör ett scenario i listan till det öppna (laddar underlaget); visa: byt panelen till scenariot.
+async function oppnaPost(x, { visa = true } = {}) {
+  const data = x.data ?? (x.lank ? await hamtaLank(new URL(x.lank).hash) : null);
+  return oppnaScenario(data, { nyckel: x.nyckel, lank: x.lank, visa });
+}
 
 // Scenariot i länken: JSON, komprimerat (deflate) och base64url.
 async function packa(obj) {
@@ -33,8 +50,9 @@ async function packaUpp(text) {
 const arScenarioLank = (h) => /^#sd?=/.test(h);
 const kortLank = (hash) => `${location.origin}${location.pathname}${hash}`;
 
-// Öppnar scenariot (data i formatet från nyttScenario, t.ex. från en länk eller fil) med underlaget från servern.
-async function oppnaScenario(data, { nyckel, lank } = {}) {
+// Öppnar scenariot (data i formatet från nyttScenario, t.ex. från en länk eller fil) med underlaget från servern,
+// och lägger det i Mina scenarion om det inte redan finns där.
+async function oppnaScenario(data, { nyckel, lank, visa = true } = {}) {
   if (data?.v !== 1 || !Array.isArray(data.bet)) return showPanel('<p class="empty">Det här är inte ett scenario från Horos.</p>');
   const s = await statusP;
   // Länkar och filer kommer utifrån: fyll i det som saknas och håll år och period inom rimliga gränser.
@@ -49,17 +67,17 @@ async function oppnaScenario(data, { nyckel, lank } = {}) {
   scenario = {
     data: d, underlag: u.fastigheter.sort((a, b) => (b.varde_tkr ?? 0) - (a.varde_tkr ?? 0)),
     saknas: d.bet.filter((b) => !finns.has(b)), byggd: u.byggd,
-    nyckel: nyckel ?? minaScenarion().find((x) => x.lank === lank)?.nyckel ?? crypto.randomUUID(), lank: lank ?? null,
+    nyckel: nyckel ?? (lank && minaScenarion().find((x) => x.lank === lank)?.nyckel) ?? crypto.randomUUID(), lank: lank ?? null,
   };
-  sparaUtkast();
-  visaScenario();
+  sparaLokalt();
+  if (visa) visaScenario();
 }
 
+const hamtaLank = (hash) => (hash.startsWith('#s=') ? api(`/api/scenario/${encodeURIComponent(hash.slice(3))}`) : packaUpp(hash.slice(4)));
 async function oppnaScenarioLank(hash) {
   if (scenario?.lank === kortLank(hash)) return visaScenario();
   try {
-    const data = hash.startsWith('#s=') ? await api(`/api/scenario/${encodeURIComponent(hash.slice(3))}`) : await packaUpp(hash.slice(4));
-    await oppnaScenario(data, { lank: kortLank(hash) });
+    await oppnaScenario(await hamtaLank(hash), { lank: kortLank(hash) });
   } catch (e) {
     showPanel(`<p class="empty">Kunde inte öppna scenariot: ${esc(e.message)}</p>`);
   }
@@ -71,8 +89,7 @@ async function nyttScenarioFran(namn, bet) {
     return showPanel(`<h2>För många fastigheter</h2><p class="empty">Ett scenario kan ha högst ${s.maxScenario.toLocaleString('sv-SE')}
       fastigheter, och urvalet har ${bet.length.toLocaleString('sv-SE')}. Avgränsa med filtret eller kartutsnittet.</p>`);
   }
-  if (scenario && !scenario.lank && !confirm(`Scenariot "${scenario.data.namn}" är inte sparat. Vill du ersätta det?`)) return;
-  return oppnaScenario(nyttScenario(namn, bet));
+  return oppnaScenario(nyttScenario(namn, bet));   // det öppna ligger kvar i Mina scenarion
 }
 
 // Sifferfält bundet till en plats i scenariot (vag), med det som används när fältet är tomt som platshållare.
@@ -199,10 +216,10 @@ function scenarioInput(el) {
   andrat();
   uppdateraResultat();
 }
-// Scenariot skiljer sig nu från den sparade länken.
+// Scenariot skiljer sig nu från den delade länken.
 function andrat() {
   scenario.lank = null;
-  sparaUtkast();
+  sparaLokalt();
   if (!$('#panel .scenario')) return;   // ändrat från en annan vy (Lägg till): adressen är den vyns
   history.replaceState(null, '', `${location.pathname}${location.search}#scenario`);
   $('#sc-lank').hidden = true;
@@ -227,8 +244,6 @@ async function laggTillIScenario(bet) {
   andrat();
   return r.fastigheter.length;
 }
-const scenarioNamn = () => esc(scenario.data.namn || 'scenariot');
-
 async function sparaScenario(knapp) {
   const s = await statusP;
   const d = { ...scenario.data, underlagFran: scenario.byggd ?? undefined };
@@ -237,10 +252,8 @@ async function sparaScenario(knapp) {
   hash ??= `#sd=${await packa(d)}`;
   scenario.data = d;
   scenario.lank = kortLank(hash);
-  sparaUtkast();
+  sparaLokalt();
   history.replaceState(null, '', `${location.pathname}${location.search}${hash}`);
-  sparaMina([{ nyckel: scenario.nyckel, namn: d.namn, lank: scenario.lank, sparad: new Date().toISOString().slice(0, 10), antal: d.bet.length },
-    ...minaScenarion().filter((x) => x.nyckel !== scenario.nyckel)]);
   const falt = $('#sc-lank');
   Object.assign(falt, { value: scenario.lank, hidden: false });
   falt.select();
@@ -279,33 +292,32 @@ async function lasScenarioFil(fil) {
   catch { showPanel('<p class="empty">Filen kunde inte läsas som ett scenario från Horos.</p>'); }
 }
 
-// Mina scenarion, eller det öppna scenariot (också efter en omladdning, från utkastet).
+// Mina scenarion, eller det öppna scenariot (också efter en omladdning).
 async function openScenarier({ lista = false } = {}) {
   if (!lista && scenario) return visaScenario();
-  const u = !lista && utkast();
-  if (u?.data) return oppnaScenario(u.data, u);
-  select(null);
   const mina = minaScenarion();
+  const aktivt = !lista && mina.find((x) => x.nyckel === store.get('horos.aktivt'));
+  if (aktivt) return oppnaPost(aktivt);
+  select(null);
   showPanel(`
     <h2>Scenarier</h2>
     <div class="meta">Egna kassaflödeskalkyler för en eller flera fastigheter</div>
-    <p class="small">Starta från ett bolag (<strong>Räkna på innehavet</strong>), en fastighet (<strong>Räkna på fastigheten</strong>)
+    <p class="small">Starta från en fastighet (<strong>+</strong> uppe till höger), ett bolag (<strong>Räkna på innehavet</strong>)
       eller filtret (<strong>Räkna på träffarna</strong>). Fyll i hyror, vakanser, kostnader och avkastningskrav, så räknar Horos
-      fram kassaflöde och värde år för år. Spara för att få en länk att dela.</p>
-    ${scenario ? `<button type="button" class="copy" data-sc="visa">Tillbaka till ${esc(scenario.data.namn || 'scenariot')}</button>` : ''}
+      fram kassaflöde och värde år för år. Allt sparas här i webbläsaren; <strong>Spara och kopiera länk</strong> ger en länk att dela.</p>
     <h3>Mina scenarion</h3>
-    ${table('<th>Scenario</th><th class="num">Sparat</th><th></th>', mina.map((x) =>
-      `<tr><td><a data-sc="oppna" data-nyckel="${esc(x.nyckel)}">${esc(x.namn || 'Namnlöst scenario')}</a>
-        <div class="muted small">${Number(x.antal).toLocaleString('sv-SE')} fastigheter</div></td>
-        <td class="num">${esc(x.sparad)}</td><td class="num"><a data-sc="glom" data-nyckel="${esc(x.nyckel)}">Ta bort</a></td></tr>`),
-      'Inga sparade scenarier i den här webbläsaren.')}
-    <div class="meta small">Listan finns bara i den här webbläsaren; att ta bort ett scenario här tar inte bort länken.
-      Ladda ner scenariofilen om du vill ha en egen kopia.</div>
+    ${table('<th>Scenario</th><th class="num">Ändrat</th><th></th>', mina.map((x) =>
+      `<tr><td><a data-sc="oppna" data-nyckel="${esc(x.nyckel)}">${esc(x.namn || 'Namnlöst scenario')}</a>${x.nyckel === scenario?.nyckel ? ' <span class="tag">öppet</span>' : ''}
+        <div class="muted small">${Number(x.antal).toLocaleString('sv-SE')} fastigheter · ${x.lank ? 'delad länk' : 'inte delat'}</div></td>
+        <td class="num">${esc(x.andrad ?? x.sparad ?? '')}</td><td class="num"><a data-sc="glom" data-nyckel="${esc(x.nyckel)}">Ta bort</a></td></tr>`),
+      'Inga scenarier i den här webbläsaren ännu.')}
+    <div class="meta small">Listan finns bara i den här webbläsaren. Att ta bort ett scenario här tar inte bort en delad länk.
+      Ladda ner scenariofilen om du vill ha en egen kopia eller flytta scenariot till en annan dator.</div>
     <label class="copy">Öppna scenariofil<input type="file" accept=".json,application/json" data-sc-fil hidden></label>
   `);
 }
 
-// Knappar med data-sc i panelen.
+// Knappar med data-sc i panelen och i +-menyn.
 async function scenarioKlick(el) {
   const s = await statusP, a = el.dataset.sc;
   if (a === 'bolag' && bolagUrval) {
@@ -316,12 +328,6 @@ async function scenarioKlick(el) {
   if (a === 'fastighet') return nyttScenarioFran(el.dataset.bet, [el.dataset.bet]);
   if (a === 'visa') return visaScenario();
   if (a === 'lista') return openScenarier({ lista: true });
-  if (a === 'lagg-till') {
-    if (!await laggTillIScenario([el.dataset.bet]).catch(() => 0)) { el.textContent = 'Kunde inte läggas till'; return; }
-    el.textContent = `Tillagd. Öppna ${scenario.data.namn || 'scenariot'}`;
-    el.dataset.sc = 'visa';
-    return;
-  }
   if (a === 'ta-bort') {
     const bet = el.dataset.bet;
     scenario.data.bet = scenario.data.bet.filter((b) => b !== bet);
@@ -333,30 +339,47 @@ async function scenarioKlick(el) {
   if (a === 'spara') return sparaScenario(el);
   if (a === 'csv') return laddaNer(`${filnamn()}.csv`, scenarioCsv(s), 'text/csv;charset=utf-8');
   if (a === 'fil') return laddaNer(`${filnamn()}.json`, JSON.stringify(scenario.data, null, 1), 'application/json');
-  if (a === 'stang') {
+  if (a === 'stang') {   // scenariot ligger kvar i Mina scenarion, men inget är öppet
     scenario = null;
-    sparaUtkast();
+    sparaLokalt();
     markera([]);
     return openScenarier({ lista: true });
   }
   const mina = minaScenarion(), x = mina.find((m) => m.nyckel === el.dataset.nyckel);
-  if (a === 'oppna' && x) {
-    history.replaceState(null, '', `${location.pathname}${location.search}${new URL(x.lank).hash}`);
-    return oppnaScenarioLank(new URL(x.lank).hash);
-  }
+  if (a === 'oppna' && x) return oppnaPost(x);
   if (a === 'glom') {
     sparaMina(mina.filter((m) => m !== x));
+    if (x && x.nyckel === scenario?.nyckel) { scenario = null; sparaLokalt(); }
     return openScenarier({ lista: true });
+  }
+  // +-menyn i fastighetspanelen: lägg till i valt scenario, som då blir det öppna.
+  if (a === 'lagg-i' && x) {
+    el.disabled = true;
+    if (x.nyckel !== scenario?.nyckel) await oppnaPost(x, { visa: false });
+    if ((await laggTillIScenario([el.dataset.bet]).catch(() => null)) === null) return;
+    // Rita om menyn (bock och vilket som är öppet) och låt den stå öppen.
+    const ny = document.createRange().createContextualFragment(scenarioMeny(el.dataset.bet)).firstElementChild;
+    ny.open = true;
+    el.closest('.sc-meny').replaceWith(ny);
   }
 }
 
-// Knappen i fastighetspanelen: lägg till i det öppna scenariot, eller börja ett nytt.
-const scenarioKnapp = (bet) => (!scenario
-  ? `<button type="button" class="copy" data-sc="fastighet" data-bet="${esc(bet)}">Räkna på fastigheten</button>`
-  : scenario.data.bet.includes(bet)
-    ? `<button type="button" class="copy" data-sc="visa">Öppna ${scenarioNamn()}</button>`
-    : `<button type="button" class="copy" data-sc="lagg-till" data-bet="${esc(bet)}">Lägg till i ${scenarioNamn()}</button>`);
+// +-menyn i fastighetspanelen: scenarierna (det öppna först, bock där fastigheten redan finns) och Nytt scenario.
+function scenarioMeny(bet) {
+  const mina = minaScenarion().sort((a, b) => (b.nyckel === scenario?.nyckel) - (a.nyckel === scenario?.nyckel));
+  const med = (x) => (x.nyckel === scenario?.nyckel ? scenario.data.bet : x.data?.bet ?? []).includes(bet);
+  const namn = (x) => `${esc(x.namn || 'Namnlöst scenario')}${x.nyckel === scenario?.nyckel ? ' <span class="muted small">öppet</span>' : ''}`;
+  return `<details class="sc-meny"><summary class="lagg-till" title="Lägg till i ett scenario" aria-label="Lägg till ${esc(bet)} i ett scenario">+</summary>
+    <div class="sc-meny-lista">
+      <div class="sc-meny-rubrik">Lägg till i scenario</div>
+      ${mina.map((x) => (med(x)
+        ? `<button type="button" class="klar" data-sc="oppna" data-nyckel="${esc(x.nyckel)}">✓ ${namn(x)}</button>`
+        : `<button type="button" data-sc="lagg-i" data-nyckel="${esc(x.nyckel)}" data-bet="${esc(bet)}">${namn(x)}</button>`)).join('')}
+      <button type="button" class="ny" data-sc="fastighet" data-bet="${esc(bet)}">Nytt scenario</button>
+    </div></details>`;
+}
 // Bolagspanelen: hela innehavet till ett nytt scenario, eller till det öppna.
+const scenarioNamn = () => esc(scenario.data.namn || 'scenariot');
 const bolagScenarioKnapp = () => `<button type="button" class="copy" data-sc="bolag">${scenario ? `Lägg till i ${scenarioNamn()}` : 'Räkna på innehavet'}</button>`;
 // Plusknappen på sökträffar med en fastighet när ett scenario är öppet (se runSearch).
 const sokLaggTill = (bet) => (!scenario || !bet ? ''
