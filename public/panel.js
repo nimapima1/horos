@@ -203,7 +203,7 @@ async function openFastighet(bet, adress) {
         <td class="num">${avstand(u.avstand_m, 'inom området')}</td></tr>`),
       'Inga utsatta områden inom 5 km.')}` : ''}
     <button type="button" class="copy" data-copy>Kopiera länk till fastigheten</button>
-    ${googleLankar(f, s.streetview)}
+    ${googleLankar(mittpunkt(f))}
     <p class="muted small" style="margin-top:16px">${[
       `Gränser: ${f.kalla === 'demo' ? 'OpenStreetMap (exempel)' : 'Lantmäteriet'}`,
       f.planer.length && `planer: ${f.planer.some((p) => p.demo) ? 'påhittade (exempel)' : 'Lantmäteriet'}`,
@@ -213,6 +213,7 @@ async function openFastighet(bet, adress) {
       f.hyresgaster.length && `företag: ${f.hyresgaster.some((h) => h.demo) ? 'påhittade (exempel)' : SCB_KALLA}`,
     ].filter(Boolean).join(' · ')}</p>
   `);
+  streetView.visa(mittpunkt(f), s.streetview);
 }
 
 async function openBolag(orgnr) {
@@ -319,20 +320,14 @@ const field = (label, name, opts) => `<label>${label}<select name="${name}">${op
 const bar = (andel) => `<div class="bar"><i style="width:${Math.max(1, Math.round(andel * 100))}%"></i></div>`;
 const fastighetLink = (r) => `<a data-fastighet="${esc(r.beteckning)}" ${bboxAttr(r)}>${esc(r.beteckning)}</a>`
   + (r.antal > 1 ? ` <span class="muted small">+ ${r.antal - 1} till</span>` : '');
-// Länkar till Google och, med nyckel, Street View i panelen. Inget skickas till Google förrän besökaren klickar:
-// iframen skapas först vid klick på knappen (app.js).
+// Mitten av fastighetens bbox som "lat,lon" för Google (länkarna och Street View-rutan i app.js).
 // shortcut: mitten av bbox kan hamna utanför en L-formad fastighet; byt mot en punkt i polygonen om det stör.
-const googleLankar = (f, nyckel) => {
-  if (f.minx == null) return '';
-  const p = `${((f.miny + f.maxy) / 2).toFixed(6)},${((f.minx + f.maxx) / 2).toFixed(6)}`;
+const mittpunkt = (f) => f.minx == null ? null : `${((f.miny + f.maxy) / 2).toFixed(6)},${((f.minx + f.maxx) / 2).toFixed(6)}`;
+// Vanliga länkar: inget skickas till Google förrän besökaren klickar.
+const googleLankar = (p) => {
+  if (!p) return '';
   const a = (href, text) => `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
-  const embed = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(nyckel)}&location=${p}&fov=80`;
-  return `${nyckel ? `<div class="streetview">
-      <button type="button" class="copy" data-streetview="${esc(embed)}">Visa Street View</button>
-      <div class="meta small">Bilden laddas från Google först när du klickar. Google får då din IP-adress och
-        platsen du tittar på, och kan sätta kakor.</div>
-    </div>` : ''}
-    <p class="small">Öppna i ${a(`https://www.google.com/maps/search/?api=1&amp;query=${p}`, 'Google Maps')} ·
+  return `<p class="small">Öppna i ${a(`https://www.google.com/maps/search/?api=1&amp;query=${p}`, 'Google Maps')} ·
     ${a(`https://www.google.com/maps/@?api=1&amp;map_action=pano&amp;viewpoint=${p}`, 'Street View')}</p>`;
 };
 const affarRad = (r) => `<tr>${dagCell(r.dag)}
