@@ -55,6 +55,8 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 --data`.
   Lösenfrasen måste skrivas inom ett par minuter, annars stänger servern anslutningen.
 - Max 6 terminalflikar; flikar användaren skrivit i kan bara användaren stänga.
+- Street View i fastighetspanelen (två klick: iframen skapas först vid klick) visas bara om `GOOGLE_EMBED_KEY`
+  (Maps Embed API, låst till horos.se) finns i secrets.env; CSP:n i Caddy kräver `frame-src https://www.google.com`.
 - Hemligheter (GEOTORGET_USER/PASS för historiska ortofoton) ligger i
   `/etc/fastighetskarta/secrets.env`, satta med `scripts/login-till-server.mjs`. Lösenord skrivs
   alltid av användaren i terminalen, aldrig i chatten.

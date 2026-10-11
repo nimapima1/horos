@@ -275,7 +275,7 @@ const q = {
   kommuner: db.prepare('SELECT DISTINCT kommun FROM fastighet WHERE kommun IS NOT NULL ORDER BY kommun'),
   planerIBbox: HAS_PLAN && db.prepare(`SELECT p.id, p.typ, p.planid, p.namn, p.datum, p.geojson, p.demo FROM plan p
     WHERE ${overlapar('plan', 'p')} ORDER BY p.datum DESC NULLS LAST LIMIT ${MAX_FEATURES + 1}`),
-  fastighet: db.prepare('SELECT beteckning, kommun, areal_m2, kalla, demo FROM fastighet WHERE beteckning = ?'),
+  fastighet: db.prepare('SELECT beteckning, kommun, areal_m2, kalla, demo, minx, miny, maxx, maxy FROM fastighet WHERE beteckning = ?'),
   taxering: db.prepare(`SELECT t.*, b.namn AS agare_namn FROM taxering t
     LEFT JOIN bolag b ON b.orgnr = t.agare_orgnr
     WHERE t.beteckning = ? ORDER BY t.ar DESC`),
@@ -690,6 +690,8 @@ const routes = [
     agarkategorier: AGARKATEGORIER,
     upplatelseformer: UPPLATELSEFORMER,
     historiska: HIST_AUTH ? Object.keys(HIST_LAYERS).map(Number) : [],
+    // Nyckel till Googles Maps Embed API. Den syns ändå i iframens adress; skyddet är hänvisarlåset hos Google.
+    streetview: process.env.GOOGLE_EMBED_KEY || null,
   }]],
 
   [/^\/api\/fastigheter$/, 'api', (_m, url) => {
