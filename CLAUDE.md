@@ -50,7 +50,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 
 ## Server
 
-- Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3 plus ändringarna i v4–v5 (www-blocket, inget `Via`, `set-secret` utan längd), inlagda för hand som root 2026-10-10. Root-lösenordet återställdes 2026-10-10 (Hetzner > Rescue).
+- Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3 plus ändringarna i v4–v5 (www-blocket, inget `Via`, `set-secret` utan längd), inlagda för hand som root 2026-10-10, och v6 (`deploy/scenarion.conf` som drop-in, `StateDirectory=horos-scenarion`) inlagd 2026-10-11. Root-lösenordet återställdes 2026-10-10 (Hetzner > Rescue).
   Hetzners webbkonsol tappar Skift vid inklistring (`_ { } : &` blir `- [ ] ; 7`): skriv dem som
   `\x5f \x7b \x7d \x3a` i sed och kör kommandon var för sig i stället för med `&&`.
   Domän horos.se (Loopia, LoopiaDNS, köpt 2026-10-10; A-post @ och www -> servern; www skickas vidare till horos.se).
@@ -81,7 +81,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 - Personnummer, kontoskapande, köp och inskickning av ansökningar görs av användaren själv.
 - Användarens Geotorget-konto används för allt som rör Lantmäteriet.
 
-## Status (2026-10-10)
+## Status (2026-10-11)
 
 Live på https://horos.se (sedan 2026-10-10; http://37.27.152.172 fungerar inte längre): ny design och logotyp, bakgrundsväljare (karta, satellit 2025, flygfoton 2005/1995/1975/1960),
 adressökning (120 177 OSM-adresser) och panel med Ägare/Användning/Senaste köp först.
@@ -111,9 +111,10 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
 - Fastighetspanelen (2026-10-10): rutan Användning (lokaltyper, uppskattad LOA), tomtareal, LOA/BOA,
   exploateringstal, upplåtelseform (tomträtt/äganderätt). Typkoder → klartext i import-taxering.
   Senaste överlämning: `OVERLAMNING.md`.
-- Scenarier (2026-10-11, gren `scenarion`): korta länkar kräver `deploy/scenarion.conf` på servern (en gång som
-  root, se `deploy/DEPLOY.md`); utan den används `#sd=`-länkar. + i fastighetspanelen väljer scenario (eller nytt);
-  + i sökträffarna, bolaget och filtret lägger till i det öppna scenariot.
+- Scenarier (live 2026-10-11, PR #8): korta länkar på (`/api/status` → `kortlankar: true`), sparade i
+  `/var/lib/horos-scenarion/scenarion.sqlite` (ingen säkerhetskopia). + i fastighetspanelen väljer scenario (eller
+  nytt); + i sökträffarna, bolaget och filtret lägger till i det öppna. Panelen: Om/Metod/Data uppe till höger,
+  flikraden Filter/Transaktioner/Ägare/Scenarier under sökfältet.
 Den publika databasen har **0 fastigheter** (bara bolag, adresser och pressmeddelanden) tills riktiga data finns.
 
 Väntar på:

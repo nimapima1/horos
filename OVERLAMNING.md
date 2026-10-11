@@ -1,4 +1,4 @@
-# Överlämning 2026-10-11 (kväll)
+# Överlämning 2026-10-11 (sen kväll)
 
 Läs `CLAUDE.md` först (regler, teknik, server) och `PRIVAT.md` (inte i git: mejlkontakter, myndighetsärenden,
 kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 och 2026-10-11 och vad som ska göras härnäst.
@@ -11,22 +11,56 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
 - **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt.
-  - Koden till och med 5960ea9 (PR #7, deployad 2026-10-11 ca 19:30 UTC). Däri också PR #2–#4 från andra
-    sessioner 2026-10-11: alltid mörkt läge, mobilrättningar, Förorenade och Utsatta områden i panelen.
+  - Koden till och med 9551e02 (PR #8, scenarier och ny panel, deployad 2026-10-11 sent från grenen; samma kod som
+    master). Däri också PR #2–#7 från 2026-10-11: alltid mörkt läge, mobilrättningar, Förorenade och Utsatta
+    områden, Google Maps och Street View.
   - Publik databas byggd 2026-10-10 14:25 med `--alla-bolag`, publicerad med `--data`: 0 fastigheter,
     2,2 miljoner bolag (ägarkontrollen som ord: `stat`, `kommun`, `region` …), 120 177 adresser, inga
     arbetsställen (byggt utan `--scb-villkor`), 127 affärer ur pressmeddelanden (uppdateras av cron).
   - Servern: cloud-init v3 + ändringarna i v4–v5 inlagda för hand (www-blocket, inget `Via`-huvud,
     `set-secret` utan längdutskrift), plus `frame-src https://www.google.com` i CSP:n (2026-10-11, i
     `/etc/caddy/Caddyfile.template` och `set-domain horos.se`). Root-lösenordet återställdes 2026-10-10
-    (Hetzner > Rescue); användaren har det.
+    (Hetzner > Rescue); användaren har det. Drop-in `fastighetskarta.service.d/scenarion.conf` (cloud-init v6,
+    `StateDirectory=horos-scenarion`) inlagd 2026-10-11: korta länkar till scenarier är på.
   - `secrets.env`: GEOTORGET_USER/PASS och GOOGLE_EMBED_KEY.
-- `npm test`: 36 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
+- `npm test`: 44 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
   av en annan session). Starta om servern efter import eller demo-data.
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
   terminal (lösenfras **direkt**, annars stänger servern anslutningen; det hände två gånger 2026-10-10). Deploy
   laddar upp arbetskatalogen som den är: kontrollera `git status` först så att ingen annan sessions ocommittade
   ändringar följer med.
+
+## Gjort 2026-10-11 (sen kväll): Scenarier och ny panel (PR #8)
+
+Idén kommer från Datschas "Scenarion" (användaren loggade in, Claude läste bara gränssnittet: ett scenario är en
+sparad lista fastigheter med startår och kalkylperiod, schablonvärden per lokalslag från Newsec m.fl., kassaflöde,
+nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
+
+- **Kalkylen** (`public/kalkyl.js`, utan DOM, testad i `test/kalkyl.test.mjs`): hyra, vakans, drift och underhåll
+  per lokalslag (Bostäder + `LOKALTYPER`), hyres- och kostnadsutveckling, fastighetsskatt (schablon från
+  taxeringen, `shortcut:` för bostäder och blandade enheter) och tomträttsavgäld ger driftnettot; värdet är
+  nuvärdet av perioden plus restvärde (driftnettot året efter / direktavkastningskravet). Kalkylränta =
+  direktavkastningskrav + hyresutveckling om den inte anges. Nyckeltal: värde/m², direktavkastning, vakans- och
+  DoU-tålighet (formlerna stämmer med Datschas exempel). **Horos har inga marknadshyror eller avkastningskrav**:
+  fälten är tomma med exempel i grått, ytan är den uppskattade LOA:n eller användarens egen.
+- **Vyn** (`public/scenario.js`, `#scenario`): namn, knappar (Spara och kopiera länk, Excel (CSV), Scenariofil,
+  Mina scenarion, Stäng), nyckeltal, kassaflöde i tkr, antaganden (lokalslag utan yta under "Fler lokalslag"),
+  fastigheterna med egna ytor/skatt/avgäld. Högst 1 000 fastigheter (`MAX_SCENARIO`).
+- **Flera scenarier**: alla i `localStorage` (`horos.scenarion` med data, sparas vid varje ändring, högst 50,
+  `shortcut:`); `horos.aktivt` är det öppna och läses in vid sidladdning. Varning i vyn om webbläsaren inte kan
+  spara. **Lägga till**: + i fastighetspanelen (meny: välj scenario, bock där fastigheten finns, Nytt scenario);
+  + i sökträffarna, "Lägg till i …" i bolagspanelen och i filtret lägger till i det öppna.
+- **Dela**: `POST /api/scenario` sparar i en egen databas (`SCENARIO_DB`, annars `$STATE_DIRECTORY`, lokalt
+  `data/scenarion.sqlite`); id = 10 tecken av sha256 av innehållet, så en länk `#s=<id>` ändras aldrig.
+  Validering: `application/json` (skydd mot formulär från andra sidor), 256 kB, bara objekt/listor/korta
+  strängar/tal, djup 5, egen hastighetsgräns `spara` (5 per 10 s), högst 200 000 scenarier. Utan skrivbar plats:
+  `#sd=` med scenariot komprimerat i länken. `POST /api/underlag` ger fastigheterna (värde, typ, upplåtelse, LOA).
+  Export: CSV (formelskydd för text som börjar med = + - @) och scenariofil (JSON) som kan öppnas igen.
+- **Panelen**: Om/Metod/Data som små länkar uppe till höger; Filter, Transaktioner, Ägare och Scenarier som en
+  flikrad under sökfältet (aktiv flik markerad, antal filter som bricka). Nyckeltal i fast rutnät.
+  **Affärer heter Transaktioner** (`#transaktioner`; `#affarer` och `/api/affarer` finns kvar).
+- **Granskning** (ponytail-review): 7 fynd, alla åtgärdade i baf8fec (fel scenario vid nätverksfel, CSV-formler,
+  tyst misslyckad sparning, kolumnnamn, NaN i skatt, kommentar, test av länkformatet).
 
 ## Gjort 2026-10-11 (kväll): Google Maps och Street View (PR #5–#7)
 
@@ -83,6 +117,11 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
 
 ## Förslag till nästa session
 
+0. **Scenarier**: tryck en gång på "Spara och kopiera länk" på horos.se och öppna länken i ett privat fönster
+   (sparningen på servern är inte provad live, för att inte lämna ett testscenario kvar). Prova decimalkomma
+   ("4,5") i sifferfälten i Safari/iPhone; bara Chromium är provat. När taxeringen kommer: ta ytor (LOA/BOA) och
+   bostads-/lokalvärde därifrån i stället för uppskattningen och skatteschablonen. Möjliga nästa steg: öppna
+   standardvärden (t.ex. SCB:s bostadshyror per kommun) och finansiering (lån, ränta, amortering).
 1. Kolla Gmail efter svar på tillståndsmejlen.
 2. Läs `nyheter.log` på servern: `ssh deploy@37.27.152.172 tail /var/lib/fastighetskarta/nyheter.log`. Första
    gången ett nytt pressmeddelande kommer ska raden sakna `(inget ändrades)`; då har bytet och omstarten med
@@ -115,6 +154,15 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
 
 ## Tips för arbetet
 
+- Python finns inte på datorn: ui-ux-pro-max:s sökskript går inte att köra (använd riktlinjerna direkt), och
+  skript för att ändra filer skrivs i Node. Långa `node - <<'EOF'`-heredocs med citattecken i texten kan få
+  Bash-verktyget att vägra ("unexpected EOF"); skriv då skriptet till scratchpad med Write och kör filen.
+- Auto-läget stoppade `read_terminal` på deploy-fliken 2026-10-11 ("Production Deploy"): användaren läser av
+  utskriften, Claude kontrollerar efteråt med `curl https://horos.se/api/status`.
+- `/thermo-nuclear-code-quality-review` finns inte här; granskning görs med `/ponytail:ponytail-review` eller
+  `/code-review`.
+- Skärmbilder i webbläsarpanelen är nedskalade: klicka hellre via `find`/`read_page`-referenser än koordinater.
+
 - I PowerShell blockeras `npm` (execution policy): kör `& "C:\Program Files\nodejs\node.exe" scripts/…` direkt.
 - Bash-verktyget och Python i heredocs gör om `\\`, `\b` och `\n`; redigera filer med Edit/Write när texten har
   backslash. Kontrollera efteråt med `grep -c $'\x08'` att inga backspace-tecken hamnat i regexar.
@@ -136,6 +184,10 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   konsolen och öppna en fastighet (Google svarar "API key is invalid", det är väntat).
 
 ## Kända brister
+
+- Scenarier: finns bara i webbläsaren där de skapades (flytta med länk eller fil); de korta länkarna ligger på
+  servern utan säkerhetskopia och utan gallring. Vid sidladdning med ett öppet scenario hämtas dess underlag
+  (upp till 1 000 fastigheter) en gång. Samma scenario öppet i två flikar: den som sparar sist vinner.
 
 - Pressmeddelandena tolkas med regler (regexar): fastigheter kan saknas eller bli fel, och priset är bolagets
   uppgift (ofta underliggande fastighetsvärde). Felaktiga kandidatbeteckningar syns aldrig, eftersom bara
