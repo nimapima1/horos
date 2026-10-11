@@ -1,4 +1,4 @@
-// Panelvyer: fastighet, bolag, Om, Affärer och Största ägare. Bara deklarationer: laddas före app.js,
+// Panelvyer: fastighet, bolag, Om, Transaktioner och Största ägare. Bara deklarationer: laddas före app.js,
 // som kopplar in dem (länkar, routning) och vars hjälpfunktioner (esc, showPanel, statusP …) de använder.
 const demoTag = (d) => (d ? '<span class="tag">exempel</span>' : '');
 // SCB:s villkor: den som sprider uppgifterna ska informera om reklamspärr.
@@ -232,7 +232,7 @@ async function openBolag(orgnr) {
     ${stats([['Fastigheter', s.antal.toLocaleString('sv-SE')], ['Taxeringsvärde', s.varde_tkr ? mkr(s.varde_tkr) : '–'],
       ['Tomtareal', s.areal_m2 ? `${Math.round(s.areal_m2).toLocaleString('sv-SE')} m²` : '–']])}
     ${ram ? `<div class="knappar"><button type="button" class="copy" data-ram="${ram}">Visa alla på kartan</button>
-      <button type="button" class="copy" data-sc="bolag">Räkna på innehavet</button></div>
+      ${bolagScenarioKnapp()}</div>
       <div class="meta small">Bolagets fastigheter är inramade i orange.</div>` : ''}
     <dl>
       <dt>Form</dt><dd>${esc(b.jurform ?? '–')}</dd>
@@ -289,9 +289,10 @@ async function openOm() {
       <li>Använd <strong>Filter</strong> för att hitta fastigheter efter användning, ägartyp, värde och köp,
         och ladda ner träffarna som CSV.</li>
       <li>Byt <strong>Färga efter</strong> i teckenförklaringen för att se värde, användning, ägartyp eller köpår.</li>
-      <li><a href="#affarer">Affärer</a> och <a href="#agare">Ägare</a> sammanfattar köpen och de största ägarna.</li>
+      <li><a href="#transaktioner">Transaktioner</a> och <a href="#agare">Ägare</a> sammanfattar köpen och de största ägarna.</li>
       <li><a href="#scenario">Scenarier</a>: räkna kassaflöde och värde för en eller flera fastigheter med egna antaganden,
-        och spara kalkylen som en länk.</li>
+        och spara kalkylen som en länk. Lägg till fastigheter med <strong>+</strong> i sökningen, från en fastighet,
+        ett bolag eller filtrets träffar.</li>
       <li>Adressen i webbläsaren sparar kartläge, filter och vald fastighet, så att du kan dela länken.</li>
     </ul>
     <h3>Källor</h3>
@@ -346,7 +347,7 @@ const nyhetRad = (n) => `<tr>${dagCell(n.dag)}
       ? ` · <a data-ram="${[n.minx, n.miny, n.maxx, n.maxy].join(',')}" data-markera="${esc(JSON.stringify(n.beteckningar))}">Visa på kartan</a>` : ''}</div></td>
   <td class="num">${n.pris_kr ? mkr(n.pris_kr / 1000) : '–'}</td></tr>`;
 
-// Affärer: volym, antal och de senaste och största köpen, som Datschas transaktionsöversikt.
+// Transaktioner: volym, antal och de senaste och största köpen, som Datschas transaktionsöversikt.
 async function openAffarer(p = {}) {
   const [s, a] = await Promise.all([statusP, apiPanel(`/api/affarer?${new URLSearchParams(p)}`)]);
   if (!a) return;
@@ -359,33 +360,33 @@ async function openAffarer(p = {}) {
   const kat = [...perKat].sort((x, y) => y[1].kr - x[1].kr);
   const n = (x) => x.toLocaleString('sv-SE');
   showPanel(`
-    <h2>Affärer</h2>
+    <h2>Transaktioner</h2>
     <div class="meta">Köp med köpeskilling ur lagfarterna. En paketaffär räknas en gång.</div>
     <form class="view-form" data-view="affarer">
       ${field('Kommun', 'kommun', options(s.kommuner ?? [], a.kommun, 'Alla kommuner'))}
       ${field('År', 'ar', options(a.arLista, a.ar))}
-      ${field('Köpeskilling', 'min', options([[0, 'Alla affärer'], [10, 'Över 10 Mkr'], [40, 'Över 40 Mkr'], [100, 'Över 100 Mkr']], a.min))}
+      ${field('Köpeskilling', 'min', options([[0, 'Alla'], [10, 'Över 10 Mkr'], [40, 'Över 40 Mkr'], [100, 'Över 100 Mkr']], a.min))}
     </form>
     ${a.nyheter.length ? `<h3>Senaste i pressmeddelanden</h3>
     <div class="meta small">Fastighetsbolagens egna pressmeddelanden (Cision). Pris enligt pressmeddelandet; affären syns i lagfarterna några månader senare.</div>
     ${table('<th>Datum</th><th>Affär</th><th class="num">Pris</th>', a.nyheter.map(nyhetRad), '')}` : ''}
     ${a.ar ? `
-    ${stats([[`Volym ${a.ar}`, mkr((a.summa.kr ?? 0) / 1000)], [`Affärer ${a.ar}`, n(a.summa.antal)],
+    ${stats([[`Volym ${a.ar}`, mkr((a.summa.kr ?? 0) / 1000)], [`Transaktioner ${a.ar}`, n(a.summa.antal)],
       ['Senaste 30 dagarna', `${n(a.dagar30.antal)} st · ${mkr((a.dagar30.kr ?? 0) / 1000)}`]])}
     <h3>Per användning ${a.ar}</h3>
-    ${table('<th>Användning</th><th class="num">Affärer</th><th class="num">Volym</th>', kat.map(([k, v]) =>
+    ${table('<th>Användning</th><th class="num">Antal</th><th class="num">Volym</th>', kat.map(([k, v]) =>
       `<tr><td>${esc(k)}${bar(v.kr / (a.summa.kr || 1))}</td><td class="num">${n(v.antal)}</td><td class="num">${mkr(v.kr / 1000)}</td></tr>`), '')}
     ${a.perKommun.length > 1 ? `<h3>Per kommun ${a.ar}</h3>
-    ${table('<th>Kommun</th><th class="num">Affärer</th><th class="num">Volym</th>', a.perKommun.map((k) =>
+    ${table('<th>Kommun</th><th class="num">Antal</th><th class="num">Volym</th>', a.perKommun.map((k) =>
       `<tr><td>${esc(k.kommun ?? 'Okänd')}${bar(k.kr / (a.perKommun[0].kr || 1))}</td>
         <td class="num">${n(k.antal)}</td><td class="num">${mkr(k.kr / 1000)}</td></tr>`), '')}` : ''}
     <h3>Största köparna ${a.ar}</h3>
-    ${table('<th>Köpare</th><th class="num">Affärer</th><th class="num">Volym</th>', a.kopare.map((k) =>
+    ${table('<th>Köpare</th><th class="num">Antal</th><th class="num">Volym</th>', a.kopare.map((k) =>
       `<tr><td>${bolagLink(k.orgnr, k.namn, k.demo)}${bar(k.kr / (a.kopare[0].kr || 1))}</td>
         <td class="num">${n(k.antal)}</td><td class="num">${mkr(k.kr / 1000)}</td></tr>`), '')}
-    <h3>Största affärerna ${a.ar}</h3>
+    <h3>Största transaktionerna ${a.ar}</h3>
     ${table('<th>Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.storsta.map(affarRad), '')}
-    <h3>Senaste affärerna ${a.ar}</h3>
+    <h3>Senaste transaktionerna ${a.ar}</h3>
     ${table('<th>Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.senaste.map(affarRad), '')}
     ` : '<p class="empty">Inga registrerade köp ännu. Köpeskillingar läses in när Lantmäteriet har svarat.</p>'}
   `);
@@ -419,4 +420,5 @@ async function openAgare(p = {}) {
   `);
 }
 
-const VIEWS = { '#om': openOm, '#affarer': openAffarer, '#agare': openAgare };   // och #scenario (scenario.js, se app.js)
+// #affarer är det gamla namnet på #transaktioner: gamla länkar och formulärets data-view.
+const VIEWS = { '#om': openOm, '#transaktioner': openAffarer, '#affarer': openAffarer, '#agare': openAgare };   // och #scenario (scenario.js, se app.js)

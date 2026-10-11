@@ -203,10 +203,31 @@ function scenarioInput(el) {
 function andrat() {
   scenario.lank = null;
   sparaUtkast();
+  if (!$('#panel .scenario')) return;   // ändrat från en annan vy (Lägg till): adressen är den vyns
   history.replaceState(null, '', `${location.pathname}${location.search}#scenario`);
-  const lank = $('#sc-lank');
-  if (lank) lank.hidden = true;
+  $('#sc-lank').hidden = true;
 }
+
+// Lägger till fastigheterna i det öppna scenariot (från fastighetspanelen, sökträffarna, filtret eller ett
+// bolag). Returnerar antalet tillagda (de som redan finns med hoppas över), eller null om scenariot skulle bli
+// större än maxScenario; det visas då i panelen.
+async function laggTillIScenario(bet) {
+  const s = await statusP, finns = new Set(scenario.data.bet);
+  const nya = [...new Set(bet.map(normBet))].filter((b) => !finns.has(b));
+  if (finns.size + nya.length > s.maxScenario) {
+    showPanel(`<h2>För många fastigheter</h2><p class="empty">Ett scenario kan ha högst ${s.maxScenario.toLocaleString('sv-SE')}
+      fastigheter. ${esc(scenario.data.namn || 'Scenariot')} har ${finns.size.toLocaleString('sv-SE')} och du försökte lägga till
+      ${nya.length.toLocaleString('sv-SE')}.</p>`);
+    return null;
+  }
+  if (!nya.length) return 0;
+  const r = await api('/api/underlag', { bet: nya });
+  scenario.data.bet.push(...r.fastigheter.map((f) => f.beteckning));
+  scenario.underlag.push(...r.fastigheter);
+  andrat();
+  return r.fastigheter.length;
+}
+const scenarioNamn = () => esc(scenario.data.namn || 'scenariot');
 
 async function sparaScenario(knapp) {
   const s = await statusP;
@@ -287,18 +308,17 @@ async function openScenarier({ lista = false } = {}) {
 // Knappar med data-sc i panelen.
 async function scenarioKlick(el) {
   const s = await statusP, a = el.dataset.sc;
-  if (a === 'bolag' && bolagUrval) return nyttScenarioFran(bolagUrval.namn, bolagUrval.bet);
+  if (a === 'bolag' && bolagUrval) {
+    if (!scenario) return nyttScenarioFran(bolagUrval.namn, bolagUrval.bet);
+    if ((await laggTillIScenario(bolagUrval.bet)) !== null) visaScenario();
+    return;
+  }
   if (a === 'fastighet') return nyttScenarioFran(el.dataset.bet, [el.dataset.bet]);
   if (a === 'visa') return visaScenario();
   if (a === 'lista') return openScenarier({ lista: true });
   if (a === 'lagg-till') {
-    const r = await api('/api/underlag', { bet: [el.dataset.bet] }).catch(() => null);
-    if (!r?.fastigheter.length || scenario.data.bet.length >= s.maxScenario) { el.textContent = 'Kunde inte läggas till'; return; }
-    scenario.data.bet.push(r.fastigheter[0].beteckning);
-    scenario.underlag.push(r.fastigheter[0]);
-    andrat();
-    rensaVy();
-    Object.assign(el, { textContent: `Tillagd. Öppna ${scenario.data.namn || 'scenariot'}` });
+    if (!await laggTillIScenario([el.dataset.bet]).catch(() => 0)) { el.textContent = 'Kunde inte läggas till'; return; }
+    el.textContent = `Tillagd. Öppna ${scenario.data.namn || 'scenariot'}`;
     el.dataset.sc = 'visa';
     return;
   }
@@ -334,5 +354,12 @@ async function scenarioKlick(el) {
 const scenarioKnapp = (bet) => (!scenario
   ? `<button type="button" class="copy" data-sc="fastighet" data-bet="${esc(bet)}">Räkna på fastigheten</button>`
   : scenario.data.bet.includes(bet)
-    ? `<button type="button" class="copy" data-sc="visa">Öppna ${esc(scenario.data.namn || 'scenariot')}</button>`
-    : `<button type="button" class="copy" data-sc="lagg-till" data-bet="${esc(bet)}">Lägg till i ${esc(scenario.data.namn || 'scenariot')}</button>`);
+    ? `<button type="button" class="copy" data-sc="visa">Öppna ${scenarioNamn()}</button>`
+    : `<button type="button" class="copy" data-sc="lagg-till" data-bet="${esc(bet)}">Lägg till i ${scenarioNamn()}</button>`);
+// Bolagspanelen: hela innehavet till ett nytt scenario, eller till det öppna.
+const bolagScenarioKnapp = () => `<button type="button" class="copy" data-sc="bolag">${scenario ? `Lägg till i ${scenarioNamn()}` : 'Räkna på innehavet'}</button>`;
+// Plusknappen på sökträffar med en fastighet när ett scenario är öppet (se runSearch).
+const sokLaggTill = (bet) => (!scenario || !bet ? ''
+  : scenario.data.bet.includes(bet) ? ` <button type="button" class="lagg-till" disabled title="Finns i ${scenarioNamn()}">✓</button>`
+    : ` <button type="button" class="lagg-till" data-lagg="${esc(bet)}" title="Lägg till i ${scenarioNamn()}"
+      aria-label="Lägg till ${esc(bet)} i ${scenarioNamn()}">+</button>`);

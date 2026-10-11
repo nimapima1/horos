@@ -89,13 +89,13 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
 - Kartan: filter (län och kommun (`lib/kommuner.mjs`, zoomar dit), ägare (namn/org.nr), ägarkategori, användning, lokalslag, upplåtelseform (tomträtt/äganderätt), ägartyp, värde, köpår, köpeskilling, tomtyta och uppskattad LOA från/till) med antal träffar och
   CSV-nedladdning (`/data/horos-traffar.csv`); "Färga efter" värde, värde/m², användning, ägartyp,
   köpår; prickar/kluster zoom 10–14 (`/api/punkter`), antal per kommun under zoom 10 (`/api/kommunkluster`); hovringsruta; delbar adress (`?l=&f=&farg=` + filter).
-- Panelvyer: Affärer (`#affarer`, `/api/affarer`: volym, per användning/kommun, köpare, största,
+- Panelvyer: Transaktioner (`#transaktioner`, hette Affärer, `#affarer` fungerar fortfarande; `/api/affarer`: volym, per användning/kommun, köpare, största,
   senaste, säljare) och Största ägare (`#agare`, `/api/storsta-agare`, även i kartutsnittet).
 - Fastighetspanelen: ägare sedan, köp/m², K/T-kvot, taxeringsändring, säljare, grannar, köp i närheten.
 - Bolagspanelen: tomtareal, köp, sålt, "Visa alla på kartan" (`/api/fastigheter?org=`).
 - Sök: ägare först med antal fastigheter (ägarlistan i minnet). Servertester i `test/server.test.mjs`.
 - Pressmeddelanden (2026-10-10): `import-nyheter` hämtar 14 nyhetsrum på Cision; listan "Senaste i
-  pressmeddelanden" i Affärer och "I pressmeddelanden" i fastighetspanelen, "Visa på kartan" ramar in.
+  pressmeddelanden" i Transaktioner och "I pressmeddelanden" i fastighetspanelen, "Visa på kartan" ramar in.
   Privatperson som säljare: affären visas, namnet aldrig; försäljning till privatperson tas inte med.
   **MFN förbjuder automatisk hämtning** (robots.txt: `*.rss`, `*.xml`, `*.json`): inte med förrän Modular
   Finance gett tillstånd. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
@@ -112,7 +112,8 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
   exploateringstal, upplåtelseform (tomträtt/äganderätt). Typkoder → klartext i import-taxering.
   Senaste överlämning: `OVERLAMNING.md`.
 - Scenarier (2026-10-11, gren `scenarion`): korta länkar kräver `deploy/scenarion.conf` på servern (en gång som
-  root, se `deploy/DEPLOY.md`); utan den används `#sd=`-länkar.
+  root, se `deploy/DEPLOY.md`); utan den används `#sd=`-länkar. Fastigheter läggs till med + i sökträffarna, från
+  fastighetspanelen, ett bolag eller filtrets träffar (knapparna lägger till i det öppna scenariot om det finns ett).
 Den publika databasen har **0 fastigheter** (bara bolag, adresser och pressmeddelanden) tills riktiga data finns.
 
 Väntar på:

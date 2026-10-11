@@ -15,7 +15,7 @@ const MIN_ZOOM = 14;
 const PUNKT_ZOOM = 10;
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
-// Delbar adress: ?l=zoom/lat/lon&f=beteckning&farg=läge och filtren. Vyerna (#om, #affarer, #agare) ligger i hashen.
+// Delbar adress: ?l=zoom/lat/lon&f=beteckning&farg=läge och filtren. Vyerna (#om, #transaktioner, #agare, #scenario) ligger i hashen.
 const START = new URLSearchParams(location.search);
 const startLage = (START.get('l') ?? '').split('/').map(Number);
 const harStartLage = startLage.length === 3 && startLage.every(Number.isFinite);
@@ -371,7 +371,10 @@ filterForm.addEventListener('submit', (e) => e.preventDefault());
 // Filter-fliken fäller ut och ihop formuläret (details, vars egen rubrik är dold).
 const filterDetails = filterForm.closest('details');
 $('#filter-knapp').addEventListener('click', () => { filterDetails.open = !filterDetails.open; });
-filterDetails.addEventListener('toggle', () => $('#filter-knapp').setAttribute('aria-expanded', String(filterDetails.open)));
+filterDetails.addEventListener('toggle', () => {
+  $('#filter-knapp').setAttribute('aria-expanded', String(filterDetails.open));
+  $('#filter-scenario').textContent = scenario ? `Lägg till träffarna i ${scenario.data.namn || 'scenariot'}` : 'Räkna på träffarna';
+});
 // Filter från en delad länk. Användning och ägartyp sätts när listorna har laddats (se status).
 for (const el of filterForm.querySelectorAll('input[name]')) el.value = START.get(el.name) ?? '';
 if ([...START.keys()].some((k) => filterForm.elements[k])) filterForm.closest('details').open = true;
@@ -379,9 +382,10 @@ if ([...START.keys()].some((k) => filterForm.elements[k])) filterForm.closest('d
 let loadSeq = 0;
 // Beteckningarna i kartutsnittet med filtren, för "Räkna på träffarna" (scenario.js).
 let traffar = [];
-$('#filter-scenario').addEventListener('click', () => {
+$('#filter-scenario').addEventListener('click', async () => {
   filterForm.closest('details').open = false;   // annars täcker filtret panelen
-  nyttScenarioFran('Träffar i kartutsnittet', traffar);
+  if (!scenario) return nyttScenarioFran('Träffar i kartutsnittet', traffar);
+  if ((await laggTillIScenario(traffar)) !== null) visaScenario();
 });
 // Orgnr för det markerade bolaget: utzoomat visas då bara dess fastigheter (se markera()).
 let markeradOrg = null;
@@ -444,9 +448,9 @@ function select(beteckning) {
   updateUrl();
 }
 
-// Markerar fliken för den öppna vyn (#affarer, #agare, #scenario och scenariolänkarna).
+// Markerar fliken för den öppna vyn (#transaktioner, #agare, #scenario och scenariolänkarna; #affarer är det gamla namnet).
 function markeraFlik(oppen = true) {
-  const vy = arScenarioLank(location.hash) ? '#scenario' : location.hash;
+  const vy = arScenarioLank(location.hash) ? '#scenario' : location.hash === '#affarer' ? '#transaktioner' : location.hash;
   for (const a of document.querySelectorAll('.verktyg a')) {
     if (oppen && a.hash === vy) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
@@ -469,7 +473,7 @@ $('#close').addEventListener('click', () => {
   rensaVy();
   markeraFlik(false);
 });
-// Tar bort vyn (#affarer m.fl.) ur adressen, så att den inte öppnas igen när sidan laddas om.
+// Tar bort vyn (#transaktioner m.fl.) ur adressen, så att den inte öppnas igen när sidan laddas om.
 function rensaVy() {
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
 }
@@ -511,11 +515,11 @@ async function runSearch() {
   const items = [];
   if (r.adresser.length) {
     items.push('<li class="group">Adresser</li>');
-    for (const a of r.adresser) items.push(`<li data-kind="a" data-id="${esc(a.beteckning ?? '')}" data-adress="${esc(a.adress)}" data-lonlat="${a.lon},${a.lat}">${esc(a.adress)}${a.ort ? ` <span class="muted small">${esc(a.ort)}</span>` : ''}</li>`);
+    for (const a of r.adresser) items.push(`<li data-kind="a" data-id="${esc(a.beteckning ?? '')}" data-adress="${esc(a.adress)}" data-lonlat="${a.lon},${a.lat}">${esc(a.adress)}${a.ort ? ` <span class="muted small">${esc(a.ort)}</span>` : ''}${sokLaggTill(a.beteckning)}</li>`);
   }
   if (r.fastigheter.length) {
     items.push('<li class="group">Fastigheter</li>');
-    for (const f of r.fastigheter) items.push(`<li data-kind="f" data-id="${esc(f.beteckning)}" ${bboxAttr(f)}>${esc(f.beteckning)}</li>`);
+    for (const f of r.fastigheter) items.push(`<li data-kind="f" data-id="${esc(f.beteckning)}" ${bboxAttr(f)}>${esc(f.beteckning)}${sokLaggTill(f.beteckning)}</li>`);
   }
   if (r.bolag.length) {
     items.push('<li class="group">Bolag</li>');
@@ -526,7 +530,17 @@ async function runSearch() {
   $('#results').hidden = false;
 }
 
-$('#results').addEventListener('click', (e) => {
+$('#results').addEventListener('click', async (e) => {
+  // Plusknappen: lägg till i det öppna scenariot och låt listan stå kvar, så att flera kan läggas till.
+  const plus = e.target.closest('[data-lagg]');
+  if (plus) {
+    plus.disabled = true;
+    const n = await laggTillIScenario([plus.dataset.lagg]).catch(() => 0);
+    plus.textContent = n ? '✓' : '–';
+    plus.title = n ? 'Tillagd' : 'Finns redan med eller kunde inte läggas till';
+    if ($('#panel .scenario')) visaScenario();
+    return;
+  }
   const li = e.target.closest('li[data-kind]');
   if (!li) return;
   $('#results').hidden = true;

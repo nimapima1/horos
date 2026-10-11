@@ -134,16 +134,21 @@ button { font: inherit; color: inherit; }
   min-height: 44px; padding: 11px 10px; border-radius: 7px; cursor: pointer;
 }
 .results li[data-kind]:hover { background: var(--accent-soft); }
+/* Lägg till i det öppna scenariot, längst till höger i träffen. */
+.results .lagg-till { margin: -6px 0 -6px auto; align-self: center; width: 32px; height: 32px; border: 0; border-radius: 8px;
+  cursor: pointer; font: 600 18px/1 var(--font-body); background: var(--accent-soft); color: var(--accent-strong); }
+.results .lagg-till:hover { background: var(--accent); color: var(--surface-solid); }
+.results .lagg-till:disabled { cursor: default; background: none; color: var(--muted); }
 .results .group {
   min-height: 0; padding: 10px 10px 4px; cursor: default;
   font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle);
 }
 
 /* Verktygen som en segmenterad flikrad: Filter, Affärer, Ägare, Scenarier. */
-.verktyg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 10px; padding: 4px;
+.verktyg { display: flex; gap: 4px; margin-top: 10px; padding: 4px;
   border-radius: var(--radius-sm); background: var(--surface-sunken); }
 .verktyg > * {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 6px;
+  flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 6px;
   border: 0; border-radius: 7px; background: none; cursor: pointer;
   font: 600 14px var(--font-body); color: var(--muted);
 }
