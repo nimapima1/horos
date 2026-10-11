@@ -264,6 +264,9 @@ button { font: inherit; color: inherit; }
 .streetview button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .streetview iframe { display: block; width: 300px; aspect-ratio: 4 / 3; border: 0; }   /* utfälld */
 .streetview iframe + button { width: 100%; }
+/* Utfälld Street View slutar ~470 px ned och teckenförklaringen (nedtill till höger) är ~210 px hög:
+   i lägre fönster skulle den täcka Street View. */
+@media (max-height: 700px) { body:has(.streetview iframe) .legend { display: none; } }
 .maplibregl-ctrl-attrib { font-family: var(--font-body); }
 .maplibregl-ctrl.maplibregl-ctrl-attrib { background: var(--surface-solid); color: var(--muted); }
 .maplibregl-ctrl-attrib a { color: var(--muted); }
