@@ -47,18 +47,27 @@ const paKartan = () => (scenario ? [{ namn: scenario.data.namn, bet: scenario.da
   ...scenario.data.delar.map((x) => ({ namn: x.namn, bet: x.bet }))] : []);
 const mitten = (f) => [(f.minx + f.maxx) / 2, (f.miny + f.maxy) / 2];
 const mittpunkter = new Map();   // beteckning -> [lon, lat], eller null om fastigheten inte finns i Horos
+// Underlaget för fastigheterna, i omgångar om högst 1 000 (serverns gräns per anrop); sparar också kartans positioner.
+async function hamtaUnderlag(bet) {
+  const ut = { fastigheter: [], byggd: null };
+  for (let i = 0; i < bet.length; i += 1000) {
+    const del = bet.slice(i, i + 1000), r = await api('/api/underlag', { bet: del });
+    for (const b of del) if (!mittpunkter.has(b)) mittpunkter.set(b, null);
+    for (const f of r.fastigheter) mittpunkter.set(f.beteckning, mitten(f));
+    ut.fastigheter.push(...r.fastigheter);
+    ut.byggd = r.byggd;
+  }
+  return ut;
+}
 const OSYNLIG = 'rgba(0,0,0,0)';
+let ritning = 0;   // bara den senaste omritningen får rita, annars kan en långsam hämtning rita ett gammalt urval
 async function ritaScenarier() {
   if (!map.getSource('scenarier')) return;   // kartan laddas fortfarande; load ritar
+  const nr = ++ritning;
+  const saknas = [...new Set(paKartan().flatMap((v) => v.bet))].filter((b) => !mittpunkter.has(b));
+  try { if (saknas.length) await hamtaUnderlag(saknas); } catch { return; }   // ritas nästa gång något ändras
+  if (nr !== ritning) return;
   const vis = paKartan();
-  const saknas = [...new Set(vis.flatMap((v) => v.bet))].filter((b) => !mittpunkter.has(b));
-  try {
-    for (let i = 0; i < saknas.length; i += 1000) {
-      const del = saknas.slice(i, i + 1000), r = await api('/api/underlag', { bet: del });
-      for (const b of del) mittpunkter.set(b, null);
-      for (const f of r.fastigheter) mittpunkter.set(f.beteckning, mitten(f));
-    }
-  } catch { return; }   // ritas nästa gång något ändras
   const farger = new Map();   // beteckning -> färgerna för scenarierna den finns i
   vis.forEach((v, i) => { for (const b of v.bet) (farger.get(b) ?? farger.set(b, []).get(b)).push(css(fargFor(i))); });
   map.getSource('scenarier').setData({ type: 'FeatureCollection', features: [...farger].filter(([b]) => mittpunkter.get(b))
@@ -116,12 +125,11 @@ async function oppnaScenario(data, { nyckel, lank, visa = true } = {}) {
     return delAv(senaste || x, x.nyckel);
   });
   let u;
-  try { u = await api('/api/underlag', { bet: allaBet(d).slice(0, s.maxScenario) }); } catch (e) {
+  try { u = await hamtaUnderlag(allaBet(d)); } catch (e) {
     if (!visa) throw e;   // i bakgrunden (+-menyn): den som anropade visar felet
     return showPanel(`<p class="empty">${esc(e.message)}</p>`);
   }
   const finns = new Set(u.fastigheter.map((f) => f.beteckning));
-  for (const f of u.fastigheter) mittpunkter.set(f.beteckning, mitten(f));
   scenario = {
     data: d, underlag: u.fastigheter.sort((a, b) => (b.varde_tkr ?? 0) - (a.varde_tkr ?? 0)),
     saknas: allaBet(d).filter((b) => !finns.has(b)), byggd: u.byggd,
@@ -320,7 +328,7 @@ async function sattDel(el) {
         fastigheter, och det här skulle få ${alla.length.toLocaleString('sv-SE')}.</p>`);
     }
     const finns = new Set(scenario.underlag.map((f) => f.beteckning)), saknas = alla.filter((bet) => !finns.has(bet));
-    try { if (saknas.length) scenario.underlag.push(...(await api('/api/underlag', { bet: saknas })).fastigheter); }
+    try { if (saknas.length) scenario.underlag.push(...(await hamtaUnderlag(saknas)).fastigheter); }
     catch { el.checked = false; return; }
     d.delar.push(ny);
   }
@@ -341,7 +349,10 @@ async function gorHuvud(el) {
   data ??= i >= 0 ? { ...nyttScenario(d.delar[i].namn, d.delar[i].bet), gemensamt: d.delar[i].gemensamt, antaganden: d.delar[i].antaganden,
     egna: d.delar[i].egna } : null;
   if (!data) return;
-  const delar = [delAv(d, gammal.nyckel), ...d.delar.filter((y, j) => j !== i && (!nyckel || y.nyckel !== nyckel))];
+  // De ihoplagda: det nya huvudscenariots egna först (de ska inte försvinna), sedan gruppen; inget två gånger.
+  const grupp = [delAv(d, gammal.nyckel), ...d.delar.filter((y, j) => j !== i && (!nyckel || y.nyckel !== nyckel))];
+  const egna = Array.isArray(data.delar) ? data.delar.filter((y) => Array.isArray(y?.bet) && y.nyckel !== gammal.nyckel) : [];
+  const delar = [...egna, ...grupp.filter((y) => !y.nyckel || !egna.some((e) => e.nyckel === y.nyckel))];
   d.delar = [];
   andrat();   // det förra huvudscenariot sparas utan ihoplagda
   await oppnaScenario({ ...data, delar }, { nyckel: post ? nyckel : undefined });
@@ -382,7 +393,7 @@ async function laggTillIScenario(bet) {
     return null;
   }
   if (!nya.length) return 0;
-  const r = await api('/api/underlag', { bet: nya });
+  const r = await hamtaUnderlag(nya);
   scenario.data.bet.push(...r.fastigheter.map((f) => f.beteckning));
   scenario.underlag.push(...r.fastigheter);
   andrat();
