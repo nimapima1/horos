@@ -136,15 +136,20 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
     fel signatur ger 403. Användaren har hemligheten (aldrig i chatten). Byta: generera och lägg in utan att den
     visas, i PowerShell:
     `$s = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"; Set-Clipboard $s; $s | ssh deploy@37.27.152.172 "sudo -n /usr/local/sbin/fastighetskarta-admin set-secret MFN_SECRET"`.
-  - Svaret till Markus (HTTPS, JSON, URL:en, fråga hur de vill få hemligheten, öppna frågor, be om ett
-    testmeddelande) skickas av användaren. När MFN skickat ett test: kontrollera att det kom fram (ett meddelande
-    som inte är köp/försäljning sparas inte men får 200; syns då bara hos MFN).
+  - **MFN:s svar 2026-10-12** (hemligheten skickad samma dag): de lägger upp prenumerationen (förnyas inte),
+    skickar **alla** bolags pressmeddelanden (filtrera själva), ingen kostnad, källa "MFN", leveransen börjar
+    direkt med riktiga pressmeddelanden. De frågade om gränser (tecken, storlek, bilder, video, formatering,
+    tabeller); användaren svarade 13:41 (vi visar bara rubrik, datum och länk). Mottagaren tar högst 1 MB.
+  - **Filtret** (PR efter #14): mottagaren sparar alla svenska affärer med utgivarens org.nr; cron tar bara med
+    fastighetsbolagens (`arFastighetsbolag`: SNI 68, namn med fastighet/bostad/property/real estate, eller
+    `MFN_FASTIGHETSBOLAG` för moderbolag med SNI 70100/64xxx: Castellum, Sagax, SBB, Pandox, K-Fast, Eastnine,
+    Heimstaden, Titania). Saknas ett fastighetsbolags affär: lägg till dess org.nr i listan. Rader från före
+    filtret (utan org.nr) tas inte med. Journalen har en rad per mottaget pressmeddelande:
+    `ssh deploy@37.27.152.172 sudo -n /usr/local/sbin/fastighetskarta-admin logs 200` (sök på `MFN`).
   - **Ta bort ett felaktigt MFN-pressmeddelande** (fel fastighet, fel pris): lägg dess url i undantagsfilen, så
     tas det bort vid nästa cron-körning och kommer inte tillbaka:
     `ssh deploy@37.27.152.172 "echo 'https://mfn.se/...' >> /var/lib/fastighetskarta/mfn-undantag.txt"`.
     `mfn.sqlite` ägs av appen och kan inte ändras av deploy.
-  - Öppna frågor till MFN: hemligheten, vilka bolag (lista eller alla svenska), ir och pr, villkor, källangivelse
-    (lägg då till "Källa: MFN" i listorna och på metodsidan).
   - Ja från en tidning: bara rubrik + länk + det vi själva läser ut; ingen artikeltext, inget bakom betalvägg.
   - Fastighetsnytt fick också frågan om vem som svarar för DI (samma koncern, Bonnier News).
 - Skatteverket, Lantmäteriet (lagfarter, geodatasupport) och Geotorget-ärendena: se `CLAUDE.md` och `PRIVAT.md`.

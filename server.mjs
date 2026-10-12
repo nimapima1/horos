@@ -9,7 +9,7 @@ import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare,
 import { avstandM, innerPoints, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN } from './lib/kommuner.mjs';
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
-import { tolkaMfn } from './lib/nyheter.mjs';
+import { arFastighetsbolag, tolkaMfn } from './lib/nyheter.mjs';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -105,13 +105,15 @@ const giltigtScenario = (s) => s?.v === 1 && Array.isArray(s.bet) && s.bet.lengt
 
 // --- MFN (pressmeddelanden som skickas hit) ------------------------------------------
 // MFN skickar varje nytt pressmeddelande som POST till /api/mfn (WebSub, signerat med HMAC-SHA256 i
-// X-Hub-Signature med hemligheten MFN_SECRET). Bara köp och försäljningar sparas, utan texten, i en egen
-// databas i samma skrivbara katalog som scenarierna; cron (deploy/nyheter.sh) för in dem i den publika.
-// Utan MFN_SECRET finns ingen mottagare.
+// X-Hub-Signature med hemligheten MFN_SECRET). Köp och försäljningar sparas med utgivarens org.nr, utan texten,
+// i en egen databas i samma skrivbara katalog som scenarierna; cron (deploy/nyheter.sh) för in fastighetsbolagens
+// i den publika (arFastighetsbolag i lib/nyheter.mjs). Utan MFN_SECRET finns ingen mottagare.
 const MFN_DB = process.env.MFN_DB
   ?? (process.env.STATE_DIRECTORY ? join(process.env.STATE_DIRECTORY, 'mfn.sqlite') : PUBLIC_MODE ? null : join(ROOT, 'data', 'mfn.sqlite'));
 // Hela pressmeddelandet med HTML; läses innan signaturen kan kontrolleras, så inte större än nödvändigt.
-const MAX_MFN_BYTE = 512 * 1024;
+// MFN skickar alla bolags pressmeddelanden; ett för stort avvisas och skickas om, så marginal för långa rapporter.
+const MAX_MFN_BYTE = 1024 * 1024;
+const bolagFor = db.prepare('SELECT namn, sni FROM bolag WHERE orgnr = ?');
 let qm = null;
 try {
   if (process.env.MFN_SECRET && MFN_DB) {
@@ -120,8 +122,10 @@ try {
     const mdb = new DatabaseSync(MFN_DB);
     mdb.exec(`CREATE TABLE IF NOT EXISTS mfn_nyhet (url TEXT PRIMARY KEY, utgivare TEXT NOT NULL, rubrik TEXT NOT NULL,
       datum TEXT, typ TEXT NOT NULL, pris_kr INTEGER, kommun TEXT, beteckningar TEXT NOT NULL, adresser TEXT NOT NULL,
-      mottagen TEXT NOT NULL)`);
-    qm = mdb.prepare("INSERT OR REPLACE INTO mfn_nyhet VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))");
+      mottagen TEXT NOT NULL, orgnr TEXT)`);
+    if (!hasColumn(mdb, 'mfn_nyhet', 'orgnr')) mdb.exec('ALTER TABLE mfn_nyhet ADD COLUMN orgnr TEXT');   // tabeller från före 2026-10-12 kl. 14
+    qm = mdb.prepare(`INSERT OR REPLACE INTO mfn_nyhet (url, utgivare, rubrik, datum, typ, pris_kr, kommun, beteckningar, adresser, orgnr, mottagen)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`);
   }
 } catch (e) {
   console.error(`MFN-mottagaren är avstängd (${MFN_DB}): ${e.message}`);
@@ -511,7 +515,7 @@ const AFFAR_RAD = `SELECT a.dag, a.kr, a.orgnr, a.beteckning, a.antal, a.demo, b
   JOIN fastighet f ON f.beteckning = a.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr`;
 // Affärer i pressmeddelanden, senaste först, med fastigheterna som finns i Horos (eller adresspunkten)
 // som bbox och beteckningar för kartan.
-const NYHET_KOLUMNER = 'n.url, n.utgivare, n.rubrik, substr(n.datum, 1, 10) AS dag, n.typ, n.pris_kr, n.kommun';
+const NYHET_KOLUMNER = 'n.url, n.kalla, n.utgivare, n.rubrik, substr(n.datum, 1, 10) AS dag, n.typ, n.pris_kr, n.kommun';
 const qn = HAS_NYHET && {
   senaste: db.prepare(`SELECT ${NYHET_KOLUMNER},
       min(coalesce(f.minx, p.lon)) AS minx, min(coalesce(f.miny, p.lat)) AS miny,
@@ -835,7 +839,10 @@ const routes = [
     let item;
     try { item = JSON.parse(kropp); } catch { return [400, { error: 'ogiltig JSON' }]; }
     const n = tolkaMfn(item);
-    if (n) qm.run(n.url, n.utgivare, n.rubrik, n.datum, n.typ, n.pris_kr, n.kommun, JSON.stringify(n.beteckningar), JSON.stringify(n.adresser));
+    if (n) qm.run(n.url, n.utgivare, n.rubrik, n.datum, n.typ, n.pris_kr, n.kommun, JSON.stringify(n.beteckningar), JSON.stringify(n.adresser), n.orgnr);
+    // En rad per pressmeddelande i journalen, så att leveransen syns (bara den publika länken).
+    const vad = !n ? 'ingen affär' : arFastighetsbolag(n.orgnr, n.orgnr && bolagFor.get(n.orgnr), n.utgivare) ? 'affär' : 'affär, inte fastighetsbolag';
+    console.log(`MFN ${vad}: ${String(item?.url ?? '?').slice(0, 200)}`);
     return [200, { sparad: !!n }];
   }, 'POST'],
 

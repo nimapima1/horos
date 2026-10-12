@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lasRss, tolka, tolkaMfn } from '../lib/nyheter.mjs';
+import { arFastighetsbolag, lasRss, tolka, tolkaMfn } from '../lib/nyheter.mjs';
 
 const t = (rubrik, text = '') => tolka({ rubrik, text });
 
@@ -61,13 +61,22 @@ test('ett efternamn som också är en kommun räknas inte som kommun', () => {
 });
 
 test('MFN: svenskt pressmeddelande om köp tolkas, engelska och andra hoppas över', () => {
-  const item = (lang, title, text = '') => ({ url: 'https://mfn.se/a/alfa/alfa-koper', author: { name: 'Alfa AB' },
+  const item = (lang, title, text = '') => ({ url: 'https://mfn.se/a/alfa/alfa-koper', author: { name: 'Alfa AB', local_refs: ['SE:556000-0001'] },
     properties: { lang, type: 'ir' }, content: { title, text, publish_date: '2026-10-12T08:00:00+02:00' } });
   assert.deepEqual(tolkaMfn(item('sv', 'Alfa förvärvar fastighet i Linköping för 160 mkr', 'Avtal om fastigheten Brevduvan 21.')), {
-    url: 'https://mfn.se/a/alfa/alfa-koper', utgivare: 'Alfa AB', rubrik: 'Alfa förvärvar fastighet i Linköping för 160 mkr',
+    url: 'https://mfn.se/a/alfa/alfa-koper', utgivare: 'Alfa AB', orgnr: '5560000001', rubrik: 'Alfa förvärvar fastighet i Linköping för 160 mkr',
     datum: '2026-10-12T06:00:00.000Z', typ: 'kop', pris_kr: 160e6, kommun: 'Linköping', beteckningar: ['LINKÖPING BREVDUVAN 21'], adresser: [] });
   assert.equal(tolkaMfn(item('en', 'Alfa acquires property in Linköping')), null);
   assert.equal(tolkaMfn(item('sv', 'Alfa publicerar delårsrapport')), null);
   assert.equal(tolkaMfn({ ...item('sv', 'Alfa förvärvar fastighet'), url: 'javascript:alert(1)' }), null);
   assert.equal(tolkaMfn(null), null);
+});
+
+test('MFN: bara fastighetsbolag (SNI 68, namnet eller listan över moderbolag)', () => {
+  assert.equal(arFastighetsbolag('5560000001', { namn: 'Alfa AB', sni: '68203' }), true);
+  assert.equal(arFastighetsbolag('5560000001', { namn: 'Alfa Fastigheter Holding AB', sni: '70100' }), true);
+  assert.equal(arFastighetsbolag('5560000001', undefined, 'Beta Property Group'), true);   // bara MFN:s namn
+  assert.equal(arFastighetsbolag('5564755550', { namn: 'Castellum Aktiebolag', sni: '70100' }), true);   // på listan
+  assert.equal(arFastighetsbolag('5560000001', { namn: 'Konsult AB', sni: '70220' }, 'Konsult AB'), false);
+  assert.equal(arFastighetsbolag(null, { namn: 'X Fastigheter AB', sni: '68203' }), false);   // utan svenskt org.nr
 });

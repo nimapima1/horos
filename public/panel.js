@@ -345,7 +345,7 @@ const affarRad = (r) => `<tr>${dagCell(r.dag)}
 // Affär ur ett pressmeddelande: rubriken länkar till källan, "Visa på kartan" ramar in fastigheterna.
 const nyhetRad = (n) => `<tr>${dagCell(n.dag)}
   <td><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.rubrik)}</a>
-    <div class="muted small">${esc(n.utgivare)} ${n.typ === 'kop' ? 'köper' : 'säljer'}${n.kommun ? ` · ${esc(n.kommun)}` : ''}${n.minx != null
+    <div class="muted small">${esc(n.utgivare)} ${n.typ === 'kop' ? 'köper' : 'säljer'}${n.kommun ? ` · ${esc(n.kommun)}` : ''}${n.kalla === 'mfn' ? ' · via MFN' : ''}${n.minx != null
       ? ` · <a data-ram="${[n.minx, n.miny, n.maxx, n.maxy].join(',')}" data-markera="${esc(JSON.stringify(n.beteckningar))}">Visa på kartan</a>` : ''}</div></td>
   <td class="num">${n.pris_kr ? mkr(n.pris_kr / 1000) : '–'}</td></tr>`;
 
