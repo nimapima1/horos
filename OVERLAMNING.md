@@ -186,11 +186,10 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
 
 ## Förslag till nästa session
 
-0. **Scenarier**: tryck en gång på "Spara och kopiera länk" **på https://horos.se** och öppna länken i ett privat
-   fönster (sparningen på servern är inte provad live). Länken ska vara kort (`#s=` + 10 tecken). Användaren provade
-   2026-10-12 i webbläsarpanelen på en lokal testserver som redan var stoppad och fick då den långa `#sd=`-länken
-   (reservvägen, som den ska); det säger inget om horos.se. Prova också att läsa in en Excelfil från Numbers eller
-   Google Sheets. Decimalkomma är rättat
+0. **Scenarier**: korta länkar är provade live 2026-10-12: ett tomt scenario (Filter > Räkna på träffarna, 0 fastigheter)
+   sparades på horos.se som `#s=LSXqzbXIW5` och gick att hämta via `/api/scenario/LSXqzbXIW5`. Den långa `#sd=`-länken
+   får man bara när servern inte svarar (t.ex. en stoppad lokal testserver i webbläsarpanelen). Kvar att prova: läsa in en
+   Excelfil från Numbers eller Google Sheets. Decimalkomma är rättat
    2026-10-12 men inte provat på riktig iPhone. När taxeringen kommer: ta ytor (LOA/BOA) och
    bostads-/lokalvärde därifrån i stället för uppskattningen och skatteschablonen. Möjliga nästa steg: öppna
    standardvärden (t.ex. SCB:s bostadshyror per kommun) och finansiering (lån, ränta, amortering).
