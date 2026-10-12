@@ -294,15 +294,23 @@ label.copy { display: inline-flex; align-items: center; }
 .sc-fastighet[open] { padding-bottom: 12px; }
 .sc-fastighet .copy { margin-top: 0; }
 .sc-lank { margin-top: 10px; }
+/* Lägg ihop med andra scenarier: ett segmentval per rad, nedtonade rader för de som inte räknas. */
+.panel .sc-ihop td, .panel .sc-ihop th[scope="row"] { vertical-align: middle; }
+.panel .sc-ihop th[scope="row"] { white-space: normal; }   /* långa namn bryts i stället för att trycka ut siffrorna */
+.panel .sc-ihop td.num, .panel .sc-ihop th.num { padding-left: 10px; }
+.panel .sc-ihop th[scope="row"] .sc-farg { margin-right: 8px; vertical-align: -1px; }
+.sc-farg.tom { background: none; box-shadow: inset 0 0 0 1px var(--border); }
+.panel .sc-ihop tr.av th, .panel .sc-ihop tr.av td.num { color: var(--muted); }
+.panel .sc-ihop .summa th, .panel .sc-ihop .summa td { font-weight: 700; border-top: 1px solid var(--muted); }
+.sc-roll { display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: var(--surface-sunken); }
+.sc-roll button { min-height: 30px; padding: 0 7px; border: 0; border-radius: 6px; background: none; cursor: pointer;
+  font: 600 12px var(--font-body); color: var(--muted); white-space: nowrap; }
+.sc-roll button:hover { color: var(--accent-strong); }
+.sc-roll button[aria-pressed="true"] { background: var(--surface-solid); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+.sc-roll button[data-roll="minus"][aria-pressed="true"] { box-shadow: inset 0 -2px 0 var(--c6); }
 .scenario .meta .sc-farg { margin-right: 6px; vertical-align: -1px; }
-.sc-karta label { display: inline-flex; align-items: center; gap: 6px; }
-.sc-karta input { width: 18px; height: 18px; accent-color: var(--accent); }
-.panel td.sc-komb { width: 1%; white-space: nowrap; vertical-align: middle; }
-.sc-komb .lagg-till { display: inline-grid; margin-left: 4px; }
-.panel .sc-portfolj th[scope="row"] a { margin-left: 6px; font-weight: 400; }
-.panel .sc-portfolj { min-width: 520px; }   /* rullar i sidled på mobil i stället för att trycka ihop siffrorna */
-.panel .sc-portfolj td.num, .panel .sc-portfolj th.num { padding-left: 12px; }
-.panel .sc-portfolj .summa th, .panel .sc-portfolj .summa td { font-weight: 700; border-top: 1px solid var(--muted); }
+
+
 .panel .notice { border-radius: var(--radius-sm); }
 @media (max-width: 640px) {
   .scenario .stats, .sc-grid { grid-template-columns: repeat(2, 1fr); }
@@ -322,6 +330,16 @@ label.copy { display: inline-flex; align-items: center; }
   .panel .sc-antaganden td.sc-yta { display: block; align-self: center; color: var(--muted); }
   .panel .sc-antaganden td.sc-yta::after { content: " m²"; }
   .panel .sc-antaganden td[data-rubrik]::before { content: attr(data-rubrik); font-size: 13px; color: var(--muted); }
+  /* Lägg ihop som kort: namnet överst, valet under, siffrorna fyra i bredd med rubriken ovanför. */
+  .panel .sc-ihop, .panel .sc-ihop tbody { display: block; }
+  .panel .sc-ihop tr:first-child { display: none; }
+  .panel .sc-ihop tr { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 10px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .panel .sc-ihop th[scope="row"], .panel .sc-ihop td:not(.num) { grid-column: 1 / -1; padding: 0; border: 0; }
+  .panel .sc-ihop td:empty { display: none; }
+  .panel .sc-ihop td.num { padding: 0; border: 0; text-align: left; font-size: 13px; }
+  .panel .sc-ihop td.num::before { content: attr(data-rubrik); display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+  .panel .sc-ihop .summa th, .panel .sc-ihop .summa td { border: 0; }
+  .panel .sc-ihop tr.summa { border-top: 1px solid var(--muted); }
 }
 .bar { height: 5px; margin-top: 5px; border-radius: 3px; background: var(--surface-sunken); }
 .bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }

@@ -13,11 +13,12 @@ const lokalslag = (s) => ['Bostäder', ...s.lokaltyper];
 const ANTAGANDEN = [['hyra', 'Hyra, kr/m²', 't.ex. 2 000'], ['vakans', 'Vakans, %', '0'], ['drift', 'Drift, kr/m²', '0'], ['uh', 'Underhåll, kr/m²', '0']];
 const normBet = (b) => String(b).trim().replace(/\s+/g, ' ').toUpperCase();   // som normBeteckning på servern
 const objekt = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
-// Ett delscenario: en kopia av ett annat scenarios fastigheter och antaganden (nyckel: scenariot i Mina scenarion).
-const delAv = (x, nyckel) => ({ nyckel: nyckel ?? null, namn: String(x.namn ?? '').slice(0, 100),
+// Ett ihoplagt scenario (vald under kassaflödet): en kopia av ett annat scenarios fastigheter och antaganden
+// (nyckel: scenariot i Mina scenarion), med roll "med" (läggs till) eller "minus" (dras ifrån).
+const delAv = (x, nyckel) => ({ nyckel: nyckel ?? null, namn: String(x.namn ?? '').slice(0, 100), roll: x.roll === 'minus' ? 'minus' : 'med',
   bet: [...new Set(x.bet.filter((b) => typeof b === 'string').map(normBet))],
   gemensamt: objekt(x.gemensamt), antaganden: objekt(x.antaganden), egna: objekt(x.egna) });
-// Alla fastigheter i portföljen: scenariots egna och delscenariernas, var och en en gång.
+// Alla fastigheter som behövs för kalkylen: scenariots egna och de ihoplagdas, var och en en gång.
 const allaBet = (d) => [...new Set([...d.bet, ...(d.delar ?? []).flatMap((x) => x.bet)])];
 
 // Mina scenarion: [{nyckel, namn, data, lank, andrad, antal}], senast använda först (andrad = senast öppnat eller ändrat). lank är den delade länken,
@@ -29,7 +30,7 @@ let sparatLokalt = true;   // senaste sparningen i webbläsaren lyckades (se #sc
 function sparaLokalt() {
   if (!scenario) return store.set('horos.aktivt', '');
   const d = scenario.data;
-  sparatLokalt = sparaMina([{ nyckel: scenario.nyckel, namn: d.namn, data: d, lank: scenario.lank, andrad: new Date().toISOString().slice(0, 10), antal: allaBet(d).length },   // med delscenarierna
+  sparatLokalt = sparaMina([{ nyckel: scenario.nyckel, namn: d.namn, data: d, lank: scenario.lank, andrad: new Date().toISOString().slice(0, 10), antal: d.bet.length },
     ...minaScenarion().filter((x) => x.nyckel !== scenario.nyckel)]) && store.set('horos.aktivt', scenario.nyckel);
   // Full eller avstängd lagring (vissa privata lägen): säg det, annars försvinner scenariot tyst vid omladdning.
   const varning = $('#sc-varning');
@@ -37,21 +38,19 @@ function sparaLokalt() {
   ritaScenarier();
 }
 
-// Scenarierna på kartan: de som är ibockade i Mina scenarion (horos.synliga) och det öppna, med var sin färg
-// efter platsen i den listan. Prickar under zoom 14, gränser över; vitt där en fastighet finns i flera.
+// Kartan: det öppna scenariot och de scenarier som är ihoplagda med det (valda under kassaflödet), med var sin
+// färg: det öppna först, sedan delarna i ordning, samma färger som i tabellen. Prickar under zoom 14, gränser
+// över; vitt där en fastighet finns i flera.
 const SC_FARGER = ['--c3', '--c4', '--c6', '--c5', '--c2'];   // inte --c1: kartans egna kluster är blå
-const synliga = () => { try { return JSON.parse(store.get('horos.synliga')) ?? []; } catch { return []; } };
-const sattSynliga = (l) => store.set('horos.synliga', JSON.stringify(l));
-const paKartan = () => [...new Set([...synliga(), ...(scenario ? [scenario.nyckel] : [])])];
-const fargPa = (nyckel) => SC_FARGER[Math.max(0, paKartan().indexOf(nyckel)) % SC_FARGER.length];
+const fargFor = (i) => SC_FARGER[i % SC_FARGER.length];
+const paKartan = () => (scenario ? [{ namn: scenario.data.namn, bet: scenario.data.bet },
+  ...scenario.data.delar.map((x) => ({ namn: `${x.roll === 'minus' ? '− ' : ''}${x.namn}`, bet: x.bet }))] : []);
 const mitten = (f) => [(f.minx + f.maxx) / 2, (f.miny + f.maxy) / 2];
 const mittpunkter = new Map();   // beteckning -> [lon, lat], eller null om fastigheten inte finns i Horos
 const OSYNLIG = 'rgba(0,0,0,0)';
 async function ritaScenarier() {
   if (!map.getSource('scenarier')) return;   // kartan laddas fortfarande; load ritar
-  const mina = minaScenarion();
-  const vis = paKartan().map((n) => (n === scenario?.nyckel ? { nyckel: n, namn: scenario.data.namn, bet: allaBet(scenario.data) }
-    : ((m) => m?.data && { nyckel: n, namn: m.namn, bet: allaBet(m.data) })(mina.find((m) => m.nyckel === n)))).filter(Boolean);
+  const vis = paKartan();
   const saknas = [...new Set(vis.flatMap((v) => v.bet))].filter((b) => !mittpunkter.has(b));
   try {
     for (let i = 0; i < saknas.length; i += 1000) {
@@ -61,7 +60,7 @@ async function ritaScenarier() {
     }
   } catch { return; }   // ritas nästa gång något ändras
   const farger = new Map();   // beteckning -> färgerna för scenarierna den finns i
-  for (const v of vis) for (const b of v.bet) (farger.get(b) ?? farger.set(b, []).get(b)).push(css(fargPa(v.nyckel)));
+  vis.forEach((v, i) => { for (const b of v.bet) (farger.get(b) ?? farger.set(b, []).get(b)).push(css(fargFor(i))); });
   map.getSource('scenarier').setData({ type: 'FeatureCollection', features: [...farger].filter(([b]) => mittpunkter.get(b))
     .map(([b, f]) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: mittpunkter.get(b) }, properties: { farg: f[0], flera: f.length > 1 } })) });
   const grupper = new Map();   // linjefärg -> beteckningar
@@ -71,13 +70,8 @@ async function ritaScenarier() {
   map.setFilter('scenario-line', ['in', ['get', 'beteckning'], ['literal', [...farger.keys()]]]);
   const flera = [...farger.values()].some((f) => f.length > 1);
   $('#legend-scenarier').hidden = !vis.length;
-  $('#legend-scenarier').innerHTML = vis.map((v) => `<span><i style="background:var(${fargPa(v.nyckel)})"></i>${esc(v.namn || 'Namnlöst scenario')}</span>`).join('')
+  $('#legend-scenarier').innerHTML = vis.map((v, i) => `<span><i style="background:var(${fargFor(i)})"></i>${esc(v.namn || 'Namnlöst scenario')}</span>`).join('')
     + (flera ? '<span><i class="flera"></i>I flera scenarier</span>' : '');
-}
-function vaxlaSynlig(nyckel, pa) {
-  sattSynliga(pa ? [...new Set([...synliga(), nyckel])] : synliga().filter((n) => n !== nyckel));
-  ritaScenarier();
-  openScenarier({ lista: true });   // färgerna följer ordningen
 }
 // Läser in det öppna scenariot efter en omladdning, utan att byta vy, så att + och Lägg till fungerar direkt.
 function aterstallAktivt() {
@@ -115,11 +109,11 @@ async function oppnaScenario(data, { nyckel, lank, visa = true } = {}) {
   d.ar = Math.min(10, Math.max(1, Math.round(d.ar) || 5));
   d.start = Math.min(2100, Math.max(1900, Math.round(d.start) || new Date().getFullYear()));
   for (const k of ['gemensamt', 'antaganden', 'egna']) if (typeof d[k] !== 'object' || !d[k]) d[k] = {};
-  // Delscenarier (Addera): finns delen kvar i Mina scenarion räknas dess senaste version, annars kopian i scenariot.
+  // Ihoplagda scenarier: finns det kvar i Mina scenarion räknas dess senaste version, annars kopian i scenariot.
   const mina = minaScenarion();
   d.delar = (Array.isArray(d.delar) ? d.delar : []).filter((x) => Array.isArray(x?.bet)).map((x) => {
     const senaste = x.nyckel && x.nyckel !== nyckel && mina.find((m) => m.nyckel === x.nyckel)?.data;
-    return delAv(senaste || x, x.nyckel);
+    return delAv({ ...(senaste || x), roll: x.roll }, x.nyckel);
   });
   let u;
   try { u = await api('/api/underlag', { bet: allaBet(d).slice(0, s.maxScenario) }); } catch (e) {
@@ -189,7 +183,7 @@ async function visaScenario() {
   const ovriga = slag.filter((x) => !anvands(x));
   showPanel(`<div class="scenario">
     <input class="sc-namn" data-k='["namn"]' value="${esc(d.namn)}" maxlength="100" aria-label="Scenariots namn" placeholder="Namnlöst scenario">
-    <div class="meta"><i class="sc-farg" style="background:var(${fargPa(sc.nyckel)})" title="Färgen på kartan"></i><span id="sc-omfattning"></span>${sc.byggd ? ` · underlag ${esc(sc.byggd.slice(0, 10))}` : ''}${ram
+    <div class="meta"><i class="sc-farg" style="background:var(${fargFor(0)})" title="Färgen på kartan"></i><span id="sc-omfattning"></span>${sc.byggd ? ` · underlag ${esc(sc.byggd.slice(0, 10))}` : ''}${ram
       ? ` · <a data-ram="${ram}">Visa på kartan</a>` : ''}</div>
     ${d.underlagFran && sc.byggd && d.underlagFran !== sc.byggd ? `<p class="notice small">Horos data har uppdaterats sedan scenariot sparades
       (${esc(d.underlagFran.slice(0, 10))}). Ytor och taxering är hämtade på nytt; dina egna värden är kvar.</p>` : ''}
@@ -204,9 +198,6 @@ async function visaScenario() {
       avstängd). Ladda ner scenariofilen eller spara en länk, annars försvinner det när sidan laddas om.</p>
     <input id="sc-lank" class="sc-lank" readonly aria-label="Länk till scenariot" value="${esc(sc.lank ?? '')}"${sc.lank ? '' : ' hidden'}>
     <div id="sc-resultat"></div>
-
-    <div class="meta small">Kombinera med andra scenarier i <a data-sc="lista">Mina scenarion</a>: <strong>+</strong> lägger
-      in ett scenario som delscenario med sina egna antaganden, <strong>−</strong> tar bort dess fastigheter härifrån.</div>
 
     <h3>Antaganden</h3>
     <div class="meta small">Horos har inga marknadshyror, vakanser, driftkostnader eller avkastningskrav: värdet bygger
@@ -250,16 +241,6 @@ function uppdateraResultat() {
   const d = scenario.data, k = beraknaPortfolj(d, scenario.underlag), t = nyckeltal(k), sista = d.ar;
   const rest = (i) => (i === sista ? ' rest' : '');
   const antal = k.delar.reduce((a, x) => a + x.antal, 0);
-  // Portföljen: en rad per del (det här scenariot först) och summan, när scenariot har delscenarier.
-  const portfolj = k.delar.length > 1 ? `<h3>Portfölj</h3>
-  <div class="sc-tabell"><table class="sc-portfolj">
-    <tr><th>Del</th><th class="num">Fastigheter</th><th class="num">Yta, m²</th><th class="num">Taxeringsvärde</th><th class="num">Värde</th></tr>
-    ${k.delar.map((x, i) => `<tr><th scope="row">${esc(x.namn || 'Namnlöst scenario')}${i ? ` <a class="small" data-sc="ta-bort-del" data-i="${i - 1}">Ta bort</a>` : ' <span class="muted small">(egna)</span>'}</th>
-      <td class="num">${heltal(x.antal)}</td><td class="num">${heltal(x.yta)}</td><td class="num">${mkr(x.taxering_tkr)}</td>
-      <td class="num">${x.k.varde == null ? '–' : mkr(x.k.varde / 1000)}</td></tr>`).join('')}
-    <tr class="summa"><th scope="row">Summa</th><td class="num">${heltal(antal)}</td><td class="num">${heltal(k.yta)}</td>
-      <td class="num">${mkr(k.delar.reduce((a, x) => a + x.taxering_tkr, 0))}</td><td class="num">${k.varde == null ? '–' : mkr(k.varde / 1000)}</td></tr>
-  </table></div>` : '';
   $('#sc-resultat').innerHTML = `${stats([
     ['Värde', k.varde == null ? '–' : mkr(k.varde / 1000), k.varde == null ? 'Ange direktavkastningskrav' : `Kalkylränta ${andel(k.kalkylranta)}`],
     ['Värde per m²', k.varde == null || !k.yta ? '–' : kr(k.varde / k.yta)],
@@ -268,7 +249,6 @@ function uppdateraResultat() {
     ['Vakanstålighet', andel(t.vakanstalighet), `Vakans år 1: ${andel(t.vakans)}`],
     ['DoU-tålighet', andel(t.doutalighet)],
   ])}
-  ${portfolj}
   <h3>Kassaflöde, tkr</h3>
   <div class="sc-tabell"><table class="sc-kassaflode">
     <tr><th></th>${k.ar.map((a, i) => `<th class="num${rest(i)}">${a}${i === sista ? '*' : ''}</th>`).join('')}</tr>
@@ -277,9 +257,11 @@ function uppdateraResultat() {
   </table></div>
   <div class="meta small">* Året efter kalkylperioden. Restvärdet är dess driftnetto delat med direktavkastningskravet.
     Kalkylränta ${andel(k.kalkylranta)}${d.gemensamt.kalkylranta == null ? ' (direktavkastningskrav plus hyresutveckling)' : ''}.
-    Tåligheterna gäller år 1, utan lån.</div>`;
-  $('#sc-omfattning').textContent = `${heltal(antal)} ${antal === 1 ? 'fastighet' : 'fastigheter'} · ${heltal(k.yta)} m²${k.delar.length > 1
-    ? ` · ${k.delar.length - 1} ${k.delar.length === 2 ? 'delscenario' : 'delscenarier'}` : ''}`;
+    Tåligheterna gäller år 1, utan lån.</div>
+  ${ihoplagda(k)}`;
+  const ihop = d.delar.length;
+  $('#sc-omfattning').textContent = `${heltal(antal)} ${antal === 1 ? 'fastighet' : 'fastigheter'} · ${heltal(k.yta)} m²${ihop
+    ? ` · ihoplagt med ${ihop} ${ihop === 1 ? 'scenario' : 'scenarier'}` : ''}`;
   const ranta = document.querySelector('[data-k=\'["gemensamt","kalkylranta"]\']');
   if (ranta) ranta.placeholder = (k.kalkylranta * 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 });
   const perBet = new Map(k.per.map((p) => [p.beteckning, p]));
@@ -288,6 +270,67 @@ function uppdateraResultat() {
     el.textContent = p?.varde == null ? '–' : mkr(p.varde / 1000);
   }
   for (const el of document.querySelectorAll('[data-yta]')) el.textContent = heltal(perBet.get(el.dataset.yta)?.yta ?? 0);
+}
+
+const IHOP_RUBRIKER = ['Fastigheter', 'Yta, m²', 'Taxeringsvärde', 'Värde'];   // också rubrikerna i korten på mobil
+// Under kassaflödet: det här scenariot och alla andra i Mina scenarion, med siffror för de som räknas och ett
+// val per scenario (Av / Lägg till / Dra ifrån). Färgerna är desamma som på kartan. Summan gäller allt som räknas.
+function ihoplagda(k) {
+  const d = scenario.data, mina = minaScenarion().filter((x) => x.nyckel !== scenario.nyckel);
+  const valda = new Set(d.delar.map((y) => y.nyckel).filter(Boolean));
+  const rad = (prick, namn, roll, kontroll, siffror) => `<tr${roll === 'av' ? ' class="av"' : ''}>
+    <th scope="row">${prick ? `<i class="sc-farg" style="background:var(${prick})"></i>` : '<i class="sc-farg tom"></i>'}${namn}</th>
+    <td>${kontroll}</td>${siffror.map((v, i) => `<td class="num" data-rubrik="${IHOP_RUBRIKER[i]}">${v}</td>`).join('')}</tr>`;
+  const tal = (x) => [heltal(x.antal), heltal(x.yta), mkr(x.taxering_tkr), x.k.varde == null ? '–' : mkr(x.k.varde / 1000)];
+  const val = (attr, roll, namn) => `<div class="sc-roll" role="group" aria-label="${namn} i ${scenarioNamn()}">${[['av', 'Av'], ['med', 'Lägg till'], ['minus', 'Dra ifrån']]
+    .map(([r, text]) => `<button type="button" data-sc="del" data-roll="${r}" ${attr} aria-pressed="${r === roll}">${text}</button>`).join('')}</div>`;
+  let m = 0, b = 0;   // index i k.delar (de som läggs till) och k.bort (de som dras ifrån)
+  const rader = [rad(fargFor(0), `${esc(d.namn || 'Det här scenariot')} <span class="muted small">(det här)</span>`, 'med', '', tal(k.delar[m++])),
+    ...d.delar.map((y, i) => {
+      const namn = esc(y.namn || 'Namnlöst scenario'), kontroll = val(`data-i="${i}"`, y.roll, namn);
+      return y.roll === 'minus' ? rad(fargFor(i + 1), namn, 'minus', kontroll, [`−${heltal(k.bort[b++].antal)}`, '', '', ''])
+        : rad(fargFor(i + 1), namn, 'med', kontroll, tal(k.delar[m++]));
+    }),
+    ...mina.filter((x) => !valda.has(x.nyckel)).map((x) => {
+      const namn = esc(x.namn || 'Namnlöst scenario');
+      return rad(null, namn, 'av', val(`data-nyckel="${esc(x.nyckel)}"`, 'av', namn), [heltal(Number(x.antal) || 0), '', '', '']);
+    })];
+  const summa = k.delar.reduce((a, x) => ({ antal: a.antal + x.antal, tax: a.tax + x.taxering_tkr }), { antal: 0, tax: 0 });
+  return `<h3>Lägg ihop med andra scenarier</h3>
+  <div class="meta small">Välj om dina andra scenarier ska räknas in i ${scenarioNamn()}. <strong>Lägg till</strong> räknar in deras
+    fastigheter med deras egna antaganden; <strong>Dra ifrån</strong> räknar bort dem. Nyckeltalen och kassaflödet ovan gäller
+    summan. En fastighet räknas en gång, i första hand med det här scenariots antaganden.</div>
+  ${mina.length || d.delar.length ? `<div class="sc-tabell"><table class="sc-ihop">
+    <tr><th>Scenario</th><th>Räknas</th><th class="num">Fastigheter</th><th class="num">Yta, m²</th><th class="num">Taxeringsvärde</th><th class="num">Värde</th></tr>
+    ${rader.join('')}
+    <tr class="summa"><th scope="row">Summa</th><td></td>${[heltal(summa.antal), heltal(k.yta), mkr(summa.tax), k.varde == null ? '–' : mkr(k.varde / 1000)]
+      .map((v, i) => `<td class="num" data-rubrik="${IHOP_RUBRIKER[i]}">${v}</td>`).join('')}</tr>
+  </table></div>` : '<p class="empty">Du har inga andra scenarier ännu. Skapa fler, t.ex. med + på en fastighet, så kan du lägga ihop dem här.</p>'}`;
+}
+
+// Valet under kassaflödet: data-i är ett scenario som redan är ihoplagt, data-nyckel ett ur Mina scenarion.
+async function sattDel(el) {
+  const s = await statusP, d = scenario.data, roll = el.dataset.roll;
+  const i = el.dataset.i != null ? Number(el.dataset.i) : d.delar.findIndex((y) => y.nyckel === el.dataset.nyckel);
+  if (i >= 0) {
+    if (roll === 'av') d.delar.splice(i, 1); else d.delar[i].roll = roll;
+  } else if (roll !== 'av') {
+    const x = minaScenarion().find((m) => m.nyckel === el.dataset.nyckel);
+    if (!x) return;
+    let b;
+    try { b = x.data ?? await hamtaLank(new URL(x.lank).hash); } catch { el.textContent = 'Kunde inte hämtas'; return; }
+    const ny = delAv({ ...b, roll }, x.nyckel), alla = allaBet({ ...d, delar: [...d.delar, ny] });
+    if (alla.length > s.maxScenario) {
+      return showPanel(`<h2>För många fastigheter</h2><p class="empty">Ett scenario kan räkna med högst ${s.maxScenario.toLocaleString('sv-SE')}
+        fastigheter, och det här skulle få ${alla.length.toLocaleString('sv-SE')}.</p>`);
+    }
+    const finns = new Set(scenario.underlag.map((f) => f.beteckning)), saknas = alla.filter((bet) => !finns.has(bet));
+    try { if (saknas.length) scenario.underlag.push(...(await api('/api/underlag', { bet: saknas })).fastigheter); }
+    catch { el.textContent = 'Kunde inte hämtas'; return; }
+    d.delar.push(ny);
+  }
+  andrat();
+  uppdateraResultat();
 }
 
 // Ett fält i scenariot ändrades (se talFalt).
@@ -316,7 +359,7 @@ function andrat() {
 // bolag). Returnerar antalet tillagda (de som redan finns med hoppas över), eller null om scenariot skulle bli
 // större än maxScenario; det visas då i panelen.
 async function laggTillIScenario(bet) {
-  const s = await statusP, finns = new Set(allaBet(scenario.data));   // också delscenariernas
+  const s = await statusP, finns = new Set(scenario.data.bet);
   const nya = [...new Set(bet.map(normBet))].filter((b) => !finns.has(b));
   if (finns.size + nya.length > s.maxScenario) {
     showPanel(`<h2>För många fastigheter</h2><p class="empty">Ett scenario kan ha högst ${s.maxScenario.toLocaleString('sv-SE')}
@@ -397,52 +440,16 @@ async function openScenarier({ lista = false } = {}) {
       eller filtret (<strong>Räkna på träffarna</strong>). Fyll i hyror, vakanser, kostnader och avkastningskrav, så räknar Horos
       fram kassaflöde och värde år för år. Allt sparas här i webbläsaren; <strong>Spara och kopiera länk</strong> ger en länk att dela.</p>
     <h3>Mina scenarion</h3>
-    ${scenario ? `<div class="meta small"><strong>+</strong> lägger in ett scenario i ${scenarioNamn()} som delscenario,
-      <strong>−</strong> tar bort dess fastigheter ur ${scenarioNamn()}.</div>` : ''}
-    ${table(`<th>Karta</th><th>Scenario</th><th class="num">Senast använt</th>${scenario ? '<th></th>' : ''}<th></th>`, mina.map((x) =>
-      `<tr><td class="sc-karta"><label><input type="checkbox" data-synlig="${esc(x.nyckel)}"${paKartan().includes(x.nyckel) ? ' checked' : ''}${x.nyckel === scenario?.nyckel
-        ? ' disabled title="Det öppna scenariot syns alltid"' : ''} aria-label="Visa ${esc(x.namn || 'scenariot')} på kartan"><i class="sc-farg"
-        style="background:var(${fargPa(x.nyckel)})"${paKartan().includes(x.nyckel) ? '' : ' hidden'}></i></label></td>
-        <td><a data-sc="oppna" data-nyckel="${esc(x.nyckel)}">${esc(x.namn || 'Namnlöst scenario')}</a>${x.nyckel === scenario?.nyckel ? ' <span class="tag">öppet</span>' : ''}
+    ${table('<th>Scenario</th><th class="num">Senast använt</th><th></th>', mina.map((x) =>
+      `<tr><td><a data-sc="oppna" data-nyckel="${esc(x.nyckel)}">${esc(x.namn || 'Namnlöst scenario')}</a>${x.nyckel === scenario?.nyckel ? ' <span class="tag">öppet</span>' : ''}
         <div class="muted small">${Number(x.antal).toLocaleString('sv-SE')} fastigheter · ${x.lank ? 'delad länk' : 'inte delat'}</div></td>
-        <td class="num">${esc(x.andrad ?? x.sparad ?? '')}</td>${scenario ? `<td class="sc-komb">${kombineraKnappar(x)}</td>` : ''}<td class="num"><a data-sc="glom" data-nyckel="${esc(x.nyckel)}">Ta bort</a></td></tr>`),
+        <td class="num">${esc(x.andrad ?? x.sparad ?? '')}</td><td class="num"><a data-sc="glom" data-nyckel="${esc(x.nyckel)}">Ta bort</a></td></tr>`),
       'Inga scenarier i den här webbläsaren ännu.')}
-    <div class="meta small">Bocka i <strong>Karta</strong> för att se scenariots fastigheter på kartan i dess färg; vitt betyder
-      att fastigheten finns i flera. Det öppna scenariot syns alltid.</div>
+    <div class="meta small">Öppna ett scenario för att lägga ihop det med andra (under kassaflödet).</div>
     <div class="meta small">Listan finns bara i den här webbläsaren. Att ta bort ett scenario här tar inte bort en delad länk.
       Ladda ner scenariofilen om du vill ha en egen kopia eller flytta scenariot till en annan dator.</div>
     <label class="copy">Öppna scenariofil<input type="file" accept=".json,application/json" data-sc-fil hidden></label>
   `);
-}
-
-// Addera: det andra scenariot (och dess delscenarier) blir delscenarier här; finns det redan som del ersätts det.
-// Subtrahera: dess fastigheter tas bort härifrån, ur de egna och ur delscenarierna (tomma delar försvinner).
-async function kombinera(satt, nyckel, knapp) {
-  const s = await statusP, d = scenario.data, x = minaScenarion().find((m) => m.nyckel === nyckel);
-  if (!x || x.nyckel === scenario.nyckel) return;
-  let b;
-  try { b = x.data ?? await hamtaLank(new URL(x.lank).hash); } catch { knapp.textContent = 'Kunde inte hämtas'; return; }
-  const delar = [delAv(b, x.nyckel), ...(Array.isArray(b.delar) ? b.delar : []).filter((y) => Array.isArray(y?.bet)).map((y) => delAv(y, y.nyckel))]
-    .filter((y) => y.nyckel !== scenario.nyckel);   // inte det här scenariot i sig självt
-  if (satt === 'subtrahera') {
-    const bort = new Set(delar.flatMap((y) => y.bet));
-    d.bet = d.bet.filter((bet) => !bort.has(bet));
-    d.delar = d.delar.map((y) => ({ ...y, bet: y.bet.filter((bet) => !bort.has(bet)) })).filter((y) => y.bet.length);
-  } else {
-    const nycklar = new Set(delar.map((y) => y.nyckel).filter(Boolean));
-    const nyaDelar = [...d.delar.filter((y) => !nycklar.has(y.nyckel)), ...delar];
-    const alla = allaBet({ ...d, delar: nyaDelar });
-    if (alla.length > s.maxScenario) {
-      return showPanel(`<h2>För många fastigheter</h2><p class="empty">Ett scenario kan ha högst ${s.maxScenario.toLocaleString('sv-SE')}
-        fastigheter, och portföljen skulle få ${alla.length.toLocaleString('sv-SE')}.</p>`);
-    }
-    const finns = new Set(scenario.underlag.map((f) => f.beteckning)), saknas = alla.filter((bet) => !finns.has(bet));
-    try { if (saknas.length) scenario.underlag.push(...(await api('/api/underlag', { bet: saknas })).fastigheter); }
-    catch { knapp.textContent = 'Kunde inte hämtas'; return; }
-    d.delar = nyaDelar;
-  }
-  andrat();
-  return openScenarier({ lista: true });   // kvar i listan, så att flera kan läggas in i rad
 }
 
 // Knappar med data-sc i panelen och i +-menyn.
@@ -464,16 +471,11 @@ async function scenarioKlick(el) {
     andrat();
     return visaScenario();
   }
-  if (a === 'addera' || a === 'subtrahera') return kombinera(a, el.dataset.nyckel, el);
-  if (a === 'ta-bort-del') {
-    scenario.data.delar.splice(Number(el.dataset.i), 1);
-    andrat();
-    return visaScenario();
-  }
+  if (a === 'del') return sattDel(el);
   if (a === 'spara') return sparaScenario(el);
   if (a === 'csv') return laddaNer(`${filnamn()}.csv`, scenarioCsv(s), 'text/csv;charset=utf-8');
   if (a === 'fil') return laddaNer(`${filnamn()}.json`, JSON.stringify(scenario.data, null, 1), 'application/json');
-  if (a === 'stang') {   // scenariot ligger kvar i Mina scenarion men inget är öppet; på kartan bara om det är ibockat
+  if (a === 'stang') {   // scenariot ligger kvar i Mina scenarion, men inget är öppet (och inget på kartan)
     scenario = null;
     sparaLokalt();
     ritaScenarier();
@@ -483,7 +485,6 @@ async function scenarioKlick(el) {
   if (a === 'oppna' && x) return oppnaPost(x);
   if (a === 'glom') {
     sparaMina(mina.filter((m) => m !== x));
-    sattSynliga(synliga().filter((n) => n !== x?.nyckel));
     if (x && x.nyckel === scenario?.nyckel) { scenario = null; sparaLokalt(); }
     ritaScenarier();
     return openScenarier({ lista: true });
@@ -506,7 +507,7 @@ async function scenarioKlick(el) {
 // +-menyn i fastighetspanelen: scenarierna (det öppna först, bock där fastigheten redan finns) och Nytt scenario.
 function scenarioMeny(bet) {
   const mina = minaScenarion().sort((a, b) => (b.nyckel === scenario?.nyckel) - (a.nyckel === scenario?.nyckel));
-  const med = (x) => allaBet(x.nyckel === scenario?.nyckel ? scenario.data : x.data ?? { bet: [] }).includes(bet);
+  const med = (x) => (x.nyckel === scenario?.nyckel ? scenario.data.bet : x.data?.bet ?? []).includes(bet);
   const namn = (x) => `${esc(x.namn || 'Namnlöst scenario')}${x.nyckel === scenario?.nyckel ? ' <span class="muted small">öppet</span>' : ''}`;
   return `<details class="sc-meny"><summary class="lagg-till" title="Lägg till i ett scenario" aria-label="Lägg till ${esc(bet)} i ett scenario">+</summary>
     <div class="sc-meny-lista">
@@ -517,20 +518,11 @@ function scenarioMeny(bet) {
       <button type="button" class="ny" data-sc="fastighet" data-bet="${esc(bet)}">Nytt scenario</button>
     </div></details>`;
 }
-// + och − vid ett scenario i Mina scenarion: lägg in det som delscenario i det öppna, eller ta bort dess fastigheter.
-function kombineraKnappar(x) {
-  if (x.nyckel === scenario.nyckel) return '';
-  const namn = esc(x.namn || 'scenariot'), del = scenario.data.delar.some((y) => y.nyckel === x.nyckel);
-  return `${del ? `<button type="button" class="lagg-till" disabled title="${namn} är ett delscenario i ${scenarioNamn()}">✓</button>`
-    : `<button type="button" class="lagg-till" data-sc="addera" data-nyckel="${esc(x.nyckel)}" title="Lägg in ${namn} i ${scenarioNamn()} som delscenario"
-      aria-label="Lägg in ${namn} i ${scenarioNamn()}">+</button>`}<button type="button" class="lagg-till" data-sc="subtrahera" data-nyckel="${esc(x.nyckel)}"
-      title="Ta bort fastigheterna i ${namn} ur ${scenarioNamn()}" aria-label="Ta bort fastigheterna i ${namn} ur ${scenarioNamn()}">−</button>`;
-}
 // Bolagspanelen: hela innehavet till ett nytt scenario, eller till det öppna.
 const scenarioNamn = () => esc(scenario.data.namn || 'scenariot');
 const bolagScenarioKnapp = () => `<button type="button" class="copy" data-sc="bolag">${scenario ? `Lägg till i ${scenarioNamn()}` : 'Räkna på innehavet'}</button>`;
 // Plusknappen på sökträffar med en fastighet när ett scenario är öppet (se runSearch).
 const sokLaggTill = (bet) => (!scenario || !bet ? ''
-  : allaBet(scenario.data).includes(bet) ? ` <button type="button" class="lagg-till" disabled title="Finns i ${scenarioNamn()}">✓</button>`
+  : scenario.data.bet.includes(bet) ? ` <button type="button" class="lagg-till" disabled title="Finns i ${scenarioNamn()}">✓</button>`
     : ` <button type="button" class="lagg-till" data-lagg="${esc(bet)}" title="Lägg till i ${scenarioNamn()}"
       aria-label="Lägg till ${esc(bet)} i ${scenarioNamn()}">+</button>`);
