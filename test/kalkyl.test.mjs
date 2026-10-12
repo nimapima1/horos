@@ -84,9 +84,4 @@ test('portfölj: delscenarier räknas med egna antaganden, huvudscenariots perio
   // En del utan direktavkastningskrav: inget totalvärde.
   assert.equal(beraknaPortfolj(scenario({ delar: [{ namn: 'C', bet: ['T 1:3'], gemensamt: {} }] }), [fastighet, t3]).varde, null);
   assert.equal(beraknaPortfolj(scenario(), [fastighet]).varde, berakna(scenario(), [fastighet]).varde);   // utan delar som förut
-  // Dra ifrån: delen med T 1:1 gör att den inte räknas någonstans, inte ens i scenariot självt.
-  const minus = beraknaPortfolj(scenario({ delar: [del, { namn: 'Sålda', nyckel: 'x', roll: 'minus', bet: ['T 1:1'] }] }), [fastighet, t2]);
-  assert.deepEqual([...minus.delar].map((d) => [d.namn, d.antal]), [['Test', 0], ['B', 1]]);
-  assert.deepEqual([...minus.bort].map((b) => [b.nyckel, b.antal]), [['x', 1]]);
-  assert.equal(minus.total.dn[0], 1_000_000);
 });

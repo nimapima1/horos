@@ -302,12 +302,10 @@ label.copy { display: inline-flex; align-items: center; }
 .sc-farg.tom { background: none; box-shadow: inset 0 0 0 1px var(--border); }
 .panel .sc-ihop tr.av th, .panel .sc-ihop tr.av td.num { color: var(--muted); }
 .panel .sc-ihop .summa th, .panel .sc-ihop .summa td { font-weight: 700; border-top: 1px solid var(--muted); }
-.sc-roll { display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: var(--surface-sunken); }
-.sc-roll button { min-height: 30px; padding: 0 7px; border: 0; border-radius: 6px; background: none; cursor: pointer;
-  font: 600 12px var(--font-body); color: var(--muted); white-space: nowrap; }
-.sc-roll button:hover { color: var(--accent-strong); }
-.sc-roll button[aria-pressed="true"] { background: var(--surface-solid); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
-.sc-roll button[data-roll="minus"][aria-pressed="true"] { box-shadow: inset 0 -2px 0 var(--c6); }
+.panel .sc-ihop .sc-val { width: 1%; text-align: center; padding-left: 4px; padding-right: 8px; }
+.sc-ihop input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.sc-ihop input:disabled { cursor: default; }
+.sc-ihop .tag { background: var(--accent-soft); color: var(--accent-strong); }
 .scenario .meta .sc-farg { margin-right: 6px; vertical-align: -1px; }
 
 
@@ -334,8 +332,17 @@ label.copy { display: inline-flex; align-items: center; }
   .panel .sc-ihop, .panel .sc-ihop tbody { display: block; }
   .panel .sc-ihop tr:first-child { display: none; }
   .panel .sc-ihop tr { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 10px; padding: 10px 0; border-top: 1px solid var(--border); }
-  .panel .sc-ihop th[scope="row"], .panel .sc-ihop td:not(.num) { grid-column: 1 / -1; padding: 0; border: 0; }
-  .panel .sc-ihop td:empty { display: none; }
+  /* Rad 1: Huvud, namnet, Med; rad 2: de fyra siffrorna under namnet. Cellerna: val, namn, val, fyra tal. */
+  .panel .sc-ihop tr { grid-template-columns: 24px repeat(4, minmax(0, 1fr)) 24px; }   /* minmax: långa namn breddar inte kolumnerna */
+  .panel .sc-ihop th[scope="row"], .panel .sc-ihop td.sc-val { padding: 0; border: 0; align-self: center; width: auto; }
+  .panel .sc-ihop td.sc-val:first-child { grid-column: 1; }
+  .panel .sc-ihop th[scope="row"] { grid-column: 2 / 6; }
+  .panel .sc-ihop th + td.sc-val { grid-column: 6; justify-self: end; }
+  .panel .sc-ihop td.num { grid-row: 2; }
+  .panel .sc-ihop td.num:nth-child(4) { grid-column: 2; }
+  .panel .sc-ihop td.num:nth-child(5) { grid-column: 3; }
+  .panel .sc-ihop td.num:nth-child(6) { grid-column: 4; }
+  .panel .sc-ihop td.num:nth-child(7) { grid-column: 5; }
   .panel .sc-ihop td.num { padding: 0; border: 0; text-align: left; font-size: 13px; }
   .panel .sc-ihop td.num::before { content: attr(data-rubrik); display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
   .panel .sc-ihop .summa th, .panel .sc-ihop .summa td { border: 0; }
