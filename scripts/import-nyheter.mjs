@@ -1,4 +1,4 @@
-// Hämtar fastighetsbolagens pressmeddelanden från Cision (RSS) och sparar köp och försäljningar av
+// Hämtar fastighetsbolagens pressmeddelanden från Cision (RSS), eller läser dem som MFN skickat, och sparar köp och försäljningar av
 // fastigheter i nyhet/nyhet_plats: rubrik, länk, datum, typ, pris och platser. Texten sparas inte.
 // Fastigheter hittas via beteckningen i texten (kommun + trakt) eller adressen (adresspunkt -> fastighet).
 //
@@ -7,6 +7,8 @@
 //                                                     slutkod 3 = inget ändrades)
 //   node scripts/import-nyheter.mjs --publik <ny> --behall <gammal>   (deploy --data: pressmeddelanden som bara
 //                                                     finns i den gamla publika databasen följer med, ingen hämtning)
+//   node scripts/import-nyheter.mjs --publik <fil> --mfn <mfn.sqlite>   (servern: det som MFN skickat till
+//                                                     /api/mfn, ingen hämtning från Cision)
 import { DatabaseSync } from 'node:sqlite';
 import { NYHET_PLATS_UTANFOR, openDb, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
@@ -46,7 +48,7 @@ const kandidater = db.prepare(`SELECT f.beteckning, f.geojson FROM fastighet f
 const fastighetVid = (lon, lat) =>
   kandidater.all(lon, lon, lat, lat).find((f) => pointInGeom([lon, lat], JSON.parse(f.geojson)))?.beteckning ?? null;
 const insNyhet = db.prepare(`INSERT OR REPLACE INTO nyhet (url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun)
-  VALUES (?, 'cision', ?, ?, ?, ?, ?, ?)`);
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
 const delPlats = db.prepare('DELETE FROM nyhet_plats WHERE url = ?');
 const delNyhet = db.prepare('DELETE FROM nyhet WHERE url = ?');
 const insPlats = db.prepare('INSERT INTO nyhet_plats (url, beteckning, adress, lon, lat) VALUES (?, ?, ?, ?, ?)');
@@ -66,7 +68,37 @@ function adressPunkt({ gata, nummer }, kommun) {
 }
 
 let antal = 0, medPlats = 0;
-for (const [namn, utgivare] of CISION) {
+// En affär (från tolka) med platser: beteckningarna i texten och adresspunkterna.
+function spara(n, utgivare, kalla) {
+  // Lokalt sparas kandidatbeteckningar även om fastigheten inte finns än, så att de kopplas när den läses in.
+  // Publikt (--publik) tas platser utan fastighet i databasen bort efter hämtningen, som i build-public.
+  const platser = n.beteckningar.map((b) => [b, null, null, null]);
+  for (const a of n.adresser) {
+    const p = adressPunkt(a, n.kommun);
+    if (p) platser.push([p.bet, `${a.gata} ${a.nummer}`, p.lon, p.lat]);
+  }
+  const kopplade = platser.filter(([b, , lon]) => finnsFastighet.get(b) || (lon != null && !args.publik)).length;
+  antal++; if (kopplade) medPlats++;
+  if (args.dry) {
+    console.log(`${n.datum?.slice(0, 10)} ${n.typ} ${n.pris_kr ? `${n.pris_kr / 1e6} Mkr` : '–'} ${n.rubrik}`
+      + `\n    ${n.kommun ?? 'ingen kommun'} · ${n.beteckningar.join(', ') || 'ingen beteckning'} · ${n.adresser.map((x) => `${x.gata} ${x.nummer}`).join(', ') || 'ingen adress'} · ${kopplade} på kartan`);
+    return;
+  }
+  insNyhet.run(n.url, kalla, utgivare, n.rubrik, n.datum, n.typ, n.pris_kr, n.kommun);
+  delPlats.run(n.url);
+  for (const p of platser) insPlats.run(n.url, ...p);
+}
+
+if (args.mfn) {
+  // Det som MFN skickat till servern (POST /api/mfn i server.mjs), redan tolkat och utan text.
+  // shortcut: tolkas inte om när reglerna i lib/nyheter.mjs ändras (texten sparas inte); bara nya följer dem.
+  const mdb = new DatabaseSync(String(args.mfn), { readOnly: true, timeout: 5000 });   // appen kan skriva just då
+  const rader = mdb.prepare('SELECT * FROM mfn_nyhet').all();
+  mdb.close();
+  withTransaction(db, () => {
+    for (const r of rader) spara({ ...r, beteckningar: JSON.parse(r.beteckningar), adresser: JSON.parse(r.adresser) }, r.utgivare, 'mfn');
+  });
+} else for (const [namn, utgivare] of CISION) {
   const res = await fetch(`https://news.cision.com/se/${namn}/ListItems?format=rss&pageSize=100`, { headers: { 'user-agent': UA } });
   if (!res.ok) { console.error(`${utgivare}: Cision svarade ${res.status}`); continue; }
   const alla = lasRss(await res.text()).map((n) => ({ ...n, ...tolka(n) }));
@@ -74,25 +106,7 @@ for (const [namn, utgivare] of CISION) {
   withTransaction(db, () => {
     // Pressmeddelanden som inte (längre) räknas som affärer, t.ex. efter ändrade regler i lib/nyheter.mjs.
     if (!args.dry) for (const n of alla) if (!affarer.includes(n)) { delNyhet.run(n.url); delPlats.run(n.url); }
-    for (const n of affarer) {
-      // Lokalt sparas kandidatbeteckningar även om fastigheten inte finns än, så att de kopplas när den läses in.
-      // Publikt (--publik) tas platser utan fastighet i databasen bort efter hämtningen, som i build-public.
-      const platser = n.beteckningar.map((b) => [b, null, null, null]);
-      for (const a of n.adresser) {
-        const p = adressPunkt(a, n.kommun);
-        if (p) platser.push([p.bet, `${a.gata} ${a.nummer}`, p.lon, p.lat]);
-      }
-      const kopplade = platser.filter(([b, , lon]) => finnsFastighet.get(b) || (lon != null && !args.publik)).length;
-      antal++; if (kopplade) medPlats++;
-      if (args.dry) {
-        console.log(`${n.datum?.slice(0, 10)} ${n.typ} ${n.pris_kr ? `${n.pris_kr / 1e6} Mkr` : '–'} ${n.rubrik}`
-          + `\n    ${n.kommun ?? 'ingen kommun'} · ${n.beteckningar.join(', ') || 'ingen beteckning'} · ${n.adresser.map((x) => `${x.gata} ${x.nummer}`).join(', ') || 'ingen adress'} · ${kopplade} på kartan`);
-        continue;
-      }
-      insNyhet.run(n.url, utgivare, n.rubrik, n.datum, n.typ, n.pris_kr, n.kommun);
-      delPlats.run(n.url);
-      for (const p of platser) insPlats.run(n.url, ...p);
-    }
+    for (const n of affarer) spara(n, utgivare, 'cision');
   });
   await vanta(1000);   // en förfrågan i sekunden
 }

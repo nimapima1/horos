@@ -97,8 +97,12 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
 - Pressmeddelanden (2026-10-10): `import-nyheter` hämtar 14 nyhetsrum på Cision; listan "Senaste i
   pressmeddelanden" i Transaktioner och "I pressmeddelanden" i fastighetspanelen, "Visa på kartan" ramar in.
   Privatperson som säljare: affären visas, namnet aldrig; försäljning till privatperson tas inte med.
-  **MFN förbjuder automatisk hämtning** (robots.txt: `*.rss`, `*.xml`, `*.json`): inte med förrän Modular
-  Finance gett tillstånd. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
+  **MFN förbjuder automatisk hämtning** (robots.txt: `*.rss`, `*.xml`, `*.json`), men erbjöd 2026-10-12 att
+  **skicka** pressmeddelanden (WebSub-POST, JSON) för bolag som distribuerar via MFN. Mottagaren: `POST /api/mfn`
+  (signatur HMAC-SHA256 i `X-Hub-Signature` med `MFN_SECRET` i secrets.env; utan den finns ingen mottagare),
+  `GET /api/mfn` svarar på `hub.challenge`. Bara svenska köp/försäljningar (`tolkaMfn` i `lib/nyheter.mjs`)
+  sparas, utan text, i `mfn.sqlite` i appens StateDirectory (`/var/lib/horos-scenarion`); cron för in dem med
+  `import-nyheter --publik <fil> --mfn <mfn.sqlite>` (källa `mfn`). DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
   efterfrågas (mejlen skickade 2026-10-10, väntar på svar; se `PRIVAT.md`). På servern: cron (som deploy, inlagd av `deploy.sh`) kör
   `deploy/nyheter.sh` 05:15 och 15:15 UTC: `import-nyheter --publik` på en kopia av den publika databasen
   (platser bara på fastigheter i den, samma regel `NYHET_PLATS_UTANFOR` som build-public och serverns spärr), byter
@@ -119,8 +123,9 @@ Den publika databasen har **0 fastigheter** (bara bolag, adresser och pressmedde
 
 Väntar på:
 - Svar på tillståndsmejlen (Fastighetsvärlden, Fastighetsnytt, MFN), skickade 2026-10-10 från kontakt@horos.se.
-  MFN svarade 2026-10-12: kan erbjuda pressmeddelanden för bolag som distribuerar via MFN; följdfrågor om
-  leveranssätt, villkor och källangivelse skickade samma dag, väntar på svar (se `PRIVAT.md`).
+  MFN svarade 2026-10-12: skickar pressmeddelanden (push) för bolag som distribuerar via MFN och vill veta
+  leveranssätt (HTTPS), format (JSON) och URL. Mottagaren byggs först; URL:en (`https://horos.se/api/mfn`) lämnas
+  när den är live. Öppet: hemligheten för signaturen, vilka bolag, ir/pr, villkor och källangivelse (se `PRIVAT.md`).
 - Skatteverket: taxeringsvärden, ärendet pågår (detaljer i `PRIVAT.md`).
 - Lantmäteriet (allmän handling): lagfarter/köpeskillingar från 2016 där förvärvaren är juridisk
   person, och nuvarande juridiska ägare. **Tomträttsinnehav är inte efterfrågat**: kontrollera när

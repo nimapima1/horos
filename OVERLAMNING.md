@@ -125,10 +125,19 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
   (sök t.ex. `to:kontakt@horos.se -from:me`).
   - **MFN svarade 2026-10-12**: de kan erbjuda pressmeddelanden för bolag som använder MFN som
     distributionstjänst (inte alla bolag på mfn.se). Användaren svarade ja samma dag och frågade om leveranssätt
-    och hämtfrekvens, villkor/kostnad och källangivelse. Väntar på svar; hämta ingenting från MFN innan dess.
-  - Ja från MFN: lägg till MFN-flöden (`mfn.se/all/a/<bolag>.rss`) som källa i `lib/nyheter.mjs`; de flesta
-    noterade fastighetsbolagen finns där. Följ deras villkor (källa, hämtfrekvens). Cron-jobbet tar med dem
-    automatiskt när koden är deployad.
+    och hämtfrekvens, villkor/kostnad och källangivelse. MFN svarade direkt: de **skickar** (push) och vill veta
+    leveranssätt (HTTP(S)/SFTP), format (JSON/XML) och URL. Dokumentation: https://modfin.gitbook.io/mfn
+    (WebSub, News Item). Beslut: bygga mottagaren först, sedan svara HTTPS, JSON och `https://horos.se/api/mfn`.
+  - **Mottagaren** (gren `mfn-svar`): `POST /api/mfn` kontrollerar `X-Hub-Signature` (HMAC-SHA256, `MFN_SECRET`),
+    `tolkaMfn` behåller bara svenska köp/försäljningar, och de sparas utan text i `mfn.sqlite` i appens
+    StateDirectory. Cron (`deploy/nyheter.sh`) kör `import-nyheter --mfn` efter Cision och startar om om något
+    ändrats; MFN-pressmeddelanden syns alltså inom ett halvt dygn. Ingen root-ändring behövs.
+  - Kvar innan URL:en lämnas: merga, deploya, sätt `MFN_SECRET`
+    (`ssh deploy@37.27.152.172 "sudo -n /usr/local/sbin/fastighetskarta-admin set-secret MFN_SECRET"`, värdet
+    på en rad) och kontrollera att `https://horos.se/api/mfn?hub.challenge=x` svarar `x`. Hemligheten bestäms
+    med MFN (de lägger upp prenumerationen, eller vi gör det via deras hub).
+  - Öppna frågor till MFN: hemligheten, vilka bolag (lista eller alla svenska), ir och pr, villkor, källangivelse
+    (lägg då till "Källa: MFN" i listorna och på metodsidan).
   - Ja från en tidning: bara rubrik + länk + det vi själva läser ut; ingen artikeltext, inget bakom betalvägg.
   - Fastighetsnytt fick också frågan om vem som svarar för DI (samma koncern, Bonnier News).
 - Skatteverket, Lantmäteriet (lagfarter, geodatasupport) och Geotorget-ärendena: se `CLAUDE.md` och `PRIVAT.md`.

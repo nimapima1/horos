@@ -1,6 +1,6 @@
 // Liten server utan beroenden: statiska filer från public/ + JSON-API.
 import { createServer } from 'node:http';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
@@ -9,6 +9,7 @@ import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare,
 import { avstandM, innerPoints, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN } from './lib/kommuner.mjs';
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
+import { tolkaMfn } from './lib/nyheter.mjs';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -102,17 +103,52 @@ const giltigt = (v, djup = 0) => v === null || (typeof v === 'number' && Number.
     && Object.entries(v).every(([k, x]) => k.length <= 100 && giltigt(x, djup + 1)));
 const giltigtScenario = (s) => s?.v === 1 && Array.isArray(s.bet) && s.bet.length <= MAX_SCENARIO && giltigt(s);
 
-// JSON-kropp på högst max byte. Kräver content-type application/json: ett formulär på en annan sida
-// kan inte skicka det utan CORS-förfrågan, som servern inte svarar på.
-async function lasJson(req, max) {
-  if (!/^application\/json\b/.test(req.headers['content-type'] ?? '')) return { fel: [415, { error: 'application/json krävs' }] };
+// --- MFN (pressmeddelanden som skickas hit) ------------------------------------------
+// MFN skickar varje nytt pressmeddelande som POST till /api/mfn (WebSub, signerat med HMAC-SHA256 i
+// X-Hub-Signature med hemligheten MFN_SECRET). Bara köp och försäljningar sparas, utan texten, i en egen
+// databas i samma skrivbara katalog som scenarierna; cron (deploy/nyheter.sh) för in dem i den publika.
+// Utan MFN_SECRET finns ingen mottagare.
+const MFN_DB = process.env.MFN_DB
+  ?? (process.env.STATE_DIRECTORY ? join(process.env.STATE_DIRECTORY, 'mfn.sqlite') : PUBLIC_MODE ? null : join(ROOT, 'data', 'mfn.sqlite'));
+const MAX_MFN_BYTE = 2 * 1024 * 1024;   // hela pressmeddelandet med HTML
+let qm = null;
+try {
+  if (process.env.MFN_SECRET && MFN_DB) {
+    mkdirSync(dirname(MFN_DB), { recursive: true });
+    // Ingen WAL: cron läser filen som en annan användare, skrivskyddat.
+    const mdb = new DatabaseSync(MFN_DB);
+    mdb.exec(`CREATE TABLE IF NOT EXISTS mfn_nyhet (url TEXT PRIMARY KEY, utgivare TEXT NOT NULL, rubrik TEXT NOT NULL,
+      datum TEXT, typ TEXT NOT NULL, pris_kr INTEGER, kommun TEXT, beteckningar TEXT NOT NULL, adresser TEXT NOT NULL,
+      mottagen TEXT NOT NULL)`);
+    qm = mdb.prepare("INSERT OR REPLACE INTO mfn_nyhet VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))");
+  }
+} catch (e) {
+  console.error(`MFN-mottagaren är avstängd (${MFN_DB}): ${e.message}`);
+}
+const mfnSignaturOk = (kropp, sig) => {
+  const ratt = createHmac('sha256', process.env.MFN_SECRET).update(kropp).digest('hex');
+  const fick = String(sig ?? '').replace(/^sha256=/i, '').toLowerCase();
+  return fick.length === ratt.length && timingSafeEqual(Buffer.from(fick), Buffer.from(ratt));
+};
+
+// Kroppen som Buffer, högst max byte.
+async function lasKropp(req, max) {
   const delar = [];
   let n = 0;
   for await (const d of req) {
     if ((n += d.length) > max) return { fel: [413, { error: 'för stort' }] };
     delar.push(d);
   }
-  try { return { varde: JSON.parse(Buffer.concat(delar)) }; } catch { return { fel: [400, { error: 'ogiltig JSON' }] }; }
+  return { kropp: Buffer.concat(delar) };
+}
+
+// JSON-kropp på högst max byte. Kräver content-type application/json: ett formulär på en annan sida
+// kan inte skicka det utan CORS-förfrågan, som servern inte svarar på.
+async function lasJson(req, max) {
+  if (!/^application\/json\b/.test(req.headers['content-type'] ?? '')) return { fel: [415, { error: 'application/json krävs' }] };
+  const { kropp, fel } = await lasKropp(req, max);
+  if (fel) return { fel };
+  try { return { varde: JSON.parse(kropp) }; } catch { return { fel: [400, { error: 'ogiltig JSON' }] }; }
 }
 
 // Enkel hastighetsbegränsning per IP (skyddar en liten server mot massnedladdning).
@@ -783,6 +819,25 @@ const routes = [
     return [200, { id }];
   }, 'POST'],
 
+  // MFN: kontrollfrågan när en prenumeration läggs upp via deras hub (svaret är hub.challenge), och
+  // pressmeddelandena (se MFN_DB ovan). 200 betyder mottaget; annars försöker MFN igen.
+  [/^\/api\/mfn$/, 'api', (_m, url) => {
+    const c = url.searchParams.get('hub.challenge');
+    if (!qm) return [404, { error: 'okänd endpoint' }];
+    return c && c.length <= 200 ? [200, c] : [400, { error: 'hub.challenge saknas' }];
+  }],
+  [/^\/api\/mfn$/, 'api', async (_m, _url, _res, req) => {
+    if (!qm) return [404, { error: 'okänd endpoint' }];
+    const { kropp, fel } = await lasKropp(req, MAX_MFN_BYTE);
+    if (fel) return fel;
+    if (!mfnSignaturOk(kropp, req.headers['x-hub-signature'])) return [403, { error: 'fel signatur' }];
+    let item;
+    try { item = JSON.parse(kropp); } catch { return [400, { error: 'ogiltig JSON' }]; }
+    const n = tolkaMfn(item);
+    if (n) qm.run(n.url, n.utgivare, n.rubrik, n.datum, n.typ, n.pris_kr, n.kommun, JSON.stringify(n.beteckningar), JSON.stringify(n.adresser));
+    return [200, { sparad: !!n }];
+  }, 'POST'],
+
   [/^\/api\/scenario\/([\w-]{10})$/, 'api', (m) => {
     const r = qs?.hamta.get(m[1]);
     return r ? [200, r.data] : [404, { error: 'Scenariot finns inte' }];
@@ -906,9 +961,11 @@ async function serveStatic(res, pathname) {
 
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  const route = routes.find(([re]) => re.test(url.pathname));
+  // Samma adress kan ha en rutt per metod (t.ex. /api/mfn).
+  const passar = routes.filter(([re]) => re.test(url.pathname));
+  const route = passar.find(([, , , m = 'GET']) => req.method === m || (m === 'GET' && req.method === 'HEAD')) ?? passar[0];
   const metod = route?.[3] ?? 'GET';
-  if (req.method !== metod && !(metod === 'GET' && req.method === 'HEAD')) return json(res, 405, { error: `endast ${metod}` });
+  if (req.method !== metod && !(metod === 'GET' && req.method === 'HEAD')) return json(res, 405, { error: `endast ${passar.map((r) => r[3] ?? 'GET').join(', ')}` });
   if (rateLimited(req, route?.[1] ?? 'api')) return json(res, 429, { error: 'för många förfrågningar, försök igen om en stund' });
   try {
     if (route) {

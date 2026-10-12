@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT, openDb } from '../lib/db.mjs';
+import { DatabaseSync } from 'node:sqlite';
+import { ROOT, openDb, rebuildRtree } from '../lib/db.mjs';
 
 const DIR = join(ROOT, 'data', '_test');
 const NY = join(DIR, 'nyheter-ny.sqlite');
@@ -24,6 +25,7 @@ function publik(path, sql) {
     INSERT INTO agande (beteckning, orgnr) VALUES ('T 1:1', '5560000001');
     ${sql};
     PRAGMA journal_mode = DELETE;`);
+  rebuildRtree(db, 'fastighet');   // som build-public
   db.close();
 }
 
@@ -51,4 +53,24 @@ test('publikt läge vägrar starta med en plats i ett pressmeddelande utan fasti
   const r = node([join(ROOT, 'server.mjs')], { FASTIGHETSKARTA_DB: NY, PUBLIC_MODE: '1', PORT: '3019' });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /1 platser i pressmeddelanden utan fastighet/);
+});
+
+test('cron --mfn: det MFN skickat förs in med källan mfn, platser bara på fastigheter', () => {
+  const MFN = join(DIR, 'nyheter-mfn.sqlite');
+  rmSync(MFN, { force: true });
+  publik(NY, '');
+  const m = new DatabaseSync(MFN);
+  m.exec(`CREATE TABLE mfn_nyhet (url TEXT PRIMARY KEY, utgivare TEXT NOT NULL, rubrik TEXT NOT NULL, datum TEXT, typ TEXT NOT NULL,
+      pris_kr INTEGER, kommun TEXT, beteckningar TEXT NOT NULL, adresser TEXT NOT NULL, mottagen TEXT NOT NULL);
+    INSERT INTO mfn_nyhet VALUES ('${URL(4)}', 'Alfa AB', 'Alfa köper', '2026-10-12T06:00:00.000Z', 'kop', 50000000, 'Testkommun',
+      '["T 1:1","T 9:9"]', '[]', '2026-10-12')`);
+  m.close();
+  const r = node([join(ROOT, 'scripts', 'import-nyheter.mjs'), '--publik', NY, '--mfn', MFN]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(node([join(ROOT, 'scripts', 'import-nyheter.mjs'), '--publik', NY, '--mfn', MFN]).status, 3);   // inget nytt
+  const db = openDb({ path: NY, readOnly: true });
+  assert.deepEqual({ ...db.prepare('SELECT url, kalla, utgivare, pris_kr FROM nyhet').get() },
+    { url: URL(4), kalla: 'mfn', utgivare: 'Alfa AB', pris_kr: 50000000 });
+  assert.deepEqual(db.prepare('SELECT beteckning FROM nyhet_plats').all().map((x) => x.beteckning), ['T 1:1']);
+  db.close();
 });

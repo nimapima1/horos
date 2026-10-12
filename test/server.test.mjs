@@ -5,17 +5,21 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { createHmac } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { ROOT, openDb } from '../lib/db.mjs';
 
 const DB = join(ROOT, 'data', '_test', 'server-test.sqlite');
 const SCENARIO_DB = join(ROOT, 'data', '_test', 'scenario-test.sqlite');
+const MFN_DB = join(ROOT, 'data', '_test', 'mfn-test.sqlite');
+const MFN_SECRET = 'testhemlighet';
 const PORT = 3017;
 let server;
 
 const rect = (x0, y0, x1, y1) => JSON.stringify({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
 
 before(async () => {
-  for (const ext of ['', '-wal', '-shm']) for (const fil of [DB, SCENARIO_DB]) rmSync(fil + ext, { force: true });
+  for (const ext of ['', '-wal', '-shm']) for (const fil of [DB, SCENARIO_DB, MFN_DB]) rmSync(fil + ext, { force: true });
   const db = openDb({ path: DB });
   db.exec(`INSERT INTO bolag (orgnr, namn, jurform, sni, agarkontroll) VALUES
     ('5560000001', 'Alfa AB', 'Aktiebolag', '68201', 'kommun'), ('7690000002', 'Brf Beta', 'Bostadsrättsförening', NULL, 'privat')`);
@@ -49,7 +53,7 @@ before(async () => {
   db.close();
 
   server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(ROOT, 'server.mjs')], {
-    env: { ...process.env, PORT: String(PORT), FASTIGHETSKARTA_DB: DB, SCENARIO_DB, PUBLIC_MODE: '', RATE_SPARA: '50' },
+    env: { ...process.env, PORT: String(PORT), FASTIGHETSKARTA_DB: DB, SCENARIO_DB, MFN_DB, MFN_SECRET, PUBLIC_MODE: '', RATE_SPARA: '50' },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   await new Promise((resolve, reject) => {
@@ -263,4 +267,25 @@ test('scenarier: korta länkar', async () => {
   assert.equal((await post('/api/scenario', { ...sc, bet: Array(1001).fill('T 1:1') })).status, 400);
   assert.equal((await post('/api/scenario', { ...sc, namn: 'x'.repeat(300_000) })).status, 413);
   assert.equal((await json('/api/status')).kortlankar, true);
+});
+
+test('MFN: signerade pressmeddelanden tas emot, bara affärer sparas och aldrig texten', async () => {
+  const skicka = (item, hemlighet = MFN_SECRET) => {
+    const kropp = JSON.stringify(item);
+    return fetch(`http://127.0.0.1:${PORT}/api/mfn`, { method: 'POST', body: kropp, headers: {
+      'content-type': 'application/json', 'x-hub-signature': `sha256=${createHmac('sha256', hemlighet).update(kropp).digest('hex')}` } });
+  };
+  const item = (url, title) => ({ url, author: { name: 'Alfa AB' }, properties: { lang: 'sv', type: 'ir' },
+    content: { title, text: 'Fastigheten Pilen 1 i Uppsala. Hemlig brödtext.', publish_date: '2026-10-12T06:00:00Z' } });
+  const affar = item('https://mfn.se/a/alfa/1', 'Alfa förvärvar fastighet i Uppsala för 50 mkr');
+  assert.equal((await skicka(affar, 'fel')).status, 403);
+  assert.deepEqual(await skicka(affar).then((r) => r.json()), { sparad: true });
+  assert.deepEqual(await skicka(item('https://mfn.se/a/alfa/2', 'Alfa publicerar delårsrapport')).then((r) => r.json()), { sparad: false });
+  assert.equal(await get('/api/mfn?hub.mode=subscribe&hub.challenge=abc123').then((r) => r.text()), 'abc123');
+  assert.equal((await get('/api/mfn')).status, 400);
+  const mdb = new DatabaseSync(MFN_DB, { readOnly: true });
+  const rader = mdb.prepare('SELECT * FROM mfn_nyhet').all();
+  mdb.close();
+  assert.deepEqual(rader.map((r) => [r.url, r.typ, r.pris_kr, r.kommun]), [['https://mfn.se/a/alfa/1', 'kop', 50e6, 'Uppsala']]);
+  assert.ok(!JSON.stringify(rader).includes('Hemlig'));
 });

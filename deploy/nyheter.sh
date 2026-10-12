@@ -12,11 +12,20 @@ flock -n 9 || { echo "$(date -Is) Upptaget (deploy eller en annan körning), hop
 systemctl is-active --quiet fastighetskarta || { echo "$(date -Is) Appen är stoppad, hoppar över."; exit 0; }
 trap 'rm -f $D/nyheter-arbete.sqlite $D/nyheter-arbete.sqlite-journal' EXIT
 cp $D/public.sqlite $D/nyheter-arbete.sqlite
-rc=0
-out=$(node --disable-warning=ExperimentalWarning scripts/import-nyheter.mjs --publik $D/nyheter-arbete.sqlite 2>&1) || rc=$?
-echo "$(date -Is) $out"
-[[ $rc == 3 ]] && exit 0   # inget ändrades: ingen omstart
-[[ $rc == 0 ]] || { echo "Fel (slutkod $rc), sparar inte."; exit 1; }
+# Importen på kopian: slutkod 0 = något ändrades, 3 = inget nytt, annat = fel (då sparas inget).
+andrat=0
+kor() {
+  local rc=0 out
+  out=$(node --disable-warning=ExperimentalWarning scripts/import-nyheter.mjs --publik $D/nyheter-arbete.sqlite "$@" 2>&1) || rc=$?
+  echo "$(date -Is) $out"
+  [[ $rc == 0 ]] && andrat=1
+  [[ $rc == 0 || $rc == 3 ]] || { echo "Fel (slutkod $rc), sparar inte."; exit 1; }
+}
+kor                                    # Cision
+# Det som MFN skickat till /api/mfn (appen skriver i sin StateDirectory, samma som scenarierna).
+MFN=/var/lib/horos-scenarion/mfn.sqlite
+if [[ -f $MFN ]]; then kor --mfn $MFN; fi
+[[ $andrat == 1 ]] || exit 0           # inget ändrades: ingen omstart
 mv $D/nyheter-arbete.sqlite $D/public.sqlite
 sudo -n /usr/local/sbin/fastighetskarta-admin restart
 sleep 5
