@@ -205,6 +205,7 @@ async function visaScenario() {
     <p id="sc-varning" class="notice small"${sparatLokalt ? ' hidden' : ''}>Scenariot kunde inte sparas i webbläsaren (lagringen är full eller
       avstängd). Ladda ner scenariofilen eller spara en länk, annars försvinner det när sidan laddas om.</p>
     <input id="sc-lank" class="sc-lank" readonly aria-label="Länk till scenariot" value="${esc(sc.lank ?? '')}"${sc.lank ? '' : ' hidden'}>
+    ${sc.inlasning ? inlasningsruta(sc.inlasning) : ''}
     <div id="sc-resultat"></div>
 
     <h3>Antaganden</h3>
@@ -242,6 +243,16 @@ async function visaScenario() {
       Mina scenarion finns bara i den här webbläsaren.</p>
   </div>`);
   uppdateraResultat();
+}
+
+// Vad inläsningen från fil gav: antal hittade, hur många via adress, och raderna som inte hittades.
+function inlasningsruta(x) {
+  const ej = x.ej.slice(0, 20).map((r) => `rad ${r.rad}: ${esc([r.bet, r.adress, r.kommun].filter(Boolean).join(', '))}`);
+  return `<div class="notice small sc-inlasning">Inläst från <strong>${esc(x.fil)}</strong>: ${heltal(x.hittade)} fastigheter
+    ur ${heltal(x.rader)} rader${x.viaAdress ? `, varav ${heltal(x.viaAdress)} via adressen` : ''}.${x.ej.length ? `
+    <details><summary>${heltal(x.ej.length)} ${x.ej.length === 1 ? 'rad' : 'rader'} hittades inte</summary>${ej.join('<br>')}${x.ej.length > 20 ? '<br>…' : ''}
+    <div>Horos har bara fastigheter som ägs av bolag, föreningar och andra juridiska personer. Kontrollera stavningen,
+      eller ange beteckningen i stället för adressen.</div></details>` : ''}</div>`;
 }
 
 // Räknar om och visar nyckeltal, kassaflöde och värdet per fastighet (formuläret ritas inte om, så fokus stannar).
@@ -447,8 +458,31 @@ function laddaNer(filnamn, text, typ) {
 const filnamn = () => `horos-scenario-${(scenario.data.namn || 'namnlost').toLowerCase().replace(/[^a-z0-9åäö]+/g, '-').replace(/^-|-$/g, '')}`;
 
 async function lasScenarioFil(fil) {
+  if (!/\.json$/i.test(fil.name)) return lasInFastigheter(fil);
   try { await oppnaScenario(JSON.parse(await fil.text())); }
   catch { showPanel('<p class="empty">Filen kunde inte läsas som ett scenario från Horos.</p>'); }
+}
+
+// Excel eller CSV (inlasning.js): raderna matchas mot Horos fastigheter och de som hittas blir ett nytt scenario med
+// filens namn. Vad som inte hittades visas överst i scenariot (scenario.inlasning).
+async function lasInFastigheter(fil) {
+  const s = await statusP;
+  const fel = (text) => showPanel(`<h2>${esc(fil.name)}</h2><p class="empty">${esc(text)}</p>
+    <button type="button" class="copy" data-sc="mall">Ladda ner mall (CSV)</button>`);
+  showPanel(`<h2>${esc(fil.name)}</h2><p class="empty">Läser in fastigheterna …</p>`);
+  let rader;
+  try { rader = await lasInFil(fil); } catch (e) { return fel(e.message); }
+  if (!rader.length) return fel('Filen har inga rader med fastighetsbeteckning eller adress.');
+  if (rader.length > s.maxScenario) return fel(`Filen har ${rader.length.toLocaleString('sv-SE')} rader; ett scenario kan ha högst ${s.maxScenario.toLocaleString('sv-SE')} fastigheter.`);
+  let traffar;
+  try { ({ traffar } = await api('/api/matcha', { rader: rader.map(({ bet, adress, kommun }) => ({ bet, adress, kommun })) })); }
+  catch (e) { return fel(e.message); }
+  const hittade = [...new Set(traffar.map((t) => t.beteckning).filter(Boolean))];
+  const ej = rader.filter((_, i) => !traffar[i].beteckning);
+  if (!hittade.length) return fel(`Ingen av de ${rader.length.toLocaleString('sv-SE')} raderna matchade en fastighet i Horos.`);
+  await oppnaScenario(nyttScenario(fil.name.replace(/\.[^.]+$/, ''), hittade), { visa: false });
+  scenario.inlasning = { fil: fil.name, rader: rader.length, hittade: hittade.length, viaAdress: traffar.filter((t) => t.via === 'adress').length, ej };
+  visaScenario();
 }
 
 // Mina scenarion, eller det öppna scenariot (också efter en omladdning).
@@ -464,6 +498,14 @@ async function openScenarier({ lista = false } = {}) {
     <p class="small">Starta från en fastighet (<strong>+</strong> uppe till höger), ett bolag (<strong>Räkna på innehavet</strong>)
       eller filtret (<strong>Räkna på träffarna</strong>). Fyll i hyror, vakanser, kostnader och avkastningskrav, så räknar Horos
       fram kassaflöde och värde år för år. Allt sparas här i webbläsaren; <strong>Spara och kopiera länk</strong> ger en länk att dela.</p>
+    <h3>Läs in från fil</h3>
+    <div class="meta small">En Excel- eller CSV-fil med en kolumn <strong>Fastighetsbeteckning</strong> (t.ex. "Kungsbron 1") och/eller
+      <strong>Adress</strong>, gärna med <strong>Kommun</strong>, blir ett nytt scenario. Filen läses här i webbläsaren och laddas inte upp;
+      bara beteckningarna och adresserna skickas för att hitta fastigheterna. En scenariofil från Horos öppnas som den är.</div>
+    <div class="knappar">
+      <label class="copy primar">Välj fil<input type="file" accept=".xlsx,.csv,.txt,.json,application/json,text/csv" data-sc-fil hidden></label>
+      <button type="button" class="copy" data-sc="mall">Ladda ner mall (CSV)</button>
+    </div>
     <h3>Mina scenarion</h3>
     ${table('<th>Scenario</th><th class="num">Senast använt</th><th></th>', mina.map((x) =>
       `<tr><td><a data-sc="oppna" data-nyckel="${esc(x.nyckel)}">${esc(x.namn || 'Namnlöst scenario')}</a>${x.nyckel === scenario?.nyckel ? ' <span class="tag">öppet</span>' : ''}
@@ -473,7 +515,6 @@ async function openScenarier({ lista = false } = {}) {
     <div class="meta small">Öppna ett scenario för att lägga ihop det med andra och välja huvudscenario (tabellen överst i scenariot).</div>
     <div class="meta small">Listan finns bara i den här webbläsaren. Att ta bort ett scenario här tar inte bort en delad länk.
       Ladda ner scenariofilen om du vill ha en egen kopia eller flytta scenariot till en annan dator.</div>
-    <label class="copy">Öppna scenariofil<input type="file" accept=".json,application/json" data-sc-fil hidden></label>
   `);
 }
 
@@ -500,6 +541,7 @@ async function scenarioKlick(el) {
   if (a === 'huvud') return gorHuvud(el);
   if (a === 'spara') return sparaScenario(el);
   if (a === 'csv') return laddaNer(`${filnamn()}.csv`, scenarioCsv(s), 'text/csv;charset=utf-8');
+  if (a === 'mall') return laddaNer('horos-mall.csv', INLASNING_MALL, 'text/csv;charset=utf-8');
   if (a === 'fil') return laddaNer(`${filnamn()}.json`, JSON.stringify(scenario.data, null, 1), 'application/json');
   if (a === 'stang') {   // scenariot ligger kvar i Mina scenarion, men inget är öppet (och inget på kartan)
     scenario = null;

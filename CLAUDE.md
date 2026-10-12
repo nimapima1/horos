@@ -22,7 +22,8 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   `lib/scb.mjs` (SCB:s företagsregister: nyckeln, paus före varje anrop, sidhämtning; används av SCB-importerna).
 - Kartfiltren: `FILTER` i `server.mjs`, `[parameter, omvandling, SQL-villkor]`; WHERE-delen byggs ur listan.
 - `public/`: `index.html` + `kalkyl.js` (kassaflödeskalkylen, utan DOM, testas i `test/kalkyl.test.mjs`) + `panel.js`
-  (panelvyerna, bara deklarationer) + `scenario.js` (scenarierna, bara deklarationer) + `app.js` (karta,
+  (panelvyerna, bara deklarationer) + `inlasning.js` (Excel/CSV -> rader, bara deklarationer, testas i
+  `test/inlasning.test.mjs`) + `scenario.js` (scenarierna, bara deklarationer) + `app.js` (karta,
   filter, sök, status och all inkoppling), `metod.html`, `style.css`
   (ui-ux-pro-max: Swiss/minimalism + glas, Lexend/Source Sans 3, slate/#0369A1). CSP tillåter
   inga inline-skript.
@@ -40,6 +41,9 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   fastighet en gång); Huvud väljer huvudscenariot (period och antaganden gäller först), gruppen flyttar dit. Kartan visar
   det öppna och de ihoplagda i tabellens färger, vitt där de överlappar. Horos har inga marknadshyror eller
   avkastningskrav: användaren fyller i dem.
+  Läs in från fil (Mina scenarion): Excel (.xlsx, uppackad i webbläsaren utan beroenden) eller CSV med kolumnerna
+  Fastighetsbeteckning/Adress/Kommun (mall att ladda ner) blir ett nytt scenario; filen laddas inte upp, raderna
+  matchas med `POST /api/matcha` (beteckning med eller utan kommunnamn, annars adressen via adressökningen).
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
 - Tester: `npm test` (node:test, `test/`).

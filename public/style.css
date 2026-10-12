@@ -294,6 +294,9 @@ label.copy { display: inline-flex; align-items: center; }
 .sc-fastighet[open] { padding-bottom: 12px; }
 .sc-fastighet .copy { margin-top: 0; }
 .sc-lank { margin-top: 10px; }
+.sc-inlasning { margin-top: 12px; border-radius: var(--radius-sm); }
+.sc-inlasning summary { margin-top: 6px; cursor: pointer; font-weight: 600; }
+.sc-inlasning details > div { margin-top: 6px; }
 /* Lägg ihop med andra scenarier: ett segmentval per rad, nedtonade rader för de som inte räknas. */
 .panel .sc-ihop td, .panel .sc-ihop th[scope="row"] { vertical-align: middle; }
 .panel .sc-ihop th[scope="row"] { white-space: normal; }   /* långa namn bryts i stället för att trycka ut siffrorna */

@@ -729,6 +729,30 @@ function sokAdress(term) {
     }));
 }
 
+// Inläsning från fil (scenario.js): en rad med beteckning, adress och kommun -> fastigheten i Horos, eller null.
+// Beteckningen prövas som den står, utan ett kommunnamn först ("Stockholm Kungsbron 1") och med kommunen från raden
+// först; finns kommunen på raden måste fastighetens kommun stämma. Annars adressen: samma gata och nummer i
+// adressökningen och fastigheten där den ligger. Bara fastigheter som finns i Horos kan hittas.
+const KOMMUNER_VERSAL = KOMMUNER.map((k) => k.toUpperCase());
+function matchaRad(r) {
+  const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v).trim().slice(0, 200) : '');
+  const bet = normBeteckning(text(r?.bet)), kommun = text(r?.kommun).toUpperCase(), adress = text(r?.adress).split(',')[0].trim();
+  if (bet) {
+    const kandidater = [bet, ...KOMMUNER_VERSAL.filter((k) => bet.startsWith(`${k} `)).map((k) => bet.slice(k.length + 1)),
+      ...(kommun ? [`${kommun} ${bet}`] : [])];
+    for (const b of kandidater) {
+      const f = q.fastighet.get(b);
+      if (f && (!kommun || !f.kommun || f.kommun.toUpperCase() === kommun)) return { beteckning: f.beteckning, via: 'beteckning' };
+    }
+  }
+  if (adress) {
+    const traffar = sokAdress(adress).filter((a) => a.beteckning && a.adress.toLowerCase() === adress.toLowerCase());
+    const a = traffar.find((x) => !kommun || (x.ort ?? '').toUpperCase().includes(kommun)) ?? traffar[0];
+    if (a) return { beteckning: a.beteckning, via: 'adress' };
+  }
+  return { beteckning: null, via: null };
+}
+
 // GeoJSON-feature som sträng: geometrin ligger redan som JSON i databasen och skarvas in
 // direkt i stället för att tolkas och serialiseras om för varje fastighet.
 const featureJson = (geojson, properties) =>
@@ -844,6 +868,16 @@ const routes = [
     const vad = !n ? 'ingen affär' : arFastighetsbolag(n.orgnr, n.orgnr && bolagFor.get(n.orgnr), n.utgivare) ? 'affär' : 'affär, inte fastighetsbolag';
     console.log(`MFN ${vad}: ${String(item?.url ?? '?').slice(0, 200)}`);
     return [200, { sparad: !!n }];
+  }, 'POST'],
+
+  // Inläsning från fil: {rader: [{bet, adress, kommun}]} -> {traffar: [{beteckning, via}]} i samma ordning (se matchaRad).
+  // Samma hastighetsgräns som sparandet: en fil åt gången, upp till MAX_SCENARIO rader.
+  [/^\/api\/matcha$/, 'spara', async (_m, _url, _res, req) => {
+    const { varde, fel } = await lasJson(req, MAX_SCENARIO_BYTE);
+    if (fel) return fel;
+    const rader = varde?.rader;
+    if (!Array.isArray(rader) || rader.length > MAX_SCENARIO) return [400, { error: `rader: högst ${MAX_SCENARIO}` }];
+    return [200, { traffar: rader.map(matchaRad) }];
   }, 'POST'],
 
   [/^\/api\/scenario\/([\w-]{10})$/, 'api', (m) => {

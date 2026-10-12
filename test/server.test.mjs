@@ -294,3 +294,13 @@ test('MFN: signerade pressmeddelanden tas emot, affärer sparas med org.nr och a
     [['https://mfn.se/a/alfa/1', 'kop', 50e6, 'Uppsala', '5560000001'], ['https://mfn.se/a/x/3', 'kop', 50e6, 'Uppsala', '5569999999']]);
   assert.ok(!JSON.stringify(rader).includes('Hemlig'));
 });
+
+test('inläsning från fil: beteckningar matchas, med eller utan kommunnamn och mot radens kommun', async () => {
+  const rader = [{ bet: 't 1:1' }, { bet: 'Testkommun T 1:2' }, { bet: 'T 1:3', kommun: 'Solna' }, { bet: 'FINNS INTE 9' },
+    { adress: 'Ingen gata 1' }, { bet: 42 }, {}];
+  const r = await post('/api/matcha', { rader }).then((x) => x.json());
+  assert.deepEqual(r.traffar.map((t) => t.beteckning), ['T 1:1', 'T 1:2', null, null, null, null, null]);   // 1:3 ligger i Testkommun
+  assert.equal(r.traffar[0].via, 'beteckning');
+  assert.equal((await post('/api/matcha', { rader: Array(1001).fill({ bet: 'T 1:1' }) })).status, 400);
+  assert.equal((await post('/api/matcha', { rader: 'T 1:1' })).status, 400);
+});
