@@ -307,6 +307,14 @@ map.on('load', () => {
     map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
   }
 
+  // Scenarierna på kartan (ritaScenarier i scenario.js): gränser i scenariots färg från zoom 14, prickar under.
+  map.addSource('scenarier', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'scenario-line', type: 'line', source: 'fastigheter', filter: ['in', ['get', 'beteckning'], ['literal', []]],
+    paint: { 'line-color': 'rgba(0,0,0,0)', 'line-width': 3 } });
+  map.addLayer({ id: 'scenario-punkt', type: 'circle', source: 'scenarier', maxzoom: MIN_ZOOM,
+    paint: { 'circle-color': ['get', 'farg'], 'circle-radius': ['case', ['get', 'flera'], 7, 5],
+      'circle-stroke-width': ['case', ['get', 'flera'], 2.5, 1], 'circle-stroke-color': ['case', ['get', 'flera'], '#FFFFFF', css('--map-kant')] } });
+  ritaScenarier();
   // Markerade fastigheter (ett bolags innehav), se markera().
   map.addLayer({ id: 'markerad-line', type: 'line', source: 'fastigheter', filter: ['in', ['get', 'beteckning'], ['literal', []]],
     paint: { 'line-color': css('--c2'), 'line-width': 3 } });

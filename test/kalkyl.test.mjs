@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import vm from 'node:vm';
 import { ROOT } from '../lib/db.mjs';
 
-const { berakna, nyckeltal, standardSkatt } = vm.runInNewContext(
-  `${readFileSync(join(ROOT, 'public', 'kalkyl.js'), 'utf8')}\n({ berakna, nyckeltal, standardSkatt })`);
+const { berakna, beraknaPortfolj, nyckeltal, standardSkatt } = vm.runInNewContext(
+  `${readFileSync(join(ROOT, 'public', 'kalkyl.js'), 'utf8')}\n({ berakna, beraknaPortfolj, nyckeltal, standardSkatt })`);
 const scenario = (over = {}) => ({ v: 1, namn: 'Test', start: 2026, ar: 2, bet: ['T 1:1'],
   gemensamt: { hyresutv: 0, kostutv: 0, direktavk: 5 },
   antaganden: { Kontor: { hyra: 2000, vakans: 10, drift: 300, uh: 100 } }, egna: { 'T 1:1': { skatt: 0 } }, ...over });
@@ -67,4 +67,21 @@ test('scenario i länken: packa och packa upp', async () => {
   const lank = await packa(s);
   assert.match(lank, /^[\w-]+$/);   // bara tecken som får stå i en adress
   assert.deepEqual(JSON.parse(JSON.stringify(await packaUpp(lank))), s);
+});
+
+test('portfölj: delscenarier räknas med egna antaganden, huvudscenariots period och varje fastighet en gång', () => {
+  const t2 = { ...fastighet, beteckning: 'T 1:2', varde_tkr: 20000 };
+  const t3 = { ...fastighet, beteckning: 'T 1:3', varde_tkr: 30000, loa: { Kontor: 500 } };
+  // Delen har T 1:1 (finns redan i huvudscenariot och räknas där) och T 1:2.
+  const del = { namn: 'B', start: 2030, ar: 9, bet: ['T 1:1', 'T 1:2'], gemensamt: { direktavk: 5 },
+    antaganden: { Kontor: { hyra: 1000 } }, egna: { 'T 1:2': { skatt: 0 } } };
+  const p = beraknaPortfolj(scenario({ delar: [del] }), [fastighet, t2, t3]);
+  assert.deepEqual([...p.delar].map((d) => [d.namn, d.antal, d.taxering_tkr]), [['Test', 1, 50000], ['B', 1, 20000]]);
+  assert.deepEqual([...p.ar], [2026, 2027, 2028]);   // huvudscenariots period, inte delens
+  assert.equal(p.total.dn[0], 1_400_000 + 1_000_000);   // T 1:1 med huvudets antaganden, T 1:2 med delens
+  nara(p.varde, 28_000_000 + 20_000_000);
+  assert.equal(p.yta, 2000);
+  // En del utan direktavkastningskrav: inget totalvärde.
+  assert.equal(beraknaPortfolj(scenario({ delar: [{ namn: 'C', bet: ['T 1:3'], gemensamt: {} }] }), [fastighet, t3]).varde, null);
+  assert.equal(beraknaPortfolj(scenario(), [fastighet]).varde, berakna(scenario(), [fastighet]).varde);   // utan delar som förut
 });

@@ -96,10 +96,10 @@ try {
   console.error(`Korta länkar är avstängda (${SCENARIO_DB}): ${e.message}`);
 }
 // Scenariot tolkas aldrig av servern, men ska vara det klienten skickar: bara objekt, listor, korta strängar,
-// tal och null, inte för djupt, med fastigheterna i bet.
+// tal och null, inte för djupt (delar[i].egna[bet].yta[slag] är det djupaste), med fastigheterna i bet.
 const giltigt = (v, djup = 0) => v === null || (typeof v === 'number' && Number.isFinite(v))
   || (typeof v === 'string' && v.length <= 100)
-  || (djup < 5 && typeof v === 'object' && Object.keys(v).length <= MAX_SCENARIO
+  || (djup < 6 && typeof v === 'object' && Object.keys(v).length <= MAX_SCENARIO
     && Object.entries(v).every(([k, x]) => k.length <= 100 && giltigt(x, djup + 1)));
 const giltigtScenario = (s) => s?.v === 1 && Array.isArray(s.bet) && s.bet.length <= MAX_SCENARIO && giltigt(s);
 
