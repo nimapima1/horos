@@ -247,12 +247,18 @@ async function visaScenario() {
 
 // Vad inläsningen från fil gav: antal hittade, hur många via adress, och raderna som inte hittades.
 function inlasningsruta(x) {
-  const ej = x.ej.slice(0, 20).map((r) => `rad ${r.rad}: ${esc([r.bet, r.adress, r.kommun].filter(Boolean).join(', '))}`);
+  const lista = (rader) => rader.slice(0, 20).map((r) => `rad ${r.rad}: ${esc([r.bet, r.adress, r.kommun].filter(Boolean).join(', '))}`).join('<br>')
+    + (rader.length > 20 ? '<br>…' : '');
+  const antal = (n) => `${heltal(n)} ${n === 1 ? 'rad' : 'rader'}`;
+  const utanKommun = x.ej.filter((r) => r.orsak === 'kommun'), ejHittade = x.ej.filter((r) => r.orsak !== 'kommun');
   return `<div class="notice small sc-inlasning">Inläst från <strong>${esc(x.fil)}</strong>: ${heltal(x.hittade)} fastigheter
-    ur ${heltal(x.rader)} rader${x.viaAdress ? `, varav ${heltal(x.viaAdress)} via adressen` : ''}.${x.ej.length ? `
-    <details><summary>${heltal(x.ej.length)} ${x.ej.length === 1 ? 'rad' : 'rader'} hittades inte</summary>${ej.join('<br>')}${x.ej.length > 20 ? '<br>…' : ''}
-    <div>Horos har bara fastigheter som ägs av bolag, föreningar och andra juridiska personer. Kontrollera stavningen,
-      eller ange beteckningen i stället för adressen.</div></details>` : ''}</div>`;
+    ur ${heltal(x.rader)} rader${x.viaAdress ? `, varav ${heltal(x.viaAdress)} via adressen` : ''}.${utanKommun.length ? `
+    <details><summary>${antal(utanKommun.length)} utan kommun</summary>${lista(utanKommun)}
+    <div>Samma beteckning och adress finns i flera kommuner, så kommunen krävs: en kolumn Kommun, eller kommunen först i
+      beteckningen ("Stockholm Kungsbron 1").</div></details>` : ''}${ejHittade.length ? `
+    <details><summary>${antal(ejHittade.length)} hittades inte</summary>${lista(ejHittade)}
+    <div>Horos har bara fastigheter som ägs av bolag, föreningar och andra juridiska personer. Kontrollera stavningen och
+      kommunen, eller ange beteckningen i stället för adressen.</div></details>` : ''}</div>`;
 }
 
 // Räknar om och visar nyckeltal, kassaflöde och värdet per fastighet (formuläret ritas inte om, så fokus stannar).
@@ -478,8 +484,12 @@ async function lasInFastigheter(fil) {
   try { ({ traffar } = await api('/api/matcha', { rader: rader.map(({ bet, adress, kommun }) => ({ bet, adress, kommun })) })); }
   catch (e) { return fel(e.message); }
   const hittade = [...new Set(traffar.map((t) => t.beteckning).filter(Boolean))];
-  const ej = rader.filter((_, i) => !traffar[i].beteckning);
-  if (!hittade.length) return fel(`Ingen av de ${rader.length.toLocaleString('sv-SE')} raderna matchade en fastighet i Horos.`);
+  const ej = rader.map((r, i) => ({ ...r, orsak: traffar[i].orsak })).filter((_, i) => !traffar[i].beteckning);
+  if (!hittade.length) {
+    return fel(ej.every((r) => r.orsak === 'kommun')
+      ? 'Ingen rad har en kommun. Lägg till en kolumn Kommun, eller skriv kommunen först i beteckningen ("Stockholm Kungsbron 1").'
+      : `Ingen av de ${rader.length.toLocaleString('sv-SE')} raderna matchade en fastighet i Horos.`);
+  }
   await oppnaScenario(nyttScenario(fil.name.replace(/\.[^.]+$/, ''), hittade), { visa: false });
   scenario.inlasning = { fil: fil.name, rader: rader.length, hittade: hittade.length, viaAdress: traffar.filter((t) => t.via === 'adress').length, ej };
   visaScenario();
@@ -499,8 +509,9 @@ async function openScenarier({ lista = false } = {}) {
       eller filtret (<strong>Räkna på träffarna</strong>). Fyll i hyror, vakanser, kostnader och avkastningskrav, så räknar Horos
       fram kassaflöde och värde år för år. Allt sparas här i webbläsaren; <strong>Spara och kopiera länk</strong> ger en länk att dela.</p>
     <h3>Läs in från fil</h3>
-    <div class="meta small">En Excel- eller CSV-fil med en kolumn <strong>Fastighetsbeteckning</strong> (t.ex. "Kungsbron 1") och/eller
-      <strong>Adress</strong>, gärna med <strong>Kommun</strong>, blir ett nytt scenario. Filen läses här i webbläsaren och laddas inte upp;
+    <div class="meta small">En Excel- eller CSV-fil med kolumnerna <strong>Fastighetsbeteckning</strong> och <strong>Kommun</strong>
+      (eller <strong>Adress</strong> och <strong>Kommun</strong>) blir ett nytt scenario. Kommunen krävs, eftersom samma beteckning
+      finns i flera kommuner; den kan också stå först i beteckningen ("Stockholm Kungsbron 1"). Filen läses här i webbläsaren och laddas inte upp;
       bara beteckningarna och adresserna skickas för att hitta fastigheterna. En scenariofil från Horos öppnas som den är.</div>
     <div class="knappar">
       <label class="copy primar">Välj fil<input type="file" accept=".xlsx,.csv,.txt,.json,application/json,text/csv" data-sc-fil hidden></label>

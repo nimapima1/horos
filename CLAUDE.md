@@ -42,8 +42,9 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   det öppna och de ihoplagda i tabellens färger, vitt där de överlappar. Horos har inga marknadshyror eller
   avkastningskrav: användaren fyller i dem.
   Läs in från fil (Mina scenarion): Excel (.xlsx, uppackad i webbläsaren utan beroenden) eller CSV med kolumnerna
-  Fastighetsbeteckning/Adress/Kommun (mall att ladda ner) blir ett nytt scenario; filen laddas inte upp, raderna
-  matchas med `POST /api/matcha` (beteckning med eller utan kommunnamn, annars adressen via adressökningen).
+  Fastighetsbeteckning + Kommun eller Adress + Kommun (mall att ladda ner) blir ett nytt scenario; filen laddas inte upp, raderna
+  matchas med `POST /api/matcha`. Kommunen krävs (samma beteckning finns i flera kommuner): kolumn, först i beteckningen
+  eller efter komma i adressen; alla 290 kommunnamn känns igen (`LAN_FOR_KOMMUN`), fastighetens kommun måste stämma.
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
 - Tester: `npm test` (node:test, `test/`).

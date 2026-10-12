@@ -729,28 +729,37 @@ function sokAdress(term) {
     }));
 }
 
-// Inläsning från fil (scenario.js): en rad med beteckning, adress och kommun -> fastigheten i Horos, eller null.
-// Beteckningen prövas som den står, utan ett kommunnamn först ("Stockholm Kungsbron 1") och med kommunen från raden
-// först; finns kommunen på raden måste fastighetens kommun stämma. Annars adressen: samma gata och nummer i
-// adressökningen och fastigheten där den ligger. Bara fastigheter som finns i Horos kan hittas.
-const KOMMUNER_VERSAL = KOMMUNER.map((k) => k.toUpperCase());
+// Inläsning från fil (scenario.js): en rad med beteckning, adress och kommun -> fastigheten i Horos, eller null med
+// orsaken ('kommun' när kommunen saknas eller är okänd, annars 'okand'). Kommunen krävs alltid: samma beteckning
+// ("Kungsbron 1") och samma adress finns i flera kommuner. Den tas från kolumnen, från början av beteckningen
+// ("Stockholm Kungsbron 1") eller efter ett kommatecken i adressen ("Kungsgatan 12, Stockholm"), och fastighetens
+// kommun måste stämma. Bara fastigheter som finns i Horos kan hittas.
+const ALLA_KOMMUNER = [...LAN_FOR_KOMMUN.keys()].sort((a, b) => b.length - a.length);   // längst först: "Upplands Väsby" före "Upplands-Bro"
+const KOMMUN_FOR_VERSAL = new Map(ALLA_KOMMUNER.map((k) => [k.toUpperCase(), k]));
+// "Stockholm", "STOCKHOLMS KOMMUN", "Stockholms stad" -> "Stockholm"; null om det inte är en kommun.
+function kommunAv(text) {
+  const t = text.toUpperCase().replace(/\s+(KOMMUN|STAD)$/, '').trim();
+  return KOMMUN_FOR_VERSAL.get(t) ?? (t.endsWith('S') ? KOMMUN_FOR_VERSAL.get(t.slice(0, -1)) : null) ?? null;
+}
 function matchaRad(r) {
   const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v).trim().slice(0, 200) : '');
-  const bet = normBeteckning(text(r?.bet)), kommun = text(r?.kommun).toUpperCase(), adress = text(r?.adress).split(',')[0].trim();
+  let bet = normBeteckning(text(r?.bet)), kommun = text(r?.kommun) ? kommunAv(text(r.kommun)) : null;
+  const [adress, adressKommun] = text(r?.adress).split(',').map((x) => x.trim());
+  const forst = bet && ALLA_KOMMUNER.find((k) => bet.startsWith(`${k.toUpperCase()} `));
+  if (forst) { kommun ??= forst; bet = bet.slice(forst.length + 1); }
+  kommun ??= adressKommun ? kommunAv(adressKommun) : null;
+  if (!kommun) return { beteckning: null, via: null, orsak: 'kommun' };
+  const iKommunen = (f) => f && (f.kommun ?? '').toUpperCase() === kommun.toUpperCase();
   if (bet) {
-    const kandidater = [bet, ...KOMMUNER_VERSAL.filter((k) => bet.startsWith(`${k} `)).map((k) => bet.slice(k.length + 1)),
-      ...(kommun ? [`${kommun} ${bet}`] : [])];
-    for (const b of kandidater) {
-      const f = q.fastighet.get(b);
-      if (f && (!kommun || !f.kommun || f.kommun.toUpperCase() === kommun)) return { beteckning: f.beteckning, via: 'beteckning' };
-    }
+    // Beteckningen kan stå med eller utan kommunnamnet i Horos (beror på Lantmäteriets fil); båda prövas.
+    const f = [bet, `${kommun.toUpperCase()} ${bet}`].map((b) => q.fastighet.get(b)).find(iKommunen);
+    if (f) return { beteckning: f.beteckning, via: 'beteckning' };
   }
   if (adress) {
-    const traffar = sokAdress(adress).filter((a) => a.beteckning && a.adress.toLowerCase() === adress.toLowerCase());
-    const a = traffar.find((x) => !kommun || (x.ort ?? '').toUpperCase().includes(kommun)) ?? traffar[0];
+    const a = sokAdress(adress).find((x) => x.beteckning && x.adress.toLowerCase() === adress.toLowerCase() && iKommunen(q.fastighet.get(x.beteckning)));
     if (a) return { beteckning: a.beteckning, via: 'adress' };
   }
-  return { beteckning: null, via: null };
+  return { beteckning: null, via: null, orsak: 'okand' };
 }
 
 // GeoJSON-feature som sträng: geometrin ligger redan som JSON i databasen och skarvas in

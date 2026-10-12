@@ -98,5 +98,5 @@ async function lasInFil(fil) {
     .filter((r) => r.bet || r.adress);
 }
 
-// Mallen: rubrikerna Horos känner igen, ett exempel med beteckning och ett med adress.
+// Mallen: rubrikerna Horos känner igen, ett exempel med beteckning och ett med adress, båda med kommun (krävs).
 const INLASNING_MALL = '﻿Fastighetsbeteckning;Adress;Kommun\r\nKUNGSBRON 1;;Stockholm\r\n;Drottninggatan 53;Stockholm\r\n';

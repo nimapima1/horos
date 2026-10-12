@@ -295,12 +295,18 @@ test('MFN: signerade pressmeddelanden tas emot, affärer sparas med org.nr och a
   assert.ok(!JSON.stringify(rader).includes('Hemlig'));
 });
 
-test('inläsning från fil: beteckningar matchas, med eller utan kommunnamn och mot radens kommun', async () => {
-  const rader = [{ bet: 't 1:1' }, { bet: 'Testkommun T 1:2' }, { bet: 'T 1:3', kommun: 'Solna' }, { bet: 'FINNS INTE 9' },
-    { adress: 'Ingen gata 1' }, { bet: 42 }, {}];
+test('inläsning från fil: beteckning och kommun krävs, kommunen från kolumnen eller först i beteckningen', async () => {
+  const db = openDb({ path: DB });
+  // En fastighet i en riktig kommun, långt från de andra (påverkar inga bbox-tester).
+  db.prepare("INSERT INTO fastighet (beteckning, kommun, areal_m2, geojson, minx, miny, maxx, maxy, kalla) VALUES ('R 1:1', 'Solna', 100, ?, 25, 66, 25.001, 66.0005, 'lantmateriet')")
+    .run(rect(25, 66, 25.001, 66.0005));
+  db.close();
+  const rader = [{ bet: 'r 1:1', kommun: 'Solna' }, { bet: 'Solna R 1:1' }, { bet: 'R 1:1', kommun: 'SOLNA KOMMUN' },
+    { bet: 'R 1:1' }, { bet: 'R 1:1', kommun: 'Sundbyberg' }, { bet: 'T 1:1', kommun: 'Testkommun' }, { adress: 'Ingen gata 1' }, {}];
   const r = await post('/api/matcha', { rader }).then((x) => x.json());
-  assert.deepEqual(r.traffar.map((t) => t.beteckning), ['T 1:1', 'T 1:2', null, null, null, null, null]);   // 1:3 ligger i Testkommun
+  assert.deepEqual(r.traffar.map((t) => [t.beteckning, t.orsak ?? null]), [['R 1:1', null], ['R 1:1', null], ['R 1:1', null],
+    [null, 'kommun'], [null, 'okand'], [null, 'kommun'], [null, 'kommun'], [null, 'kommun']]);   // Testkommun är ingen riktig kommun
   assert.equal(r.traffar[0].via, 'beteckning');
-  assert.equal((await post('/api/matcha', { rader: Array(1001).fill({ bet: 'T 1:1' }) })).status, 400);
-  assert.equal((await post('/api/matcha', { rader: 'T 1:1' })).status, 400);
+  assert.equal((await post('/api/matcha', { rader: Array(1001).fill({ bet: 'R 1:1' }) })).status, 400);
+  assert.equal((await post('/api/matcha', { rader: 'R 1:1' })).status, 400);
 });
