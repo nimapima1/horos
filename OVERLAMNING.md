@@ -23,7 +23,7 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
     `/etc/caddy/Caddyfile.template` och `set-domain horos.se`). Root-lösenordet återställdes 2026-10-10
     (Hetzner > Rescue); användaren har det. Drop-in `fastighetskarta.service.d/scenarion.conf` (cloud-init v6,
     `StateDirectory=horos-scenarion`) inlagd 2026-10-11: korta länkar till scenarier är på.
-  - `secrets.env`: GEOTORGET_USER/PASS och GOOGLE_EMBED_KEY.
+  - `secrets.env`: GEOTORGET_USER/PASS, GOOGLE_EMBED_KEY och MFN_SECRET (2026-10-12).
 - `npm test`: 44 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
   av en annan session). Starta om servern efter import eller demo-data.
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
@@ -128,14 +128,17 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
     och hämtfrekvens, villkor/kostnad och källangivelse. MFN svarade direkt: de **skickar** (push) och vill veta
     leveranssätt (HTTP(S)/SFTP), format (JSON/XML) och URL. Dokumentation: https://modfin.gitbook.io/mfn
     (WebSub, News Item). Beslut: bygga mottagaren först, sedan svara HTTPS, JSON och `https://horos.se/api/mfn`.
-  - **Mottagaren** (gren `mfn-svar`): `POST /api/mfn` kontrollerar `X-Hub-Signature` (HMAC-SHA256, `MFN_SECRET`),
+  - **Mottagaren är live sedan 2026-10-12** (PR #13, deployad 09:09): `POST /api/mfn` kontrollerar `X-Hub-Signature` (HMAC-SHA256, `MFN_SECRET`),
     `tolkaMfn` behåller bara svenska köp/försäljningar, och de sparas utan text i `mfn.sqlite` i appens
     StateDirectory. Cron (`deploy/nyheter.sh`) kör `import-nyheter --mfn` efter Cision och startar om om något
     ändrats; MFN-pressmeddelanden syns alltså inom ett halvt dygn. Ingen root-ändring behövs.
-  - Kvar innan URL:en lämnas: merga, deploya, sätt `MFN_SECRET`
-    (`ssh deploy@37.27.152.172 "sudo -n /usr/local/sbin/fastighetskarta-admin set-secret MFN_SECRET"`, värdet
-    på en rad) och kontrollera att `https://horos.se/api/mfn?hub.challenge=x` svarar `x`. Hemligheten bestäms
-    med MFN (de lägger upp prenumerationen, eller vi gör det via deras hub).
+  - `MFN_SECRET` är satt (2026-10-12) och kontrollerad: `https://horos.se/api/mfn?hub.challenge=x` svarar `x`,
+    fel signatur ger 403. Användaren har hemligheten (aldrig i chatten). Byta: generera och lägg in utan att den
+    visas, i PowerShell:
+    `$s = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"; Set-Clipboard $s; $s | ssh deploy@37.27.152.172 "sudo -n /usr/local/sbin/fastighetskarta-admin set-secret MFN_SECRET"`.
+  - Svaret till Markus (HTTPS, JSON, URL:en, fråga hur de vill få hemligheten, öppna frågor, be om ett
+    testmeddelande) skickas av användaren. När MFN skickat ett test: kontrollera att det kom fram (ett meddelande
+    som inte är köp/försäljning sparas inte men får 200; syns då bara hos MFN).
   - **Ta bort ett felaktigt MFN-pressmeddelande** (fel fastighet, fel pris): lägg dess url i undantagsfilen, så
     tas det bort vid nästa cron-körning och kommer inte tillbaka:
     `ssh deploy@37.27.152.172 "echo 'https://mfn.se/...' >> /var/lib/fastighetskarta/mfn-undantag.txt"`.
