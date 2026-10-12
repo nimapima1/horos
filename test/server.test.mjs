@@ -68,6 +68,8 @@ test('kartfiltren', async () => {
   assert.equal(await antal(''), 3);
   assert.equal(await antal('&jur=Bostadsrättsförening'), 1);
   assert.equal(await antal('&vmin=100'), 1);            // Mkr
+  assert.equal(await antal('&vmin=99,5'), 1);           // decimalkomma
+  assert.equal(await antal('&vmin=1%20000'), 0);        // mellanslag mellan tusental
   assert.equal(await antal('&vmax=20'), 1);
   assert.equal(await antal('&kar=2021'), 2);
   assert.equal(await antal('&ktill=2020'), 1);

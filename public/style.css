@@ -252,13 +252,12 @@ label.copy { display: inline-flex; align-items: center; }
 .copy.primar:hover { background: var(--accent-strong); }
 
 /* Scenarier (scenario.js): bredare panel för kassaflödet. Alla siffror högerställda i tabulära siffror,
-   fälten i ett rutnät med etikett ovanför, tabellerna rullar i sidled med radrubriken fast. */
+   fälten i ett rutnät med etikett ovanför. På mobil rullar kassaflödet i sidled och antagandena blir kort. */
 @media (min-width: 641px) { .sidebar:has(#panel:not([hidden]) .scenario) { width: min(720px, calc(100vw - 32px)); } }
 .scenario .stats { grid-template-columns: repeat(3, 1fr); }
 .scenario input { width: 100%; height: 36px; padding: 0 10px; font: inherit; font-size: 14px; color: var(--text);
   background: var(--surface-sunken); border: 1px solid transparent; border-radius: var(--radius-sm); }
-.scenario input[type="number"] { text-align: right; font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
-.scenario input::-webkit-inner-spin-button, .scenario input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.scenario input[inputmode="decimal"] { text-align: right; font-variant-numeric: tabular-nums; }
 .scenario input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
 .scenario input::placeholder { color: var(--subtle); opacity: .6; }
 /* Namnet ser ut som en rubrik och blir ett fält först vid hovring och fokus. */
@@ -266,7 +265,8 @@ label.copy { display: inline-flex; align-items: center; }
   font: 600 21px var(--font-head); letter-spacing: -0.01em; background: transparent; }
 .scenario .sc-namn:hover { border-color: var(--border); }
 .sc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 12px; margin: 12px 0; }
-.sc-grid label { display: grid; gap: 4px; align-content: start; font-size: 13px; color: var(--muted); }
+/* Etiketten överst, fältet nederst: fälten i en rad står i linje även när en etikett bryts på två rader. */
+.sc-grid label { display: grid; grid-template-rows: 1fr auto; gap: 4px; font-size: 13px; color: var(--muted); }
 .sc-tabell { overflow-x: auto; margin: 8px 0; }
 .sc-tabell table { min-width: 100%; }
 .panel .sc-tabell th[scope="row"] { padding: 7px 12px 7px 0; border-top: 1px solid var(--border); vertical-align: middle;
@@ -297,10 +297,22 @@ label.copy { display: inline-flex; align-items: center; }
 .panel .notice { border-radius: var(--radius-sm); }
 @media (max-width: 640px) {
   .scenario .stats, .sc-grid { grid-template-columns: repeat(2, 1fr); }
-  .panel .sc-antaganden { min-width: 560px; }
+  /* 16 px hindrar iOS från att zooma in vid fokus; 44 px är lätt att träffa med tummen. */
+  .scenario input { height: 44px; font-size: 16px; }
   .sc-rad { grid-template-columns: 1fr 84px 84px; }
-  /* Tabellerna rullar i sidled här: radrubriken står kvar. */
-  .panel .sc-tabell th:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface-solid); }
+  /* Kassaflödet rullar i sidled här: radrubriken står kvar. Panelen är heldragen i stället för glas, annars
+     syns den fasta kolumnens bakgrund som en annan färg. */
+  .panel:has(.scenario) { background: var(--surface-solid); }
+  .panel .sc-kassaflode th:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface-solid); }
+  /* Antaganden per lokalslag som kort: namn och yta överst, fälten två och två med rubriken ovanför. */
+  .panel .sc-antaganden, .panel .sc-antaganden tbody { display: block; }
+  .panel .sc-antaganden tr:first-child { display: none; }
+  .panel .sc-antaganden tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .panel .sc-antaganden th[scope="row"] { width: auto; padding: 0; border: 0; font-weight: 600; white-space: normal; }
+  .panel .sc-antaganden td { display: grid; gap: 4px; padding: 0; border: 0; }
+  .panel .sc-antaganden td.sc-yta { display: block; align-self: center; color: var(--muted); }
+  .panel .sc-antaganden td.sc-yta::after { content: " m²"; }
+  .panel .sc-antaganden td[data-rubrik]::before { content: attr(data-rubrik); font-size: 13px; color: var(--muted); }
 }
 .bar { height: 5px; margin-top: 5px; border-radius: 3px; background: var(--surface-sunken); }
 .bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
@@ -394,7 +406,10 @@ label.copy { display: inline-flex; align-items: center; }
   .notice { padding: 9px 12px; font-size: 13px; line-height: 1.4; }
   /* Kontrollerna nedtill till höger: överst skulle sökrutan och notisen täcka dem. */
   .maplibregl-ctrl-top-right { top: auto; bottom: 34px; right: 0; }
-  .streetview { display: none; }   /* ingen plats bredvid panelen; länkarna i panelen räcker */
+  /* Street View ligger i fastighetspanelen (se StreetView i app.js), utfälld i panelens bredd. */
+  .panel .streetview { margin: 12px 0 4px; width: fit-content; box-shadow: none !important; border: 1px solid var(--border); }
+  .panel .streetview:has(iframe) { width: auto; }
+  .panel .streetview iframe { width: 100%; }
   /* Teckenförklaringen (med Färga efter) nedtill när panelen är stängd, ovanför källhänvisningen och
      till vänster om kontrollerna (104 px + marginaler). */
   .legend { left: 10px; right: auto; bottom: 44px; width: calc(100vw - 140px); max-width: 220px; padding: 9px 11px; }

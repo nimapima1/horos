@@ -99,8 +99,9 @@ async function nyttScenarioFran(namn, bet) {
 }
 
 // Sifferfält bundet till en plats i scenariot (vag), med det som används när fältet är tomt som platshållare.
-const talFalt = (vag, varde, platshallare, etikett) => `<input type="number" step="any" inputmode="decimal"
-  data-k="${esc(JSON.stringify(vag))}" value="${varde ?? ''}" placeholder="${esc(platshallare ?? '')}"${etikett ? ` aria-label="${esc(etikett)}"` : ''}>`;
+// Textfält, inte type="number": Safari och Firefox ger ett tomt värde för "4,5" i ett sifferfält.
+const talFalt = (vag, varde, platshallare, etikett) => `<input inputmode="decimal"
+  data-k="${esc(JSON.stringify(vag))}" value="${esc(String(varde ?? '').replace('.', ','))}" placeholder="${esc(platshallare ?? '')}"${etikett ? ` aria-label="${esc(etikett)}"` : ''}>`;
 const andel = (x) => (x == null || !Number.isFinite(x) ? '–' : `${(x * 100).toLocaleString('sv-SE', { maximumFractionDigits: 1 })} %`);
 const heltal = (x) => Math.round(x).toLocaleString('sv-SE');
 // Belopp i tkr; exakt noll visas som streck, som i en kalkyl på papper.
@@ -119,8 +120,9 @@ async function visaScenario() {
     Math.max(...u.map((f) => f.maxx)), Math.max(...u.map((f) => f.maxy))].join(',');
   // Lokalslag med yta (eller egna antaganden) visas direkt, övriga under "Fler lokalslag".
   const anvands = (x) => ytaPerSlag[x] > 0 || Object.keys(d.antaganden[x] ?? {}).length > 0;
-  const slagRad = (x) => `<tr><th scope="row">${esc(x)}</th><td class="num">${heltal(ytaPerSlag[x])}</td>
-    ${ANTAGANDEN.map(([k, rubrik, ph]) => `<td>${talFalt(['antaganden', x, k], d.antaganden[x]?.[k], ph, `${x}: ${rubrik}`)}</td>`).join('')}</tr>`;
+  // data-rubrik: fältets rubrik när tabellen visas som kort på mobil (style.css).
+  const slagRad = (x) => `<tr><th scope="row">${esc(x)}</th><td class="num sc-yta">${heltal(ytaPerSlag[x])}</td>
+    ${ANTAGANDEN.map(([k, rubrik, ph]) => `<td data-rubrik="${esc(rubrik)}">${talFalt(['antaganden', x, k], d.antaganden[x]?.[k], ph, `${x}: ${rubrik}`)}</td>`).join('')}</tr>`;
   const slagTabell = (lista) => `<div class="sc-tabell"><table class="sc-antaganden">
     <tr><th>Lokalslag</th><th class="num">Yta, m²</th>${ANTAGANDEN.map(([, rubrik]) => `<th class="num">${rubrik}</th>`).join('')}</tr>
     ${lista.map(slagRad).join('')}</table></div>`;
@@ -215,7 +217,8 @@ function uppdateraResultat() {
 // Ett fält i scenariot ändrades (se talFalt).
 function scenarioInput(el) {
   const vag = JSON.parse(el.dataset.k), d = scenario.data;
-  const v = el.type === 'number' ? (el.value === '' || !Number.isFinite(+el.value) ? undefined : +el.value) : el.value.slice(0, 100);
+  const tal = el.value.replace(/\s/g, '').replace(',', '.');   // "1 000,5" som besökaren skriver det
+  const v = el.inputMode === 'decimal' ? (tal === '' || !Number.isFinite(+tal) ? undefined : +tal) : el.value.slice(0, 100);
   let o = d;
   for (const k of vag.slice(0, -1)) o = o[k] ??= {};
   if (v === undefined) delete o[vag.at(-1)]; else o[vag.at(-1)] = v;

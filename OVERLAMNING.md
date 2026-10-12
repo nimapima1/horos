@@ -30,6 +30,17 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   laddar upp arbetskatalogen som den är: kontrollera `git status` först så att ingen annan sessions ocommittade
   ändringar följer med.
 
+## Gjort 2026-10-12: mobilrättningar
+
+- **Decimalkomma**: sifferfält med decimaler (Taxeringsvärde, Köpeskilling, alla i scenariot) är textfält med
+  `inputmode="decimal"`, eftersom Safari/Firefox ger tomt värde för "4,5" i `type="number"`. Servern (`tal` i
+  `FILTER`) och `scenarioInput` läser komma och mellanslag mellan tusental.
+- **Street View på mobil**: rutan flyttas in i fastighetspanelen under adressen (`[data-streetview]`).
+- **Scenariovyn på mobil**: antaganden per lokalslag som kort (rubrik via `data-rubrik`), fält 16 px/44 px,
+  heldragen panel så att kassaflödets fasta kolumn inte får annan färg än glaset.
+- **Granskning** (ponytail-review): sparade värden escapades inte i `talFalt` (HTML från en delad scenariolänk);
+  rättat med `esc`.
+
 ## Gjort 2026-10-11 (sen kväll): Scenarier och ny panel (PR #8)
 
 Idén kommer från Datschas "Scenarion" (användaren loggade in, Claude läste bara gränssnittet: ett scenario är en
@@ -70,7 +81,7 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
 - **Street View-rutan**: kartkontroll under Detaljplaner (`StreetView` i `app.js`), syns bara när en fastighet är
   öppen och `GOOGLE_EMBED_KEY` finns (`/api/status` → `streetview`). Två klick: knappen "Street View" (förklaring i
   `title`), iframen (Maps Embed API, `referrerPolicy: strict-origin`) skapas först vid klick och följer sedan med
-  till nästa fastighet tills "Stäng Street View". Döljs på mobil (länkarna räcker). I fönster under 700 px höjd
+  till nästa fastighet tills "Stäng Street View". På mobil (under 641 px) flyttas rutan in i fastighetspanelen, under adressen (2026-10-12). I fönster under 700 px höjd
   döljs Färga efter medan rutan är utfälld.
 - **Kartkontrollerna** Karta/Detaljplaner/Street View är lika breda (104 px); bakgrundens alternativ kortade till
   "Satellit 25" och "Foto 2005/1995/1975/1960" (ett längre namn kapas).
@@ -118,8 +129,8 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
 ## Förslag till nästa session
 
 0. **Scenarier**: tryck en gång på "Spara och kopiera länk" på horos.se och öppna länken i ett privat fönster
-   (sparningen på servern är inte provad live, för att inte lämna ett testscenario kvar). Prova decimalkomma
-   ("4,5") i sifferfälten i Safari/iPhone; bara Chromium är provat. När taxeringen kommer: ta ytor (LOA/BOA) och
+   (sparningen på servern är inte provad live, för att inte lämna ett testscenario kvar). Decimalkomma är rättat
+   2026-10-12 men inte provat på riktig iPhone. När taxeringen kommer: ta ytor (LOA/BOA) och
    bostads-/lokalvärde därifrån i stället för uppskattningen och skatteschablonen. Möjliga nästa steg: öppna
    standardvärden (t.ex. SCB:s bostadshyror per kommun) och finansiering (lån, ränta, amortering).
 1. Kolla Gmail efter svar på tillståndsmejlen.
