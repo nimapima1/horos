@@ -297,10 +297,8 @@ label.copy { display: inline-flex; align-items: center; }
 .scenario .meta .sc-farg { margin-right: 6px; vertical-align: -1px; }
 .sc-karta label { display: inline-flex; align-items: center; gap: 6px; }
 .sc-karta input { width: 18px; height: 18px; accent-color: var(--accent); }
-.sc-kombinera { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.sc-kombinera select { flex: 1 1 200px; min-width: 0; height: 40px; padding: 0 8px; font: inherit; font-size: 14px; color: var(--text);
-  background: var(--surface-sunken); border: 1px solid transparent; border-radius: var(--radius-sm); }
-.sc-kombinera .copy { margin-top: 0; }
+.panel td.sc-komb { width: 1%; white-space: nowrap; vertical-align: middle; }
+.sc-komb .lagg-till { display: inline-grid; margin-left: 4px; }
 .panel .sc-portfolj th[scope="row"] a { margin-left: 6px; font-weight: 400; }
 .panel .sc-portfolj { min-width: 520px; }   /* rullar i sidled på mobil i stället för att trycka ihop siffrorna */
 .panel .sc-portfolj td.num, .panel .sc-portfolj th.num { padding-left: 12px; }
@@ -395,6 +393,7 @@ label.copy { display: inline-flex; align-items: center; }
 .legend-scenarier { grid-template-columns: 1fr; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .legend-scenarier[hidden] { display: none; }
 .legend-scenarier span { overflow: hidden; text-overflow: ellipsis; }
+.sc-farg[hidden] { display: none; }
 .legend-scenarier i, .sc-farg { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: none; }
 .legend-scenarier i.flera { background: none; box-shadow: inset 0 0 0 2.5px #FFFFFF; }
 .hint { margin-top: 8px; font-weight: 600; color: var(--accent-strong); }

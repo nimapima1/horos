@@ -29,7 +29,7 @@ let sparatLokalt = true;   // senaste sparningen i webbläsaren lyckades (se #sc
 function sparaLokalt() {
   if (!scenario) return store.set('horos.aktivt', '');
   const d = scenario.data;
-  sparatLokalt = sparaMina([{ nyckel: scenario.nyckel, namn: d.namn, data: d, lank: scenario.lank, andrad: new Date().toISOString().slice(0, 10), antal: d.bet.length },
+  sparatLokalt = sparaMina([{ nyckel: scenario.nyckel, namn: d.namn, data: d, lank: scenario.lank, andrad: new Date().toISOString().slice(0, 10), antal: allaBet(d).length },   // med delscenarierna
     ...minaScenarion().filter((x) => x.nyckel !== scenario.nyckel)]) && store.set('horos.aktivt', scenario.nyckel);
   // Full eller avstängd lagring (vissa privata lägen): säg det, annars försvinner scenariot tyst vid omladdning.
   const varning = $('#sc-varning');
@@ -178,7 +178,6 @@ async function visaScenario() {
   const alla = sc.underlag;
   const ram = alla.length && [Math.min(...alla.map((f) => f.minx)), Math.min(...alla.map((f) => f.miny)),
     Math.max(...alla.map((f) => f.maxx)), Math.max(...alla.map((f) => f.maxy))].join(',');
-  const andra = minaScenarion().filter((x) => x.nyckel !== sc.nyckel);
   // Lokalslag med yta (eller egna antaganden) visas direkt, övriga under "Fler lokalslag".
   const anvands = (x) => ytaPerSlag[x] > 0 || Object.keys(d.antaganden[x] ?? {}).length > 0;
   // data-rubrik: fältets rubrik när tabellen visas som kort på mobil (style.css).
@@ -206,16 +205,8 @@ async function visaScenario() {
     <input id="sc-lank" class="sc-lank" readonly aria-label="Länk till scenariot" value="${esc(sc.lank ?? '')}"${sc.lank ? '' : ' hidden'}>
     <div id="sc-resultat"></div>
 
-    <h3>Kombinera med andra scenarier</h3>
-    ${andra.length ? `<div class="sc-kombinera">
-      <select id="sc-andra" aria-label="Scenario att kombinera med">${andra.map((x) => `<option value="${esc(x.nyckel)}">${esc(x.namn || 'Namnlöst scenario')}</option>`).join('')}</select>
-      <button type="button" class="copy" data-sc="addera">Addera</button>
-      <button type="button" class="copy" data-sc="subtrahera">Subtrahera</button>
-    </div>
-    <div class="meta small"><strong>Addera</strong> lägger in scenariot som ett delscenario med sina egna antaganden; portföljen
-      summerar fastigheter, yta, taxeringsvärde, kassaflöde och värde. <strong>Subtrahera</strong> tar bort dess fastigheter härifrån.
-      En fastighet räknas en gång, i första hand med det här scenariots antaganden.</div>`
-    : '<div class="meta small">Skapa fler scenarier för att addera eller subtrahera dem med det här.</div>'}
+    <div class="meta small">Kombinera med andra scenarier i <a data-sc="lista">Mina scenarion</a>: <strong>+</strong> lägger
+      in ett scenario som delscenario med sina egna antaganden, <strong>−</strong> tar bort dess fastigheter härifrån.</div>
 
     <h3>Antaganden</h3>
     <div class="meta small">Horos har inga marknadshyror, vakanser, driftkostnader eller avkastningskrav: värdet bygger
@@ -406,13 +397,15 @@ async function openScenarier({ lista = false } = {}) {
       eller filtret (<strong>Räkna på träffarna</strong>). Fyll i hyror, vakanser, kostnader och avkastningskrav, så räknar Horos
       fram kassaflöde och värde år för år. Allt sparas här i webbläsaren; <strong>Spara och kopiera länk</strong> ger en länk att dela.</p>
     <h3>Mina scenarion</h3>
-    ${table('<th>Karta</th><th>Scenario</th><th class="num">Senast använt</th><th></th>', mina.map((x) =>
+    ${scenario ? `<div class="meta small"><strong>+</strong> lägger in ett scenario i ${scenarioNamn()} som delscenario,
+      <strong>−</strong> tar bort dess fastigheter ur ${scenarioNamn()}.</div>` : ''}
+    ${table(`<th>Karta</th><th>Scenario</th><th class="num">Senast använt</th>${scenario ? '<th></th>' : ''}<th></th>`, mina.map((x) =>
       `<tr><td class="sc-karta"><label><input type="checkbox" data-synlig="${esc(x.nyckel)}"${paKartan().includes(x.nyckel) ? ' checked' : ''}${x.nyckel === scenario?.nyckel
         ? ' disabled title="Det öppna scenariot syns alltid"' : ''} aria-label="Visa ${esc(x.namn || 'scenariot')} på kartan"><i class="sc-farg"
         style="background:var(${fargPa(x.nyckel)})"${paKartan().includes(x.nyckel) ? '' : ' hidden'}></i></label></td>
         <td><a data-sc="oppna" data-nyckel="${esc(x.nyckel)}">${esc(x.namn || 'Namnlöst scenario')}</a>${x.nyckel === scenario?.nyckel ? ' <span class="tag">öppet</span>' : ''}
         <div class="muted small">${Number(x.antal).toLocaleString('sv-SE')} fastigheter · ${x.lank ? 'delad länk' : 'inte delat'}</div></td>
-        <td class="num">${esc(x.andrad ?? x.sparad ?? '')}</td><td class="num"><a data-sc="glom" data-nyckel="${esc(x.nyckel)}">Ta bort</a></td></tr>`),
+        <td class="num">${esc(x.andrad ?? x.sparad ?? '')}</td>${scenario ? `<td class="sc-komb">${kombineraKnappar(x)}</td>` : ''}<td class="num"><a data-sc="glom" data-nyckel="${esc(x.nyckel)}">Ta bort</a></td></tr>`),
       'Inga scenarier i den här webbläsaren ännu.')}
     <div class="meta small">Bocka i <strong>Karta</strong> för att se scenariots fastigheter på kartan i dess färg; vitt betyder
       att fastigheten finns i flera. Det öppna scenariot syns alltid.</div>
@@ -449,7 +442,7 @@ async function kombinera(satt, nyckel, knapp) {
     d.delar = nyaDelar;
   }
   andrat();
-  return visaScenario();
+  return openScenarier({ lista: true });   // kvar i listan, så att flera kan läggas in i rad
 }
 
 // Knappar med data-sc i panelen och i +-menyn.
@@ -471,7 +464,7 @@ async function scenarioKlick(el) {
     andrat();
     return visaScenario();
   }
-  if (a === 'addera' || a === 'subtrahera') return kombinera(a, $('#sc-andra').value, el);
+  if (a === 'addera' || a === 'subtrahera') return kombinera(a, el.dataset.nyckel, el);
   if (a === 'ta-bort-del') {
     scenario.data.delar.splice(Number(el.dataset.i), 1);
     andrat();
@@ -523,6 +516,15 @@ function scenarioMeny(bet) {
         : `<button type="button" data-sc="lagg-i" data-nyckel="${esc(x.nyckel)}" data-bet="${esc(bet)}">${namn(x)}</button>`)).join('')}
       <button type="button" class="ny" data-sc="fastighet" data-bet="${esc(bet)}">Nytt scenario</button>
     </div></details>`;
+}
+// + och − vid ett scenario i Mina scenarion: lägg in det som delscenario i det öppna, eller ta bort dess fastigheter.
+function kombineraKnappar(x) {
+  if (x.nyckel === scenario.nyckel) return '';
+  const namn = esc(x.namn || 'scenariot'), del = scenario.data.delar.some((y) => y.nyckel === x.nyckel);
+  return `${del ? `<button type="button" class="lagg-till" disabled title="${namn} är ett delscenario i ${scenarioNamn()}">✓</button>`
+    : `<button type="button" class="lagg-till" data-sc="addera" data-nyckel="${esc(x.nyckel)}" title="Lägg in ${namn} i ${scenarioNamn()} som delscenario"
+      aria-label="Lägg in ${namn} i ${scenarioNamn()}">+</button>`}<button type="button" class="lagg-till" data-sc="subtrahera" data-nyckel="${esc(x.nyckel)}"
+      title="Ta bort fastigheterna i ${namn} ur ${scenarioNamn()}" aria-label="Ta bort fastigheterna i ${namn} ur ${scenarioNamn()}">−</button>`;
 }
 // Bolagspanelen: hela innehavet till ett nytt scenario, eller till det öppna.
 const scenarioNamn = () => esc(scenario.data.namn || 'scenariot');
