@@ -136,6 +136,10 @@ class StreetView {
   visa(p, nyckel = this.nyckel) {
     this.nyckel = nyckel;
     this.src = p;
+    // På mobil täcker panelen kontrollerna nedtill: rutan flyttas då in i fastighetspanelen ([data-streetview]).
+    this.hem ??= this.el.parentNode;
+    const iPanel = p && matchMedia('(max-width: 640px)').matches && document.querySelector('#panel [data-streetview]');
+    (iPanel || this.hem).append(this.el);
     this.el.hidden = !(p && nyckel);
     if (this.el.hidden) return this.el.replaceChildren();
     if (!this.samtycke) {

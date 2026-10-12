@@ -120,6 +120,7 @@ async function openFastighet(bet, adress) {
     <h2>${esc(rubrik)}${demoTag(f.demo)}</h2>
     <div class="meta">${rubrik === f.beteckning ? '' : `${esc(f.beteckning)} · `}${esc(f.kommun ?? '')}</div>
     ${ovriga.length ? `<div class="meta small">Även ${esc(ovriga.join(', '))}</div>` : ''}
+    <div data-streetview></div>
     ${facts([
       [agare[0]?.tomtratt ? 'Tomträttshavare' : 'Ägare', agare.length ? bolagLink(agare[0].orgnr, agare[0].namn, agare[0].demo) : '–',
         [agare.length > 1 ? `och ${agare.length - 1} till, se nedan` : agare.length ? fmtOrgnr(agare[0].orgnr) : 'Väntar på uppgifter från Lantmäteriet',

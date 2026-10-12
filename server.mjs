@@ -248,16 +248,18 @@ const ettAv = (lista) => (v) => (lista.some(([k]) => k === v) ? v : NaN);
 // Kartfiltren i /api/fastigheter: [parameter, omvandling till databasens värde, villkor på raden v med ett ?].
 // Ogiltiga värden (NaN) och tomma fält stänger av filtret. Villkor och parametrar byggs ur samma lista.
 const ar4 = (v) => (/^\d{4}$/.test(v) ? v : NaN);
+// Tal som besökaren skriver dem: decimalkomma och mellanslag mellan tusental ("1 000,5").
+const tal = (v) => +v.replace(/\s/g, '').replace(',', '.');
 const FILTER = [
   ['anv', (v) => v, harTyp('v')],
   ['jur', (v) => v, 'EXISTS (SELECT 1 FROM agande a JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = v.beteckning AND b.jurform = ?)'],
-  ['vmin', (v) => +v * 1000, 'v.varde_tkr >= ?'],   // Mkr -> tkr
-  ['vmax', (v) => +v * 1000, 'v.varde_tkr <= ?'],
-  ['kmin', (v) => +v * 1e6, 'v.kop_kr >= ?'],       // Mkr -> kr
+  ['vmin', (v) => tal(v) * 1000, 'v.varde_tkr >= ?'],   // Mkr -> tkr
+  ['vmax', (v) => tal(v) * 1000, 'v.varde_tkr <= ?'],
+  ['kmin', (v) => tal(v) * 1e6, 'v.kop_kr >= ?'],       // Mkr -> kr
   ['kar', ar4, 'v.kop_dag >= ?'],                    // köpt år v eller senare (jämförs med ÅÅÅÅ-MM-DD)
   ['ktill', ar4, 'substr(v.kop_dag, 1, 4) <= ?'],   // köpt år v eller tidigare
-  ['amin', (v) => +v, 'v.areal_m2 >= ?'],           // tomtyta, m²
-  ['amax', (v) => +v, 'v.areal_m2 <= ?'],
+  ['amin', tal, 'v.areal_m2 >= ?'],           // tomtyta, m²
+  ['amax', tal, 'v.areal_m2 <= ?'],
   ['rf', ettAv(UPPLATELSEFORMER), 'v.upplatelse = ?'],
   ['kommun', (v) => v, 'v.kommun = ?'],
   ['lan', (v) => (LAN[v] ? JSON.stringify(KOMMUNER.filter((k) => LAN_FOR_KOMMUN.get(k) === v)) : NaN),   // länskod
@@ -268,8 +270,8 @@ const FILTER = [
     `EXISTS (SELECT 1 FROM agande a JOIN bolag b ON b.orgnr = a.orgnr WHERE a.beteckning = v.beteckning AND ${AGARKATEGORI_SQL} = ?)`],
   // Uppskattad LOA och lokaltyp finns bara med arbetsställen (SCB).
   ...(HAS_AE ? [
-    ['loamin', (v) => +v, 'v.loa_m2 >= ?'],
-    ['loamax', (v) => +v, 'v.loa_m2 <= ?'],
+    ['loamin', tal, 'v.loa_m2 >= ?'],
+    ['loamax', tal, 'v.loa_m2 <= ?'],
     ['lok', (v) => v, 'EXISTS (SELECT 1 FROM arbetsstalle a WHERE a.beteckning = v.beteckning AND a.lokaltyp = ?)'],
   ] : []),
 ];

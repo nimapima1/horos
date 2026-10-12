@@ -66,15 +66,15 @@
           <label class="wide">Juridisk form
             <select name="jur"><option value="">Alla</option></select>
           </label>
-          <label>Taxeringsvärde från, Mkr<input name="vmin" type="number" min="0" inputmode="decimal"></label>
-          <label>till, Mkr<input name="vmax" type="number" min="0" inputmode="decimal"></label>
+          <label>Taxeringsvärde från, Mkr<input name="vmin" inputmode="decimal"></label>
+          <label>till, Mkr<input name="vmax" inputmode="decimal"></label>
           <label>Senast köpt, från år<input name="kar" type="number" min="1900" max="2100" inputmode="numeric"></label>
           <label>till år<input name="ktill" type="number" min="1900" max="2100" inputmode="numeric"></label>
           <label>Tomtyta från, m²<input name="amin" type="number" min="0" inputmode="numeric"></label>
           <label>till, m²<input name="amax" type="number" min="0" inputmode="numeric"></label>
           <label>LOA från, m² (uppskattad)<input name="loamin" type="number" min="0" inputmode="numeric"></label>
           <label>till, m²<input name="loamax" type="number" min="0" inputmode="numeric"></label>
-          <label>Köpeskilling minst, Mkr<input name="kmin" type="number" min="0" inputmode="decimal"></label>
+          <label>Köpeskilling minst, Mkr<input name="kmin" inputmode="decimal"></label>
           <output id="filter-hits" class="hits" aria-live="polite"></output>
           <button type="reset">Rensa</button>
           <a id="filter-csv" class="wide small" href="data/horos-traffar.csv" download>Ladda ner träffarna (CSV)</a>
