@@ -119,6 +119,8 @@ Den publika databasen har **0 fastigheter** (bara bolag, adresser och pressmedde
 
 Väntar på:
 - Svar på tillståndsmejlen (Fastighetsvärlden, Fastighetsnytt, MFN), skickade 2026-10-10 från kontakt@horos.se.
+  MFN svarade 2026-10-12: kan erbjuda pressmeddelanden för bolag som distribuerar via MFN; följdfrågor om
+  leveranssätt, villkor och källangivelse skickade samma dag, väntar på svar (se `PRIVAT.md`).
 - Skatteverket: taxeringsvärden, ärendet pågår (detaljer i `PRIVAT.md`).
 - Lantmäteriet (allmän handling): lagfarter/köpeskillingar från 2016 där förvärvaren är juridisk
   person, och nuvarande juridiska ägare. **Tomträttsinnehav är inte efterfrågat**: kontrollera när
