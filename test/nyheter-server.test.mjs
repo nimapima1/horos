@@ -55,15 +55,17 @@ test('publikt läge vägrar starta med en plats i ett pressmeddelande utan fasti
   assert.match(r.stderr, /1 platser i pressmeddelanden utan fastighet/);
 });
 
-test('cron --mfn: det MFN skickat förs in med källan mfn, platser bara på fastigheter', () => {
+test('cron --mfn: fastighetsbolagens affärer förs in med källan mfn, platser bara på fastigheter', () => {
   const MFN = join(DIR, 'nyheter-mfn.sqlite');
   rmSync(MFN, { force: true });
-  publik(NY, '');
+  publik(NY, "INSERT INTO bolag (orgnr, namn, sni) VALUES ('5560000001', 'Alfa AB', '68203'), ('5569999999', 'Konsult AB', '70220')");
   const m = new DatabaseSync(MFN);
   m.exec(`CREATE TABLE mfn_nyhet (url TEXT PRIMARY KEY, utgivare TEXT NOT NULL, rubrik TEXT NOT NULL, datum TEXT, typ TEXT NOT NULL,
-      pris_kr INTEGER, kommun TEXT, beteckningar TEXT NOT NULL, adresser TEXT NOT NULL, mottagen TEXT NOT NULL);
+      pris_kr INTEGER, kommun TEXT, beteckningar TEXT NOT NULL, adresser TEXT NOT NULL, mottagen TEXT NOT NULL, orgnr TEXT);
     INSERT INTO mfn_nyhet VALUES ('${URL(4)}', 'Alfa AB', 'Alfa köper', '2026-10-12T06:00:00.000Z', 'kop', 50000000, 'Testkommun',
-      '["T 1:1","T 9:9"]', '[]', '2026-10-12')`);
+      '["T 1:1","T 9:9"]', '[]', '2026-10-12', '5560000001'),
+      ('${URL(5)}', 'Konsult AB', 'Konsult AB förvärvar bolag', NULL, 'kop', NULL, 'Testkommun', '["T 1:1"]', '[]', '2026-10-12', '5569999999'),
+      ('${URL(6)}', 'Gammal AB', 'Gammal förvärvar fastighet', NULL, 'kop', NULL, 'Testkommun', '["T 1:1"]', '[]', '2026-10-12', NULL)`);
   m.close();
   const r = node([join(ROOT, 'scripts', 'import-nyheter.mjs'), '--publik', NY, '--mfn', MFN]);
   assert.equal(r.status, 0, r.stderr);

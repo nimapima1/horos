@@ -100,9 +100,12 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
   **MFN förbjuder automatisk hämtning** (robots.txt: `*.rss`, `*.xml`, `*.json`), men erbjöd 2026-10-12 att
   **skicka** pressmeddelanden (WebSub-POST, JSON) för bolag som distribuerar via MFN. Mottagaren: `POST /api/mfn`
   (signatur HMAC-SHA256 i `X-Hub-Signature` med `MFN_SECRET` i secrets.env; utan den finns ingen mottagare),
-  `GET /api/mfn` svarar på `hub.challenge`. Bara svenska köp/försäljningar (`tolkaMfn` i `lib/nyheter.mjs`)
-  sparas, utan text, i `mfn.sqlite` i appens StateDirectory (`/var/lib/horos-scenarion`); cron för in dem med
-  `import-nyheter --publik <fil> --mfn <mfn.sqlite>` (källa `mfn`). DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
+  `GET /api/mfn` svarar på `hub.challenge`. MFN skickar **alla** bolags pressmeddelanden (urval går inte);
+  svenska köp/försäljningar (`tolkaMfn` i `lib/nyheter.mjs`) sparas med utgivarens org.nr, utan text, i
+  `mfn.sqlite` i appens StateDirectory (`/var/lib/horos-scenarion`), en rad per mottaget i journalen. Cron för in
+  bara fastighetsbolagens (`arFastighetsbolag`: SNI 68, namnet, eller listan `MFN_FASTIGHETSBOLAG` för moderbolag
+  med SNI 70100/64xxx) med `import-nyheter --publik <fil> --mfn <mfn.sqlite>` (källa `mfn`, visas "via MFN").
+  Ingen kostnad; MFN vill att de anges som källa. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
   efterfrågas (mejlen skickade 2026-10-10, väntar på svar; se `PRIVAT.md`). På servern: cron (som deploy, inlagd av `deploy.sh`) kör
   `deploy/nyheter.sh` 05:15 och 15:15 UTC: `import-nyheter --publik` på en kopia av den publika databasen
   (platser bara på fastigheter i den, samma regel `NYHET_PLATS_UTANFOR` som build-public och serverns spärr), byter
@@ -125,8 +128,8 @@ Väntar på:
 - Svar på tillståndsmejlen (Fastighetsvärlden, Fastighetsnytt, MFN), skickade 2026-10-10 från kontakt@horos.se.
   MFN svarade 2026-10-12: skickar pressmeddelanden (push) för bolag som distribuerar via MFN och vill veta
   leveranssätt (HTTPS), format (JSON) och URL. Mottagaren `https://horos.se/api/mfn` är live sedan 2026-10-12
-  med `MFN_SECRET` satt. Öppet: hur MFN får hemligheten, prenumerationen, vilka bolag, ir/pr, villkor och
-  källangivelse (se `PRIVAT.md`).
+  med `MFN_SECRET` satt; hemligheten skickad till MFN 2026-10-12, leveransen igång (alla bolag, ingen kostnad,
+  källa "MFN", prenumerationen förnyas inte). Väntar inte längre på MFN (se `PRIVAT.md`).
 - Skatteverket: taxeringsvärden, ärendet pågår (detaljer i `PRIVAT.md`).
 - Lantmäteriet (allmän handling): lagfarter/köpeskillingar från 2016 där förvärvaren är juridisk
   person, och nuvarande juridiska ägare. **Tomträttsinnehav är inte efterfrågat**: kontrollera när

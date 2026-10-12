@@ -14,7 +14,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { NYHET_PLATS_UTANFOR, openDb, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 import { pointInGeom } from '../lib/geo.mjs';
-import { CISION, lasRss, tolka } from '../lib/nyheter.mjs';
+import { CISION, arFastighetsbolag, lasRss, tolka } from '../lib/nyheter.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const UA = 'Horos/0.1 (ideell fastighetskarta; kontakt@horos.se)';
@@ -100,9 +100,13 @@ if (args.mfn) {
   // skriva den; mfn.sqlite ägs av appen).
   const undanta = new Set(args.undanta && existsSync(String(args.undanta))
     ? readFileSync(String(args.undanta), 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : []);
+  // MFN skickar alla bolags affärer: bara fastighetsbolagens tas med (rader utan org.nr, från före filtret, inte).
+  const bolagFor = db.prepare('SELECT namn, sni FROM bolag WHERE orgnr = ?');
+  const tas = (r) => !undanta.has(r.url) && arFastighetsbolag(r.orgnr, r.orgnr && bolagFor.get(r.orgnr), r.utgivare);
   withTransaction(db, () => {
+    for (const r of rader) if (!tas(r) && !args.dry) { delNyhet.run(r.url); delPlats.run(r.url); }
     for (const url of undanta) if (!args.dry) { delNyhet.run(url); delPlats.run(url); }
-    for (const r of rader) if (!undanta.has(r.url)) spara({ ...r, beteckningar: JSON.parse(r.beteckningar), adresser: JSON.parse(r.adresser) }, r.utgivare, 'mfn');
+    for (const r of rader.filter(tas)) spara({ ...r, beteckningar: JSON.parse(r.beteckningar), adresser: JSON.parse(r.adresser) }, r.utgivare, 'mfn');
   });
 } else for (const [namn, utgivare] of CISION) {
   const res = await fetch(`https://news.cision.com/se/${namn}/ListItems?format=rss&pageSize=100`, { headers: { 'user-agent': UA } });

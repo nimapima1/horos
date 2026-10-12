@@ -269,23 +269,26 @@ test('scenarier: korta länkar', async () => {
   assert.equal((await json('/api/status')).kortlankar, true);
 });
 
-test('MFN: signerade pressmeddelanden tas emot, bara affärer sparas och aldrig texten', async () => {
+test('MFN: signerade pressmeddelanden tas emot, affärer sparas med org.nr och aldrig texten', async () => {
   const skicka = (item, hemlighet = MFN_SECRET) => {
     const kropp = JSON.stringify(item);
     return fetch(`http://127.0.0.1:${PORT}/api/mfn`, { method: 'POST', body: kropp, headers: {
       'content-type': 'application/json', 'x-hub-signature': `sha256=${createHmac('sha256', hemlighet).update(kropp).digest('hex')}` } });
   };
-  const item = (url, title) => ({ url, author: { name: 'Alfa AB' }, properties: { lang: 'sv', type: 'ir' },
+  const item = (url, title, orgnr = '556000-0001') => ({ url, author: { name: 'Alfa AB', local_refs: [`SE:${orgnr}`] }, properties: { lang: 'sv', type: 'ir' },
     content: { title, text: 'Fastigheten Pilen 1 i Uppsala. Hemlig brödtext.', publish_date: '2026-10-12T06:00:00Z' } });
   const affar = item('https://mfn.se/a/alfa/1', 'Alfa förvärvar fastighet i Uppsala för 50 mkr');
   assert.equal((await skicka(affar, 'fel')).status, 403);
   assert.deepEqual(await skicka(affar).then((r) => r.json()), { sparad: true });
   assert.deepEqual(await skicka(item('https://mfn.se/a/alfa/2', 'Alfa publicerar delårsrapport')).then((r) => r.json()), { sparad: false });
+  // Även andra bolags affärer sparas; importen (cron) tar bara med fastighetsbolagens.
+  assert.deepEqual(await skicka(item('https://mfn.se/a/x/3', 'X förvärvar konsultbolag i Uppsala för 50 mkr', '556999-9999')).then((r) => r.json()), { sparad: true });
   assert.equal(await get('/api/mfn?hub.mode=subscribe&hub.challenge=abc123').then((r) => r.text()), 'abc123');
   assert.equal((await get('/api/mfn')).status, 400);
   const mdb = new DatabaseSync(MFN_DB, { readOnly: true });
   const rader = mdb.prepare('SELECT * FROM mfn_nyhet').all();
   mdb.close();
-  assert.deepEqual(rader.map((r) => [r.url, r.typ, r.pris_kr, r.kommun]), [['https://mfn.se/a/alfa/1', 'kop', 50e6, 'Uppsala']]);
+  assert.deepEqual(rader.map((r) => [r.url, r.typ, r.pris_kr, r.kommun, r.orgnr]),
+    [['https://mfn.se/a/alfa/1', 'kop', 50e6, 'Uppsala', '5560000001'], ['https://mfn.se/a/x/3', 'kop', 50e6, 'Uppsala', '5569999999']]);
   assert.ok(!JSON.stringify(rader).includes('Hemlig'));
 });
