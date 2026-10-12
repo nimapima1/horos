@@ -1,4 +1,4 @@
-# Överlämning 2026-10-11 (sen kväll)
+# Överlämning 2026-10-12
 
 Läs `CLAUDE.md` först (regler, teknik, server) och `PRIVAT.md` (inte i git: mejlkontakter, myndighetsärenden,
 kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 och 2026-10-11 och vad som ska göras härnäst.
@@ -6,13 +6,14 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
 
 ## Läget
 
-- **Publikt repo**: https://github.com/nimapima1/horos (AGPL-3.0-or-later). Allt är committat och pushat
-  (`master` = `origin/master`). Sådant som inte ska vara publikt (namngivna personers adresser, förhandlingsläge,
+- **Publikt repo**: https://github.com/nimapima1/horos (AGPL-3.0-or-later). Allt är committat och pushat. **PR #11
+  (`mobil-rattelser`) är inte mergad** än: live kör grenen, master ligger en PR efter. Sådant som inte ska vara publikt (namngivna personers adresser, förhandlingsläge,
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
 - **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt.
-  - Koden till och med 9551e02 (PR #8, scenarier och ny panel, deployad 2026-10-11 sent från grenen; samma kod som
-    master). Däri också PR #2–#7 från 2026-10-11: alltid mörkt läge, mobilrättningar, Förorenade och Utsatta
+  - Koden från grenen `mobil-rattelser` (PR #11, ca9be9e: decimalkomma, Street View på mobil, scenariovyn på
+    mobil), deployad 2026-10-12 08:45 och kontrollerad med curl (ny kod serveras, `vmin=1,5` ger 200). Ovanpå
+    PR #8 (scenarier och ny panel, 9551e02) och PR #2–#7 från 2026-10-11: alltid mörkt läge, mobilrättningar, Förorenade och Utsatta
     områden, Google Maps och Street View.
   - Publik databas byggd 2026-10-10 14:25 med `--alla-bolag`, publicerad med `--data`: 0 fastigheter,
     2,2 miljoner bolag (ägarkontrollen som ord: `stat`, `kommun`, `region` …), 120 177 adresser, inga
@@ -26,7 +27,9 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
 - `npm test`: 44 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
   av en annan session). Starta om servern efter import eller demo-data.
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
-  terminal (lösenfras **direkt**, annars stänger servern anslutningen; det hände två gånger 2026-10-10). Deploy
+  terminal (lösenfras **direkt**, annars stänger servern anslutningen; det hände två gånger 2026-10-10). Första
+  försöket 2026-10-12 hann inte (lösenfrasen skrevs för sent); andra gick igenom. Ett avbrutet försök lämnar en flik
+  som väntar på lösenfrasen och som Claude inte får stänga om användaren skrivit i den. Deploy
   laddar upp arbetskatalogen som den är: kontrollera `git status` först så att ingen annan sessions ocommittade
   ändringar följer med.
 
@@ -40,6 +43,8 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   heldragen panel så att kassaflödets fasta kolumn inte får annan färg än glaset.
 - **Granskning** (ponytail-review): sparade värden escapades inte i `talFalt` (HTML från en delad scenariolänk);
   rättat med `esc`.
+- **Publicerat** 2026-10-12 08:45 från grenen (PR #11, ej mergad). Provat i webbläsarpanelen på 375 och 320 px och i
+  datorvy; inte på riktig iPhone. Street View-knappen på mobil kan provas live först när fastigheterna finns.
 
 ## Gjort 2026-10-11 (sen kväll): Scenarier och ny panel (PR #8)
 
