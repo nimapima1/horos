@@ -1,13 +1,14 @@
 // Liten server utan beroenden: statiska filer från public/ + JSON-API.
 import { createServer } from 'node:http';
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree } from './lib/db.mjs';
 import { avstandM, innerPoints, pointInGeom } from './lib/geo.mjs';
-import { LAN, LAN_FOR_KOMMUN } from './lib/kommuner.mjs';
+import { LAN, LAN_FOR_KOMMUN, kommunAv, kommunForst } from './lib/kommuner.mjs';
+import { MAX_SCENARIO, MAX_SCENARIO_BYTE, giltigtScenario, oppnaScenarier } from './lib/scenarier.mjs';
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
 import { arFastighetsbolag, tolkaMfn } from './lib/nyheter.mjs';
 
@@ -69,39 +70,10 @@ if (PUBLIC_MODE) {
   }
 }
 
-// --- Scenarier (korta länkar) -----------------------------------------------------
-// Besökarnas sparade kalkyler (se panel.js) i en egen databas: den publika är skrivskyddad och byts vid
-// publicering. Ingen inloggning: id:t är en hash av innehållet, så ett sparat scenario ändras aldrig och
-// samma innehåll ger samma länk. På servern sätter systemd STATE_DIRECTORY (StateDirectory=horos-scenarion);
-// utan skrivbar plats stängs korta länkar av och klienten lägger scenariot i länken i stället.
-const SCENARIO_DB = process.env.SCENARIO_DB
-  ?? (process.env.STATE_DIRECTORY ? join(process.env.STATE_DIRECTORY, 'scenarion.sqlite') : PUBLIC_MODE ? null : join(ROOT, 'data', 'scenarion.sqlite'));
-const MAX_SCENARIO = 1000;            // fastigheter per scenario
-const MAX_SCENARIO_BYTE = 256 * 1024;
-const MAX_SCENARIER = 200_000;        // skydd mot att disken fylls
-let qs = null;
-try {
-  if (SCENARIO_DB) {
-    mkdirSync(dirname(SCENARIO_DB), { recursive: true });
-    const sdb = new DatabaseSync(SCENARIO_DB);
-    sdb.exec(`PRAGMA journal_mode = WAL;
-      CREATE TABLE IF NOT EXISTS scenario (id TEXT PRIMARY KEY, data TEXT NOT NULL, skapad TEXT NOT NULL) WITHOUT ROWID`);
-    qs = {
-      antal: sdb.prepare('SELECT count(*) AS n FROM scenario'),
-      spara: sdb.prepare("INSERT OR IGNORE INTO scenario (id, data, skapad) VALUES (?, ?, date('now'))"),
-      hamta: sdb.prepare('SELECT data FROM scenario WHERE id = ?'),
-    };
-  }
-} catch (e) {
-  console.error(`Korta länkar är avstängda (${SCENARIO_DB}): ${e.message}`);
-}
-// Scenariot tolkas aldrig av servern, men ska vara det klienten skickar: bara objekt, listor, korta strängar,
-// tal och null, inte för djupt (delar[i].egna[bet].yta[slag] är det djupaste), med fastigheterna i bet.
-const giltigt = (v, djup = 0) => v === null || (typeof v === 'number' && Number.isFinite(v))
-  || (typeof v === 'string' && v.length <= 100)
-  || (djup < 6 && typeof v === 'object' && Object.keys(v).length <= MAX_SCENARIO
-    && Object.entries(v).every(([k, x]) => k.length <= 100 && giltigt(x, djup + 1)));
-const giltigtScenario = (s) => s?.v === 1 && Array.isArray(s.bet) && s.bet.length <= MAX_SCENARIO && giltigt(s);
+// --- Scenarier (korta länkar, lib/scenarier.mjs) --------------------------------------
+// På servern i systemds STATE_DIRECTORY (StateDirectory=horos-scenarion); utan skrivbar plats inga korta länkar.
+const scenarier = oppnaScenarier(process.env.SCENARIO_DB
+  ?? (process.env.STATE_DIRECTORY ? join(process.env.STATE_DIRECTORY, 'scenarion.sqlite') : PUBLIC_MODE ? null : join(ROOT, 'data', 'scenarion.sqlite')));
 
 // --- MFN (pressmeddelanden som skickas hit) ------------------------------------------
 // MFN skickar varje nytt pressmeddelande som POST till /api/mfn (WebSub, signerat med HMAC-SHA256 i
@@ -729,6 +701,36 @@ function sokAdress(term) {
     }));
 }
 
+// Inläsning från fil (scenario.js): en rad med beteckning, adress och kommun -> fastigheten i Horos, eller null med
+// orsaken ('kommun' när kommunen saknas eller är okänd, annars 'okand'). Kommunen krävs alltid: samma beteckning
+// ("Kungsbron 1") och samma adress finns i flera kommuner. Den tas från kolumnen, från början av beteckningen
+// ("Stockholm Kungsbron 1") eller efter ett kommatecken i adressen ("Kungsgatan 12, Stockholm"), och fastighetens
+// kommun måste stämma. Bara fastigheter som finns i Horos kan hittas.
+function matchaRad(r) {
+  const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v).trim().slice(0, 200) : '');
+  let bet = normBeteckning(text(r?.bet)), kommun = text(r?.kommun) ? kommunAv(text(r.kommun)) : null;
+  const [adress, adressKommun] = text(r?.adress).split(',').map((x) => x.trim());
+  const forst = bet && kommunForst(bet);
+  if (forst) { kommun ??= forst.kommun; bet = forst.resten; }
+  kommun ??= adressKommun ? kommunAv(adressKommun) : null;
+  if (!kommun) return { beteckning: null, via: null, orsak: 'kommun' };
+  const iKommunen = (f) => f && (f.kommun ?? '').toUpperCase() === kommun.toUpperCase();
+  if (bet) {
+    // Beteckningen kan stå med eller utan kommunnamnet i Horos (beror på Lantmäteriets fil); båda prövas.
+    const f = [bet, `${kommun.toUpperCase()} ${bet}`].map((b) => q.fastighet.get(b)).find(iKommunen);
+    if (f) return { beteckning: f.beteckning, via: 'beteckning' };
+  }
+  if (adress && q.sokAdress && /\p{L}/u.test(adress)) {
+    // Alla träffar i adressökningen (sökrutan visar bara 6): samma gata finns i många orter.
+    for (const a of q.sokAdress.all(ftsQuery(adress))) {
+      if (`${a.gata} ${a.nummer}`.toLowerCase() !== adress.toLowerCase()) continue;
+      const b = fastighetVid(a.lon, a.lat);
+      if (b && iKommunen(q.fastighet.get(b))) return { beteckning: b, via: 'adress' };
+    }
+  }
+  return { beteckning: null, via: null, orsak: 'okand' };
+}
+
 // GeoJSON-feature som sträng: geometrin ligger redan som JSON i databasen och skarvas in
 // direkt i stället för att tolkas och serialiseras om för varje fastighet.
 const featureJson = (geojson, properties) =>
@@ -792,7 +794,7 @@ const routes = [
     historiska: HIST_AUTH ? Object.keys(HIST_LAYERS).map(Number) : [],
     // Nyckel till Googles Maps Embed API. Den syns ändå i iframens adress; skyddet är hänvisarlåset hos Google.
     streetview: process.env.GOOGLE_EMBED_KEY || null,
-    kortlankar: !!qs,   // scenarier kan sparas som korta länkar
+    kortlankar: !!scenarier,   // scenarier kan sparas som korta länkar
     maxScenario: MAX_SCENARIO,
   }]],
 
@@ -811,17 +813,12 @@ const routes = [
   }, 'POST'],
 
   [/^\/api\/scenario$/, 'spara', async (_m, _url, _res, req) => {
-    if (!qs) return [503, { error: 'Korta länkar är inte tillgängliga på servern.' }];
+    if (!scenarier) return [503, { error: 'Korta länkar är inte tillgängliga på servern.' }];
     const { varde, fel } = await lasJson(req, MAX_SCENARIO_BYTE);
     if (fel) return fel;
     if (!giltigtScenario(varde)) return [400, { error: 'ogiltigt scenario' }];
-    const data = JSON.stringify(varde);
-    const id = createHash('sha256').update(data).digest('base64url').slice(0, 10);
-    if (!qs.hamta.get(id)) {
-      if (qs.antal.get().n >= MAX_SCENARIER) return [507, { error: 'Lagringen för scenarier är full.' }];
-      qs.spara.run(id, data);
-    }
-    return [200, { id }];
+    const id = scenarier.spara(varde);
+    return id ? [200, { id }] : [507, { error: 'Lagringen för scenarier är full.' }];
   }, 'POST'],
 
   // MFN: kontrollfrågan när en prenumeration läggs upp via deras hub (svaret är hub.challenge), och
@@ -846,9 +843,19 @@ const routes = [
     return [200, { sparad: !!n }];
   }, 'POST'],
 
+  // Inläsning från fil: {rader: [{bet, adress, kommun}]} -> {traffar: [{beteckning, via}]} i samma ordning (se matchaRad).
+  // Samma hastighetsgräns som sparandet: en fil åt gången, upp till MAX_SCENARIO rader.
+  [/^\/api\/matcha$/, 'spara', async (_m, _url, _res, req) => {
+    const { varde, fel } = await lasJson(req, MAX_SCENARIO_BYTE);
+    if (fel) return fel;
+    const rader = varde?.rader;
+    if (!Array.isArray(rader) || rader.length > MAX_SCENARIO) return [400, { error: `rader: högst ${MAX_SCENARIO}` }];
+    return [200, { traffar: rader.map(matchaRad) }];
+  }, 'POST'],
+
   [/^\/api\/scenario\/([\w-]{10})$/, 'api', (m) => {
-    const r = qs?.hamta.get(m[1]);
-    return r ? [200, r.data] : [404, { error: 'Scenariot finns inte' }];
+    const data = scenarier?.hamta(m[1]);
+    return data ? [200, data] : [404, { error: 'Scenariot finns inte' }];
   }],
 
   [/^\/api\/fastigheter$/, 'api', (_m, url) => {

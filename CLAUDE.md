@@ -20,9 +20,12 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   `lib/lokaltyp.mjs` (arbetsställe → lokaltyp och uppskattad LOA; sparas i `arbetsstalle` vid importen).
   `lib/nyheter.mjs` (pressmeddelanden: RSS, utläsning av typ/pris/kommun/beteckning/adress, nyhetsrummen på Cision).
   `lib/scb.mjs` (SCB:s företagsregister: nyckeln, paus före varje anrop, sidhämtning; används av SCB-importerna).
+  `lib/scenarier.mjs` (lagringen av korta länkar: `oppnaScenarier`, `giltigtScenario`, `MAX_SCENARIO`),
+  `lib/kommuner.mjs` (län, kommuner, och `kommunAv`/`kommunForst` för kommunnamn i filer).
 - Kartfiltren: `FILTER` i `server.mjs`, `[parameter, omvandling, SQL-villkor]`; WHERE-delen byggs ur listan.
 - `public/`: `index.html` + `kalkyl.js` (kassaflödeskalkylen, utan DOM, testas i `test/kalkyl.test.mjs`) + `panel.js`
-  (panelvyerna, bara deklarationer) + `scenario.js` (scenarierna, bara deklarationer) + `app.js` (karta,
+  (panelvyerna, bara deklarationer) + `inlasning.js` (inläsning från Excel/CSV, från filval till rapport, bara deklarationer; tolkningen testas i
+  `test/inlasning.test.mjs`) + `scenario.js` (scenarierna, bara deklarationer) + `app.js` (karta,
   filter, sök, status och all inkoppling), `metod.html`, `style.css`
   (ui-ux-pro-max: Swiss/minimalism + glas, Lexend/Source Sans 3, slate/#0369A1). CSP tillåter
   inga inline-skript.
@@ -40,6 +43,10 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   fastighet en gång); Huvud väljer huvudscenariot (period och antaganden gäller först), gruppen flyttar dit. Kartan visar
   det öppna och de ihoplagda i tabellens färger, vitt där de överlappar. Horos har inga marknadshyror eller
   avkastningskrav: användaren fyller i dem.
+  Läs in från fil (Mina scenarion): Excel (.xlsx, uppackad i webbläsaren utan beroenden) eller CSV med kolumnerna
+  Fastighetsbeteckning + Kommun eller Adress + Kommun (mall att ladda ner) blir ett nytt scenario; filen laddas inte upp, raderna
+  matchas med `POST /api/matcha`. Kommunen krävs (samma beteckning finns i flera kommuner): kolumn, först i beteckningen
+  eller efter komma i adressen; alla 290 kommunnamn känns igen (`LAN_FOR_KOMMUN`), fastighetens kommun måste stämma.
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
 - Tester: `npm test` (node:test, `test/`).
