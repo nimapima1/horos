@@ -1,7 +1,7 @@
-# Överlämning 2026-10-12
+# Överlämning 2026-10-12 (kväll)
 
 Läs `CLAUDE.md` först (regler, teknik, server) och `PRIVAT.md` (inte i git: mejlkontakter, myndighetsärenden,
-kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 och 2026-10-11 och vad som ska göras härnäst.
+kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 till 2026-10-12 och vad som ska göras härnäst.
 Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNING-hyresgaster.md`.
 
 ## Läget
@@ -11,10 +11,10 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
 - **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt.
-  - Koden till och med PR #11 (ca9be9e, mergad 2026-10-12: decimalkomma, Street View på mobil, scenariovyn på
-    mobil), deployad 2026-10-12 08:45 och kontrollerad med curl (ny kod serveras, `vmin=1,5` ger 200). Ovanpå
-    PR #8 (scenarier och ny panel, 9551e02) och PR #2–#7 från 2026-10-11: alltid mörkt läge, mobilrättningar, Förorenade och Utsatta
-    områden, Google Maps och Street View.
+  - Koden till och med PR #17 (83ccb4c, mergad 2026-10-12 kväll: inläsning från Excel/CSV och omstruktureringen),
+    deployad och kontrollerad med curl (`/api/matcha` svarar, `kortlankar: true`). Däri PR #16 (scenarier som
+    räknas ihop, Med/Huvud, scenarier på kartan), PR #12–#15 (MFN-mottagaren, se nedan), PR #11 (decimalkomma,
+    Street View och scenariovyn på mobil), PR #8 (scenarier och ny panel) och PR #2–#7 från 2026-10-11.
   - Publik databas byggd 2026-10-11 17:52 (enligt `/api/status`) med `--alla-bolag`, publicerad med `--data`: 0 fastigheter,
     2,2 miljoner bolag (ägarkontrollen som ord: `stat`, `kommun`, `region` …), 120 177 adresser, inga
     arbetsställen (byggt utan `--scb-villkor`), 127 affärer ur pressmeddelanden (uppdateras av cron).
@@ -24,7 +24,7 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
     (Hetzner > Rescue); användaren har det. Drop-in `fastighetskarta.service.d/scenarion.conf` (cloud-init v6,
     `StateDirectory=horos-scenarion`) inlagd 2026-10-11: korta länkar till scenarier är på.
   - `secrets.env`: GEOTORGET_USER/PASS, GOOGLE_EMBED_KEY och MFN_SECRET (2026-10-12).
-- `npm test`: 44 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
+- `npm test`: 55 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
   av en annan session). Starta om servern efter import eller demo-data.
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
   terminal (lösenfras **direkt**, annars stänger servern anslutningen; det hände två gånger 2026-10-10). Första
@@ -32,6 +32,35 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   som väntar på lösenfrasen och som Claude inte får stänga om användaren skrivit i den. Deploy
   laddar upp arbetskatalogen som den är: kontrollera `git status` först så att ingen annan sessions ocommittade
   ändringar följer med.
+
+## Gjort 2026-10-12 (eftermiddag och kväll): lägga ihop scenarier och läsa in från fil (PR #16–#17)
+
+- **Scenarier som räknas** (tabellen överst i scenariovyn, `ihoplagda` i `scenario.js`): varje annat scenario i Mina
+  scenarion har kryssrutan **Med** (läggs ihop med det öppna) och radioknappen **Huvud**. Huvudscenariot bestämmer
+  startår och kalkylperiod och dess antaganden gäller först när en fastighet finns i flera; väljs ett annat öppnas det
+  och gruppen följer med dit (dess egna ihoplagda behålls, `gorHuvud`). Data: `delar` = kopior av andra scenarier
+  (fastigheter och antaganden, `nyckel` till Mina scenarion; uppdateras därifrån när scenariot öppnas, så en delad
+  länk har allt). `beraknaPortfolj` i `kalkyl.js` summerar, varje fastighet en gång. Tabellen visar fastigheter, yta,
+  taxeringsvärde och värde per scenario och summan; nyckeltal och kassaflöde gäller summan. På mobil som kort.
+  Vägen dit (för den som undrar varför): först Addera/Subtrahera-knappar, sedan +/− i Mina scenarion, sedan
+  Av/Lägg till/Dra ifrån; användaren tyckte att riktningen var otydlig och "Dra ifrån" överflödigt.
+- **Kartan**: det öppna scenariot och de ihoplagda i tabellens färger (`ritaScenarier`: gränser från zoom 14 via
+  lagret `scenario-line`, prickar under via `scenario-punkt`), vitt där en fastighet finns i flera; teckenförklaringen
+  listar dem. Inte blått (`--c1`), som kartans egna kluster har.
+- **Läs in från fil** (Scenarier > Läs in från fil, `public/inlasning.js`): Excel (.xlsx, zip uppackad med webbläsarens
+  `DecompressionStream`, XML med `DOMParser`, första bladet enligt arbetsboken) eller CSV blir ett nytt scenario med
+  filens namn. Filen laddas inte upp; raderna (beteckning, adress, kommun) matchas med `POST /api/matcha`
+  (`matchaRad` i `server.mjs`). **Kommunen krävs** (samma beteckning finns i flera kommuner, användarens beslut):
+  från kolumnen, först i beteckningen ("Stockholm Kungsbron 1") eller efter komma i adressen; `kommunAv`/`kommunForst`
+  i `lib/kommuner.mjs` känner igen alla 290 kommuner. Beteckningen prövas med och utan kommunnamn (Lantmäteriets
+  format okänt); annars adressen (exakt gata och nummer, alla träffar i adressökningen) och fastigheten där den ligger.
+  Rapporten överst: hittade, via adress, rader utan känd kommun (t.ex. postorten Bromma) och rader som inte hittades.
+  Mall att ladda ner.
+- **Omstrukturering** (thermo-nuclear-granskningen): `server.mjs` hölls under 1 000 rader genom att lagringen av korta
+  länkar flyttades till `lib/scenarier.mjs` och kommunnamnen till `lib/kommuner.mjs`.
+- **Granskningar**: ponytail-review på båda PR:erna (4 + 3 fynd, alla åtgärdade) och thermo-nuclear på #17 (3 fynd).
+- Provat i webbläsarpanelen med exempeldata (634 fastigheter) och en riktig .xlsx skapad med Python; inte med filer
+  från Numbers eller Google Sheets.
 
 ## Gjort 2026-10-12: mobilrättningar
 
@@ -157,8 +186,11 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
 
 ## Förslag till nästa session
 
-0. **Scenarier**: tryck en gång på "Spara och kopiera länk" på horos.se och öppna länken i ett privat fönster
-   (sparningen på servern är inte provad live, för att inte lämna ett testscenario kvar). Decimalkomma är rättat
+0. **Scenarier**: tryck en gång på "Spara och kopiera länk" **på https://horos.se** och öppna länken i ett privat
+   fönster (sparningen på servern är inte provad live). Länken ska vara kort (`#s=` + 10 tecken). Användaren provade
+   2026-10-12 i webbläsarpanelen på en lokal testserver som redan var stoppad och fick då den långa `#sd=`-länken
+   (reservvägen, som den ska); det säger inget om horos.se. Prova också att läsa in en Excelfil från Numbers eller
+   Google Sheets. Decimalkomma är rättat
    2026-10-12 men inte provat på riktig iPhone. När taxeringen kommer: ta ytor (LOA/BOA) och
    bostads-/lokalvärde därifrån i stället för uppskattningen och skatteschablonen. Möjliga nästa steg: öppna
    standardvärden (t.ex. SCB:s bostadshyror per kommun) och finansiering (lån, ränta, amortering).
@@ -195,14 +227,18 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
 
 ## Tips för arbetet
 
+- Lokala testservrar i webbläsarpanelen (`preview_start {name: "horos-3005"}`) får ny port när 3005 är upptagen, och en
+  flik kan ligga kvar mot en stoppad server: då misslyckas sparning och anrop (`#sd=`-länk i stället för `#s=`). Starta om
+  servern efter ändringar i `server.mjs` (en gammal server svarar 405 på nya POST-rutter).
+- `thermo-nuclear-code-quality-review` finns i `~/.claude/skills/` men laddades inte i sessionen 2026-10-12; läs
+  `SKILL.md` och följ den för hand om den inte syns i listan.
+
 - Python 3.13 finns men inte i PATH: `/c/Users/nimab/AppData/Local/Programs/Python/Python313/python.exe` (med
   `PYTHONIOENCODING=utf-8`), t.ex. för ui-ux-pro-max:s sökskript. Skript som ändrar filer skrivs ändå i Node. Långa
   `node - <<'EOF'`-heredocs med citattecken i texten kan få
   Bash-verktyget att vägra ("unexpected EOF"); skriv då skriptet till scratchpad med Write och kör filen.
 - Auto-läget stoppade `read_terminal` på deploy-fliken 2026-10-11 ("Production Deploy"): användaren läser av
   utskriften, Claude kontrollerar efteråt med `curl https://horos.se/api/status`.
-- `/thermo-nuclear-code-quality-review` finns inte här; granskning görs med `/ponytail:ponytail-review` eller
-  `/code-review`.
 - Skärmbilder i webbläsarpanelen är nedskalade: klicka hellre via `find`/`read_page`-referenser än koordinater.
 
 - I PowerShell blockeras `npm` (execution policy): kör `& "C:\Program Files\nodejs\node.exe" scripts/…` direkt.
@@ -230,6 +266,10 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
 - Scenarier: finns bara i webbläsaren där de skapades (flytta med länk eller fil); de korta länkarna ligger på
   servern utan säkerhetskopia och utan gallring. Vid sidladdning med ett öppet scenario hämtas dess underlag
   (upp till 1 000 fastigheter) en gång. Samma scenario öppet i två flikar: den som sparar sist vinner.
+  Ihoplagda scenarier: väljs ett annat huvudscenario flyttar gruppen dit (två olika grupper kräver två huvudscenarier);
+  färgerna på kartan följer ordningen i tabellen och kan byta när man bockar ur.
+- Inläsning från fil: bara första bladet; inte gamla .xls eller zip64; adresserna är OSM tills Lantmäteriets
+  belägenhetsadresser finns. Hur Lantmäteriets beteckningar ser ut (med eller utan kommunnamn) är okänt; båda prövas.
 
 - Pressmeddelandena tolkas med regler (regexar): fastigheter kan saknas eller bli fel, och priset är bolagets
   uppgift (ofta underliggande fastighetsvärde). Felaktiga kandidatbeteckningar syns aldrig, eftersom bara
