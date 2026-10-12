@@ -195,8 +195,9 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
 
 ## Tips för arbetet
 
-- Python finns inte på datorn: ui-ux-pro-max:s sökskript går inte att köra (använd riktlinjerna direkt), och
-  skript för att ändra filer skrivs i Node. Långa `node - <<'EOF'`-heredocs med citattecken i texten kan få
+- Python 3.13 finns men inte i PATH: `/c/Users/nimab/AppData/Local/Programs/Python/Python313/python.exe` (med
+  `PYTHONIOENCODING=utf-8`), t.ex. för ui-ux-pro-max:s sökskript. Skript som ändrar filer skrivs ändå i Node. Långa
+  `node - <<'EOF'`-heredocs med citattecken i texten kan få
   Bash-verktyget att vägra ("unexpected EOF"); skriv då skriptet till scratchpad med Write och kör filen.
 - Auto-läget stoppade `read_terminal` på deploy-fliken 2026-10-11 ("Production Deploy"): användaren läser av
   utskriften, Claude kontrollerar efteråt med `curl https://horos.se/api/status`.
