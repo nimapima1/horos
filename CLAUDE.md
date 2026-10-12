@@ -35,7 +35,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   länk `#s=<id>` ändras aldrig) i en egen databas: `SCENARIO_DB`, annars `$STATE_DIRECTORY` (systemd), lokalt
   `data/scenarion.sqlite`. Utan skrivbar plats blir länken `#sd=<scenariot komprimerat>`. Flera scenarier i
   `localStorage` (`horos.scenarion` med data, sparas vid varje ändring; `horos.aktivt` = det öppna); export som CSV och scenariofil (JSON).
-  Lägg ihop (tabellen under kassaflödet i scenariovyn): varje annat scenario Av / Lägg till / Dra ifrån (`delar` med
+  Lägg ihop (tabellen överst i scenariovyn): varje annat scenario Av / Lägg till / Dra ifrån (`delar` med
   `roll` med/minus, kopior med egna antaganden som uppdateras från Mina scenarion när scenariot öppnas;
   `beraknaPortfolj` i kalkyl.js summerar, varje fastighet en gång, minus räknas bort). Kartan visar det öppna och
   de ihoplagda i samma färger som tabellen, vitt där de överlappar. Horos har inga marknadshyror eller

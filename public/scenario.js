@@ -13,7 +13,7 @@ const lokalslag = (s) => ['Bostäder', ...s.lokaltyper];
 const ANTAGANDEN = [['hyra', 'Hyra, kr/m²', 't.ex. 2 000'], ['vakans', 'Vakans, %', '0'], ['drift', 'Drift, kr/m²', '0'], ['uh', 'Underhåll, kr/m²', '0']];
 const normBet = (b) => String(b).trim().replace(/\s+/g, ' ').toUpperCase();   // som normBeteckning på servern
 const objekt = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
-// Ett ihoplagt scenario (vald under kassaflödet): en kopia av ett annat scenarios fastigheter och antaganden
+// Ett ihoplagt scenario (valt i tabellen överst i scenariovyn): en kopia av ett annat scenarios fastigheter och antaganden
 // (nyckel: scenariot i Mina scenarion), med roll "med" (läggs till) eller "minus" (dras ifrån).
 const delAv = (x, nyckel) => ({ nyckel: nyckel ?? null, namn: String(x.namn ?? '').slice(0, 100), roll: x.roll === 'minus' ? 'minus' : 'med',
   bet: [...new Set(x.bet.filter((b) => typeof b === 'string').map(normBet))],
@@ -38,7 +38,7 @@ function sparaLokalt() {
   ritaScenarier();
 }
 
-// Kartan: det öppna scenariot och de scenarier som är ihoplagda med det (valda under kassaflödet), med var sin
+// Kartan: det öppna scenariot och de scenarier som är ihoplagda med det (valda i tabellen överst), med var sin
 // färg: det öppna först, sedan delarna i ordning, samma färger som i tabellen. Prickar under zoom 14, gränser
 // över; vitt där en fastighet finns i flera.
 const SC_FARGER = ['--c3', '--c4', '--c6', '--c5', '--c2'];   // inte --c1: kartans egna kluster är blå
@@ -241,7 +241,8 @@ function uppdateraResultat() {
   const d = scenario.data, k = beraknaPortfolj(d, scenario.underlag), t = nyckeltal(k), sista = d.ar;
   const rest = (i) => (i === sista ? ' rest' : '');
   const antal = k.delar.reduce((a, x) => a + x.antal, 0);
-  $('#sc-resultat').innerHTML = `${stats([
+  $('#sc-resultat').innerHTML = `${ihoplagda(k)}
+  ${stats([
     ['Värde', k.varde == null ? '–' : mkr(k.varde / 1000), k.varde == null ? 'Ange direktavkastningskrav' : `Kalkylränta ${andel(k.kalkylranta)}`],
     ['Värde per m²', k.varde == null || !k.yta ? '–' : kr(k.varde / k.yta)],
     ['Driftnetto år 1', mkr(k.total.dn[0] / 1000)],
@@ -257,8 +258,7 @@ function uppdateraResultat() {
   </table></div>
   <div class="meta small">* Året efter kalkylperioden. Restvärdet är dess driftnetto delat med direktavkastningskravet.
     Kalkylränta ${andel(k.kalkylranta)}${d.gemensamt.kalkylranta == null ? ' (direktavkastningskrav plus hyresutveckling)' : ''}.
-    Tåligheterna gäller år 1, utan lån.</div>
-  ${ihoplagda(k)}`;
+    Tåligheterna gäller år 1, utan lån.</div>`;
   const ihop = d.delar.length;
   $('#sc-omfattning').textContent = `${heltal(antal)} ${antal === 1 ? 'fastighet' : 'fastigheter'} · ${heltal(k.yta)} m²${ihop
     ? ` · ihoplagt med ${ihop} ${ihop === 1 ? 'scenario' : 'scenarier'}` : ''}`;
@@ -273,7 +273,7 @@ function uppdateraResultat() {
 }
 
 const IHOP_RUBRIKER = ['Fastigheter', 'Yta, m²', 'Taxeringsvärde', 'Värde'];   // också rubrikerna i korten på mobil
-// Under kassaflödet: det här scenariot och alla andra i Mina scenarion, med siffror för de som räknas och ett
+// Överst i scenariovyn: det här scenariot och alla andra i Mina scenarion, med siffror för de som räknas och ett
 // val per scenario (Av / Lägg till / Dra ifrån). Färgerna är desamma som på kartan. Summan gäller allt som räknas.
 function ihoplagda(k) {
   const d = scenario.data, mina = minaScenarion().filter((x) => x.nyckel !== scenario.nyckel);
@@ -298,7 +298,7 @@ function ihoplagda(k) {
   const summa = k.delar.reduce((a, x) => ({ antal: a.antal + x.antal, tax: a.tax + x.taxering_tkr }), { antal: 0, tax: 0 });
   return `<h3>Lägg ihop med andra scenarier</h3>
   <div class="meta small">Välj om dina andra scenarier ska räknas in i ${scenarioNamn()}. <strong>Lägg till</strong> räknar in deras
-    fastigheter med deras egna antaganden; <strong>Dra ifrån</strong> räknar bort dem. Nyckeltalen och kassaflödet ovan gäller
+    fastigheter med deras egna antaganden; <strong>Dra ifrån</strong> räknar bort dem. Nyckeltalen och kassaflödet nedan gäller
     summan. En fastighet räknas en gång, i första hand med det här scenariots antaganden.</div>
   ${mina.length || d.delar.length ? `<div class="sc-tabell"><table class="sc-ihop">
     <tr><th>Scenario</th><th>Räknas</th><th class="num">Fastigheter</th><th class="num">Yta, m²</th><th class="num">Taxeringsvärde</th><th class="num">Värde</th></tr>
@@ -308,7 +308,7 @@ function ihoplagda(k) {
   </table></div>` : '<p class="empty">Du har inga andra scenarier ännu. Skapa fler, t.ex. med + på en fastighet, så kan du lägga ihop dem här.</p>'}`;
 }
 
-// Valet under kassaflödet: data-i är ett scenario som redan är ihoplagt, data-nyckel ett ur Mina scenarion.
+// Valet i tabellen överst: data-i är ett scenario som redan är ihoplagt, data-nyckel ett ur Mina scenarion.
 async function sattDel(el) {
   const s = await statusP, d = scenario.data, roll = el.dataset.roll;
   const i = el.dataset.i != null ? Number(el.dataset.i) : d.delar.findIndex((y) => y.nyckel === el.dataset.nyckel);
@@ -445,7 +445,7 @@ async function openScenarier({ lista = false } = {}) {
         <div class="muted small">${Number(x.antal).toLocaleString('sv-SE')} fastigheter · ${x.lank ? 'delad länk' : 'inte delat'}</div></td>
         <td class="num">${esc(x.andrad ?? x.sparad ?? '')}</td><td class="num"><a data-sc="glom" data-nyckel="${esc(x.nyckel)}">Ta bort</a></td></tr>`),
       'Inga scenarier i den här webbläsaren ännu.')}
-    <div class="meta small">Öppna ett scenario för att lägga ihop det med andra (under kassaflödet).</div>
+    <div class="meta small">Öppna ett scenario för att lägga ihop det med andra (tabellen överst i scenariot).</div>
     <div class="meta small">Listan finns bara i den här webbläsaren. Att ta bort ett scenario här tar inte bort en delad länk.
       Ladda ner scenariofilen om du vill ha en egen kopia eller flytta scenariot till en annan dator.</div>
     <label class="copy">Öppna scenariofil<input type="file" accept=".json,application/json" data-sc-fil hidden></label>

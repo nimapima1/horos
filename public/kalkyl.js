@@ -58,7 +58,7 @@ function berakna(s, fastigheter) {
     varde: nuvarde(total.dn, n, r, da) };
 }
 
-// Scenariot ihoplagt med andra (s.delar, valda under kassaflödet): delar med roll "med" räknas med sina egna
+// Scenariot ihoplagt med andra (s.delar, valda i tabellen överst i scenariovyn): delar med roll "med" räknas med sina egna
 // antaganden men scenariots startår och kalkylperiod, så att åren går att summera; delar med roll "minus" dras
 // ifrån, dvs. deras fastigheter räknas inte alls. En fastighet räknas en gång: i scenariot självt, annars i den
 // första delen där den finns. Samma form som berakna (total, per, varde …) plus delar: [{namn, nyckel, antal, yta,
