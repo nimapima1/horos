@@ -136,6 +136,10 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
     (`ssh deploy@37.27.152.172 "sudo -n /usr/local/sbin/fastighetskarta-admin set-secret MFN_SECRET"`, värdet
     på en rad) och kontrollera att `https://horos.se/api/mfn?hub.challenge=x` svarar `x`. Hemligheten bestäms
     med MFN (de lägger upp prenumerationen, eller vi gör det via deras hub).
+  - **Ta bort ett felaktigt MFN-pressmeddelande** (fel fastighet, fel pris): lägg dess url i undantagsfilen, så
+    tas det bort vid nästa cron-körning och kommer inte tillbaka:
+    `ssh deploy@37.27.152.172 "echo 'https://mfn.se/...' >> /var/lib/fastighetskarta/mfn-undantag.txt"`.
+    `mfn.sqlite` ägs av appen och kan inte ändras av deploy.
   - Öppna frågor till MFN: hemligheten, vilka bolag (lista eller alla svenska), ir och pr, villkor, källangivelse
     (lägg då till "Källa: MFN" i listorna och på metodsidan).
   - Ja från en tidning: bara rubrik + länk + det vi själva läser ut; ingen artikeltext, inget bakom betalvägg.

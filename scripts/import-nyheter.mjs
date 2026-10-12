@@ -7,8 +7,9 @@
 //                                                     slutkod 3 = inget ändrades)
 //   node scripts/import-nyheter.mjs --publik <ny> --behall <gammal>   (deploy --data: pressmeddelanden som bara
 //                                                     finns i den gamla publika databasen följer med, ingen hämtning)
-//   node scripts/import-nyheter.mjs --publik <fil> --mfn <mfn.sqlite>   (servern: det som MFN skickat till
-//                                                     /api/mfn, ingen hämtning från Cision)
+//   node scripts/import-nyheter.mjs --publik <fil> --mfn <mfn.sqlite> [--undanta <fil>]   (servern: det som MFN
+//                                                     skickat till /api/mfn, utom url:er i --undanta; ingen hämtning)
+import { existsSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { NYHET_PLATS_UTANFOR, openDb, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
@@ -95,8 +96,13 @@ if (args.mfn) {
   const mdb = new DatabaseSync(String(args.mfn), { readOnly: true, timeout: 5000 });   // appen kan skriva just då
   const rader = mdb.prepare('SELECT * FROM mfn_nyhet').all();
   mdb.close();
+  // Ett felaktigt pressmeddelande tas bort genom att dess url läggs på en rad i --undanta-filen (deploy får
+  // skriva den; mfn.sqlite ägs av appen).
+  const undanta = new Set(args.undanta && existsSync(String(args.undanta))
+    ? readFileSync(String(args.undanta), 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : []);
   withTransaction(db, () => {
-    for (const r of rader) spara({ ...r, beteckningar: JSON.parse(r.beteckningar), adresser: JSON.parse(r.adresser) }, r.utgivare, 'mfn');
+    for (const url of undanta) if (!args.dry) { delNyhet.run(url); delPlats.run(url); }
+    for (const r of rader) if (!undanta.has(r.url)) spara({ ...r, beteckningar: JSON.parse(r.beteckningar), adresser: JSON.parse(r.adresser) }, r.utgivare, 'mfn');
   });
 } else for (const [namn, utgivare] of CISION) {
   const res = await fetch(`https://news.cision.com/se/${namn}/ListItems?format=rss&pageSize=100`, { headers: { 'user-agent': UA } });

@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { ROOT, openDb, rebuildRtree } from '../lib/db.mjs';
@@ -73,4 +73,12 @@ test('cron --mfn: det MFN skickat förs in med källan mfn, platser bara på fas
     { url: URL(4), kalla: 'mfn', utgivare: 'Alfa AB', pris_kr: 50000000 });
   assert.deepEqual(db.prepare('SELECT beteckning FROM nyhet_plats').all().map((x) => x.beteckning), ['T 1:1']);
   db.close();
+  // Ett felaktigt tas bort med undantagsfilen och kommer inte tillbaka.
+  const UNDANTA = join(DIR, 'nyheter-undantag.txt');
+  writeFileSync(UNDANTA, `${URL(4)}\r\n`);
+  for (const status of [0, 3]) assert.equal(node([join(ROOT, 'scripts', 'import-nyheter.mjs'), '--publik', NY, '--mfn', MFN, '--undanta', UNDANTA]).status, status);
+  const efter = openDb({ path: NY, readOnly: true });
+  assert.deepEqual([efter.prepare('SELECT count(*) AS n FROM nyhet').get().n, efter.prepare('SELECT count(*) AS n FROM nyhet_plats').get().n], [0, 0]);
+  efter.close();
+  rmSync(UNDANTA);
 });

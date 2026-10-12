@@ -110,7 +110,8 @@ const giltigtScenario = (s) => s?.v === 1 && Array.isArray(s.bet) && s.bet.lengt
 // Utan MFN_SECRET finns ingen mottagare.
 const MFN_DB = process.env.MFN_DB
   ?? (process.env.STATE_DIRECTORY ? join(process.env.STATE_DIRECTORY, 'mfn.sqlite') : PUBLIC_MODE ? null : join(ROOT, 'data', 'mfn.sqlite'));
-const MAX_MFN_BYTE = 2 * 1024 * 1024;   // hela pressmeddelandet med HTML
+// Hela pressmeddelandet med HTML; läses innan signaturen kan kontrolleras, så inte större än nödvändigt.
+const MAX_MFN_BYTE = 512 * 1024;
 let qm = null;
 try {
   if (process.env.MFN_SECRET && MFN_DB) {

@@ -24,7 +24,8 @@ kor() {
 kor                                    # Cision
 # Det som MFN skickat till /api/mfn (appen skriver i sin StateDirectory, samma som scenarierna).
 MFN=/var/lib/horos-scenarion/mfn.sqlite
-if [[ -f $MFN ]]; then kor --mfn $MFN; fi
+# Felaktiga tas bort med en url per rad i mfn-undantag.txt (se OVERLAMNING.md).
+if [[ -f $MFN ]]; then kor --mfn $MFN --undanta $D/mfn-undantag.txt; fi
 [[ $andrat == 1 ]] || exit 0           # inget ändrades: ingen omstart
 mv $D/nyheter-arbete.sqlite $D/public.sqlite
 sudo -n /usr/local/sbin/fastighetskarta-admin restart
