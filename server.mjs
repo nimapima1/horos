@@ -755,9 +755,13 @@ function matchaRad(r) {
     const f = [bet, `${kommun.toUpperCase()} ${bet}`].map((b) => q.fastighet.get(b)).find(iKommunen);
     if (f) return { beteckning: f.beteckning, via: 'beteckning' };
   }
-  if (adress) {
-    const a = sokAdress(adress).find((x) => x.beteckning && x.adress.toLowerCase() === adress.toLowerCase() && iKommunen(q.fastighet.get(x.beteckning)));
-    if (a) return { beteckning: a.beteckning, via: 'adress' };
+  if (adress && q.sokAdress && /\p{L}/u.test(adress)) {
+    // Alla träffar i adressökningen (sökrutan visar bara 6): samma gata finns i många orter.
+    for (const a of q.sokAdress.all(ftsQuery(adress))) {
+      if (`${a.gata} ${a.nummer}`.toLowerCase() !== adress.toLowerCase()) continue;
+      const b = fastighetVid(a.lon, a.lat);
+      if (b && iKommunen(q.fastighet.get(b))) return { beteckning: b, via: 'adress' };
+    }
   }
   return { beteckning: null, via: null, orsak: 'okand' };
 }

@@ -625,7 +625,7 @@ $('#panel').addEventListener('click', (e) => {
 $('#panel').addEventListener('change', (e) => {
   const form = e.target.closest('form[data-view]');
   if (form) VIEWS[`#${form.dataset.view}`](Object.fromEntries([...new FormData(form)].filter(([, v]) => v !== '')));
-  if (e.target.matches('[data-sc-fil]') && e.target.files[0]) lasScenarioFil(e.target.files[0]);
+  if (e.target.matches('[data-sc-fil]') && e.target.files[0]) { lasScenarioFil(e.target.files[0]); e.target.value = ''; }   // samma fil kan väljas igen
 });
 $('#panel').addEventListener('input', (e) => { if (e.target.dataset.k && scenario) scenarioInput(e.target); });
 for (const a of document.querySelectorAll('.topbar a[href^="#"]')) {

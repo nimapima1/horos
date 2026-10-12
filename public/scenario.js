@@ -251,11 +251,11 @@ function inlasningsruta(x) {
     + (rader.length > 20 ? '<br>…' : '');
   const antal = (n) => `${heltal(n)} ${n === 1 ? 'rad' : 'rader'}`;
   const utanKommun = x.ej.filter((r) => r.orsak === 'kommun'), ejHittade = x.ej.filter((r) => r.orsak !== 'kommun');
-  return `<div class="notice small sc-inlasning">Inläst från <strong>${esc(x.fil)}</strong>: ${heltal(x.hittade)} fastigheter
+  return `<div class="notice small sc-inlasning">Inläst från <strong>${esc(x.fil)}</strong>: ${heltal(x.hittade)} ${x.hittade === 1 ? 'fastighet' : 'fastigheter'}
     ur ${heltal(x.rader)} rader${x.viaAdress ? `, varav ${heltal(x.viaAdress)} via adressen` : ''}.${utanKommun.length ? `
-    <details><summary>${antal(utanKommun.length)} utan kommun</summary>${lista(utanKommun)}
+    <details><summary>${antal(utanKommun.length)} utan känd kommun</summary>${lista(utanKommun)}
     <div>Samma beteckning och adress finns i flera kommuner, så kommunen krävs: en kolumn Kommun, eller kommunen först i
-      beteckningen ("Stockholm Kungsbron 1").</div></details>` : ''}${ejHittade.length ? `
+      beteckningen ("Stockholm Kungsbron 1"). En postort som Bromma räcker inte; det ska vara kommunen (Stockholm).</div></details>` : ''}${ejHittade.length ? `
     <details><summary>${antal(ejHittade.length)} hittades inte</summary>${lista(ejHittade)}
     <div>Horos har bara fastigheter som ägs av bolag, föreningar och andra juridiska personer. Kontrollera stavningen och
       kommunen, eller ange beteckningen i stället för adressen.</div></details>` : ''}</div>`;
@@ -487,7 +487,7 @@ async function lasInFastigheter(fil) {
   const ej = rader.map((r, i) => ({ ...r, orsak: traffar[i].orsak })).filter((_, i) => !traffar[i].beteckning);
   if (!hittade.length) {
     return fel(ej.every((r) => r.orsak === 'kommun')
-      ? 'Ingen rad har en kommun. Lägg till en kolumn Kommun, eller skriv kommunen först i beteckningen ("Stockholm Kungsbron 1").'
+      ? 'Ingen rad har en kommun som Horos känner igen. Lägg till en kolumn Kommun (kommunen, inte postorten: Stockholm, inte Bromma), eller skriv kommunen först i beteckningen ("Stockholm Kungsbron 1").'
       : `Ingen av de ${rader.length.toLocaleString('sv-SE')} raderna matchade en fastighet i Horos.`);
   }
   await oppnaScenario(nyttScenario(fil.name.replace(/\.[^.]+$/, ''), hittade), { visa: false });
