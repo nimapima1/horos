@@ -1,6 +1,7 @@
-// Inläsning av fastigheter från en Excel- (.xlsx) eller CSV-fil till ett nytt scenario. Filen läses i webbläsaren och
-// skickas aldrig till servern; bara beteckningar, adresser och kommuner skickas för att hitta fastigheterna
-// (POST /api/matcha). Bara deklarationer; scenario.js använder dem och testerna i test/inlasning.test.mjs.
+// Inläsning av fastigheter från en Excel- (.xlsx) eller CSV-fil till ett nytt scenario, från filval till rapport. Filen
+// läses i webbläsaren och skickas aldrig till servern; bara beteckningar, adresser och kommuner skickas för att hitta
+// fastigheterna (POST /api/matcha). Bara deklarationer; scenario.js lämnar över filer som inte är scenariofiler
+// (lasScenarioFil), och testerna i test/inlasning.test.mjs läser tolkningen.
 
 // Rader (listor av text) ur en CSV: semikolon, tabb eller komma (det som finns flest av på första raden),
 // citattecken som Excel skriver dem.
@@ -100,3 +101,46 @@ async function lasInFil(fil) {
 
 // Mallen: rubrikerna Horos känner igen, ett exempel med beteckning och ett med adress, båda med kommun (krävs).
 const INLASNING_MALL = '﻿Fastighetsbeteckning;Adress;Kommun\r\nKUNGSBRON 1;;Stockholm\r\n;Drottninggatan 53;Stockholm\r\n';
+
+// Excel eller CSV: raderna matchas mot Horos fastigheter och de som hittas blir ett nytt scenario med
+// filens namn. Vad som hittades och inte visas överst i scenariot tills det ritas om (en engångsrapport).
+async function lasInFastigheter(fil) {
+  const s = await statusP;
+  const fel = (text) => showPanel(`<h2>${esc(fil.name)}</h2><p class="empty">${esc(text)}</p>
+    <button type="button" class="copy" data-sc="mall">Ladda ner mall (CSV)</button>`);
+  showPanel(`<h2>${esc(fil.name)}</h2><p class="empty">Läser in fastigheterna …</p>`);
+  let rader;
+  try { rader = await lasInFil(fil); } catch (e) { return fel(e.message); }
+  if (!rader.length) return fel('Filen har inga rader med fastighetsbeteckning eller adress.');
+  if (rader.length > s.maxScenario) return fel(`Filen har ${rader.length.toLocaleString('sv-SE')} rader; ett scenario kan ha högst ${s.maxScenario.toLocaleString('sv-SE')} fastigheter.`);
+  let traffar;
+  try { ({ traffar } = await api('/api/matcha', { rader: rader.map(({ bet, adress, kommun }) => ({ bet, adress, kommun })) })); }
+  catch (e) { return fel(e.message); }
+  const hittade = [...new Set(traffar.map((t) => t.beteckning).filter(Boolean))];
+  const ej = rader.map((r, i) => ({ ...r, orsak: traffar[i].orsak })).filter((_, i) => !traffar[i].beteckning);
+  if (!hittade.length) {
+    return fel(ej.every((r) => r.orsak === 'kommun')
+      ? 'Ingen rad har en kommun som Horos känner igen. Lägg till en kolumn Kommun (kommunen, inte postorten: Stockholm, inte Bromma), eller skriv kommunen först i beteckningen ("Stockholm Kungsbron 1").'
+      : `Ingen av de ${rader.length.toLocaleString('sv-SE')} raderna matchade en fastighet i Horos.`);
+  }
+  await oppnaScenario(nyttScenario(fil.name.replace(/\.[^.]+$/, ''), hittade), { visa: false });
+  await visaScenario();
+  $('#sc-resultat').insertAdjacentHTML('beforebegin', inlasningsruta({ fil: fil.name, rader: rader.length, hittade: hittade.length,
+    viaAdress: traffar.filter((t) => t.via === 'adress').length, ej }));
+}
+
+// Vad inläsningen från fil gav: antal hittade, hur många via adress, och raderna som inte hittades.
+function inlasningsruta(x) {
+  const lista = (rader) => rader.slice(0, 20).map((r) => `rad ${r.rad}: ${esc([r.bet, r.adress, r.kommun].filter(Boolean).join(', '))}`).join('<br>')
+    + (rader.length > 20 ? '<br>…' : '');
+  const antal = (n) => `${heltal(n)} ${n === 1 ? 'rad' : 'rader'}`;
+  const utanKommun = x.ej.filter((r) => r.orsak === 'kommun'), ejHittade = x.ej.filter((r) => r.orsak !== 'kommun');
+  return `<div class="notice small sc-inlasning">Inläst från <strong>${esc(x.fil)}</strong>: ${heltal(x.hittade)} ${x.hittade === 1 ? 'fastighet' : 'fastigheter'}
+    ur ${heltal(x.rader)} rader${x.viaAdress ? `, varav ${heltal(x.viaAdress)} via adressen` : ''}.${utanKommun.length ? `
+    <details><summary>${antal(utanKommun.length)} utan känd kommun</summary>${lista(utanKommun)}
+    <div>Samma beteckning och adress finns i flera kommuner, så kommunen krävs: en kolumn Kommun, eller kommunen först i
+      beteckningen ("Stockholm Kungsbron 1"). En postort som Bromma räcker inte; det ska vara kommunen (Stockholm).</div></details>` : ''}${ejHittade.length ? `
+    <details><summary>${antal(ejHittade.length)} hittades inte</summary>${lista(ejHittade)}
+    <div>Horos har bara fastigheter som ägs av bolag, föreningar och andra juridiska personer. Kontrollera stavningen och
+      kommunen, eller ange beteckningen i stället för adressen.</div></details>` : ''}</div>`;
+}

@@ -20,9 +20,11 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   `lib/lokaltyp.mjs` (arbetsställe → lokaltyp och uppskattad LOA; sparas i `arbetsstalle` vid importen).
   `lib/nyheter.mjs` (pressmeddelanden: RSS, utläsning av typ/pris/kommun/beteckning/adress, nyhetsrummen på Cision).
   `lib/scb.mjs` (SCB:s företagsregister: nyckeln, paus före varje anrop, sidhämtning; används av SCB-importerna).
+  `lib/scenarier.mjs` (lagringen av korta länkar: `oppnaScenarier`, `giltigtScenario`, `MAX_SCENARIO`),
+  `lib/kommuner.mjs` (län, kommuner, och `kommunAv`/`kommunForst` för kommunnamn i filer).
 - Kartfiltren: `FILTER` i `server.mjs`, `[parameter, omvandling, SQL-villkor]`; WHERE-delen byggs ur listan.
 - `public/`: `index.html` + `kalkyl.js` (kassaflödeskalkylen, utan DOM, testas i `test/kalkyl.test.mjs`) + `panel.js`
-  (panelvyerna, bara deklarationer) + `inlasning.js` (Excel/CSV -> rader, bara deklarationer, testas i
+  (panelvyerna, bara deklarationer) + `inlasning.js` (inläsning från Excel/CSV, från filval till rapport, bara deklarationer; tolkningen testas i
   `test/inlasning.test.mjs`) + `scenario.js` (scenarierna, bara deklarationer) + `app.js` (karta,
   filter, sök, status och all inkoppling), `metod.html`, `style.css`
   (ui-ux-pro-max: Swiss/minimalism + glas, Lexend/Source Sans 3, slate/#0369A1). CSP tillåter

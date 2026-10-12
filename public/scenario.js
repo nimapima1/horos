@@ -205,7 +205,6 @@ async function visaScenario() {
     <p id="sc-varning" class="notice small"${sparatLokalt ? ' hidden' : ''}>Scenariot kunde inte sparas i webbläsaren (lagringen är full eller
       avstängd). Ladda ner scenariofilen eller spara en länk, annars försvinner det när sidan laddas om.</p>
     <input id="sc-lank" class="sc-lank" readonly aria-label="Länk till scenariot" value="${esc(sc.lank ?? '')}"${sc.lank ? '' : ' hidden'}>
-    ${sc.inlasning ? inlasningsruta(sc.inlasning) : ''}
     <div id="sc-resultat"></div>
 
     <h3>Antaganden</h3>
@@ -243,22 +242,6 @@ async function visaScenario() {
       Mina scenarion finns bara i den här webbläsaren.</p>
   </div>`);
   uppdateraResultat();
-}
-
-// Vad inläsningen från fil gav: antal hittade, hur många via adress, och raderna som inte hittades.
-function inlasningsruta(x) {
-  const lista = (rader) => rader.slice(0, 20).map((r) => `rad ${r.rad}: ${esc([r.bet, r.adress, r.kommun].filter(Boolean).join(', '))}`).join('<br>')
-    + (rader.length > 20 ? '<br>…' : '');
-  const antal = (n) => `${heltal(n)} ${n === 1 ? 'rad' : 'rader'}`;
-  const utanKommun = x.ej.filter((r) => r.orsak === 'kommun'), ejHittade = x.ej.filter((r) => r.orsak !== 'kommun');
-  return `<div class="notice small sc-inlasning">Inläst från <strong>${esc(x.fil)}</strong>: ${heltal(x.hittade)} ${x.hittade === 1 ? 'fastighet' : 'fastigheter'}
-    ur ${heltal(x.rader)} rader${x.viaAdress ? `, varav ${heltal(x.viaAdress)} via adressen` : ''}.${utanKommun.length ? `
-    <details><summary>${antal(utanKommun.length)} utan känd kommun</summary>${lista(utanKommun)}
-    <div>Samma beteckning och adress finns i flera kommuner, så kommunen krävs: en kolumn Kommun, eller kommunen först i
-      beteckningen ("Stockholm Kungsbron 1"). En postort som Bromma räcker inte; det ska vara kommunen (Stockholm).</div></details>` : ''}${ejHittade.length ? `
-    <details><summary>${antal(ejHittade.length)} hittades inte</summary>${lista(ejHittade)}
-    <div>Horos har bara fastigheter som ägs av bolag, föreningar och andra juridiska personer. Kontrollera stavningen och
-      kommunen, eller ange beteckningen i stället för adressen.</div></details>` : ''}</div>`;
 }
 
 // Räknar om och visar nyckeltal, kassaflöde och värdet per fastighet (formuläret ritas inte om, så fokus stannar).
@@ -463,36 +446,11 @@ function laddaNer(filnamn, text, typ) {
 }
 const filnamn = () => `horos-scenario-${(scenario.data.namn || 'namnlost').toLowerCase().replace(/[^a-z0-9åäö]+/g, '-').replace(/^-|-$/g, '')}`;
 
+// En scenariofil (.json) öppnas; Excel och CSV läses in som ett nytt scenario (inlasning.js).
 async function lasScenarioFil(fil) {
   if (!/\.json$/i.test(fil.name)) return lasInFastigheter(fil);
   try { await oppnaScenario(JSON.parse(await fil.text())); }
   catch { showPanel('<p class="empty">Filen kunde inte läsas som ett scenario från Horos.</p>'); }
-}
-
-// Excel eller CSV (inlasning.js): raderna matchas mot Horos fastigheter och de som hittas blir ett nytt scenario med
-// filens namn. Vad som inte hittades visas överst i scenariot (scenario.inlasning).
-async function lasInFastigheter(fil) {
-  const s = await statusP;
-  const fel = (text) => showPanel(`<h2>${esc(fil.name)}</h2><p class="empty">${esc(text)}</p>
-    <button type="button" class="copy" data-sc="mall">Ladda ner mall (CSV)</button>`);
-  showPanel(`<h2>${esc(fil.name)}</h2><p class="empty">Läser in fastigheterna …</p>`);
-  let rader;
-  try { rader = await lasInFil(fil); } catch (e) { return fel(e.message); }
-  if (!rader.length) return fel('Filen har inga rader med fastighetsbeteckning eller adress.');
-  if (rader.length > s.maxScenario) return fel(`Filen har ${rader.length.toLocaleString('sv-SE')} rader; ett scenario kan ha högst ${s.maxScenario.toLocaleString('sv-SE')} fastigheter.`);
-  let traffar;
-  try { ({ traffar } = await api('/api/matcha', { rader: rader.map(({ bet, adress, kommun }) => ({ bet, adress, kommun })) })); }
-  catch (e) { return fel(e.message); }
-  const hittade = [...new Set(traffar.map((t) => t.beteckning).filter(Boolean))];
-  const ej = rader.map((r, i) => ({ ...r, orsak: traffar[i].orsak })).filter((_, i) => !traffar[i].beteckning);
-  if (!hittade.length) {
-    return fel(ej.every((r) => r.orsak === 'kommun')
-      ? 'Ingen rad har en kommun som Horos känner igen. Lägg till en kolumn Kommun (kommunen, inte postorten: Stockholm, inte Bromma), eller skriv kommunen först i beteckningen ("Stockholm Kungsbron 1").'
-      : `Ingen av de ${rader.length.toLocaleString('sv-SE')} raderna matchade en fastighet i Horos.`);
-  }
-  await oppnaScenario(nyttScenario(fil.name.replace(/\.[^.]+$/, ''), hittade), { visa: false });
-  scenario.inlasning = { fil: fil.name, rader: rader.length, hittade: hittade.length, viaAdress: traffar.filter((t) => t.via === 'adress').length, ej };
-  visaScenario();
 }
 
 // Mina scenarion, eller det öppna scenariot (också efter en omladdning).
