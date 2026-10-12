@@ -58,6 +58,25 @@ function berakna(s, fastigheter) {
     varde: nuvarde(total.dn, n, r, da) };
 }
 
+// Portföljen: scenariots egna fastigheter plus delscenarierna (s.delar, tillagda med Addera), var och en med sina
+// egna antaganden men huvudscenariots startår och kalkylperiod, så att åren går att summera. En fastighet räknas
+// en gång: i huvudscenariot, annars i den första del där den finns. Samma form som berakna (total, per, varde …)
+// plus delar: [{namn, antal, yta, taxering_tkr, k}]. Värdet är null om någon del saknar direktavkastningskrav.
+function beraknaPortfolj(s, fastigheter) {
+  const perBet = new Map(fastigheter.map((f) => [f.beteckning, f]));
+  const raknade = new Set();
+  const delar = [{ namn: s.namn, data: s }, ...(s.delar ?? []).map((d) => ({ namn: d.namn, data: { ...d, start: s.start, ar: s.ar } }))]
+    .map(({ namn, data }) => {
+      const egna = data.bet.filter((b) => perBet.has(b) && !raknade.has(b) && raknade.add(b)).map((b) => perBet.get(b));
+      const k = berakna({ gemensamt: {}, antaganden: {}, egna: {}, ...data }, egna);
+      return { namn, antal: egna.length, yta: k.yta, taxering_tkr: egna.reduce((a, f) => a + (f.varde_tkr ?? 0), 0), k };
+    });
+  const [huvud] = delar;
+  const total = Object.fromEntries(KALKYL_RADER.map(([r]) => [r, huvud.k.total[r].map((_, i) => delar.reduce((a, d) => a + d.k.total[r][i], 0))]));
+  return { ...huvud.k, total, delar, per: delar.flatMap((d) => d.k.per), yta: delar.reduce((a, d) => a + d.yta, 0),
+    varde: delar.some((d) => d.antal && d.k.varde == null) ? null : delar.reduce((a, d) => a + (d.k.varde ?? 0), 0) };
+}
+
 // Driftnettona år 1..n diskonterade med r, plus restvärdet (driftnettot år n + 1 / da) diskonterat n år.
 function nuvarde(dn, n, r, da) {
   if (!(da > 0) || r <= -1) return null;

@@ -294,6 +294,17 @@ label.copy { display: inline-flex; align-items: center; }
 .sc-fastighet[open] { padding-bottom: 12px; }
 .sc-fastighet .copy { margin-top: 0; }
 .sc-lank { margin-top: 10px; }
+.scenario .meta .sc-farg { margin-right: 6px; vertical-align: -1px; }
+.sc-karta label { display: inline-flex; align-items: center; gap: 6px; }
+.sc-karta input { width: 18px; height: 18px; accent-color: var(--accent); }
+.sc-kombinera { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.sc-kombinera select { flex: 1 1 200px; min-width: 0; height: 40px; padding: 0 8px; font: inherit; font-size: 14px; color: var(--text);
+  background: var(--surface-sunken); border: 1px solid transparent; border-radius: var(--radius-sm); }
+.sc-kombinera .copy { margin-top: 0; }
+.panel .sc-portfolj th[scope="row"] a { margin-left: 6px; font-weight: 400; }
+.panel .sc-portfolj { min-width: 520px; }   /* rullar i sidled på mobil i stället för att trycka ihop siffrorna */
+.panel .sc-portfolj td.num, .panel .sc-portfolj th.num { padding-left: 12px; }
+.panel .sc-portfolj .summa th, .panel .sc-portfolj .summa td { font-weight: 700; border-top: 1px solid var(--muted); }
 .panel .notice { border-radius: var(--radius-sm); }
 @media (max-width: 640px) {
   .scenario .stats, .sc-grid { grid-template-columns: repeat(2, 1fr); }
@@ -380,6 +391,12 @@ label.copy { display: inline-flex; align-items: center; }
 .legend-scale { display: grid; grid-template-columns: repeat(2, auto); gap: 5px 14px; }
 .legend-scale span { display: flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--muted); }
 .legend i { width: 14px; height: 14px; border-radius: 4px; flex: none; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08); }
+/* Scenarierna på kartan: en rund prick per scenario, vit ring för fastigheter i flera. */
+.legend-scenarier { grid-template-columns: 1fr; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.legend-scenarier[hidden] { display: none; }
+.legend-scenarier span { overflow: hidden; text-overflow: ellipsis; }
+.legend-scenarier i, .sc-farg { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.legend-scenarier i.flera { background: none; box-shadow: inset 0 0 0 2.5px #FFFFFF; }
 .hint { margin-top: 8px; font-weight: 600; color: var(--accent-strong); }
 .counts { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12px; color: var(--subtle); }
 .counts:empty { display: none; }

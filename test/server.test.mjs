@@ -263,7 +263,9 @@ test('scenarier: korta länkar', async () => {
   assert.equal((await post('/api/scenario', '{inte json')).status, 400);
   assert.equal((await post('/api/scenario', { ...sc, v: 2 })).status, 400);
   assert.equal((await post('/api/scenario', { ...sc, namn: 'x'.repeat(101) })).status, 400);
-  assert.equal((await post('/api/scenario', { ...sc, egna: { a: { b: { c: { d: { e: 1 } } } } } })).status, 400);   // för djupt
+  assert.equal((await post('/api/scenario', { ...sc, egna: { a: { b: { c: { d: { e: { f: 1 } } } } } } })).status, 400);   // för djupt
+  // Delscenarier (Addera): delar[i].egna[bet].yta[slag] är det djupaste som ska gå igenom.
+  assert.equal((await post('/api/scenario', { ...sc, delar: [{ namn: 'B', bet: ['T 1:2'], egna: { 'T 1:2': { yta: { Kontor: 100 } } } }] })).status, 200);
   assert.equal((await post('/api/scenario', { ...sc, bet: Array(1001).fill('T 1:1') })).status, 400);
   assert.equal((await post('/api/scenario', { ...sc, namn: 'x'.repeat(300_000) })).status, 413);
   assert.equal((await json('/api/status')).kortlankar, true);
