@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lasRss, tolka } from '../lib/nyheter.mjs';
+import { lasRss, tolka, tolkaMfn } from '../lib/nyheter.mjs';
 
 const t = (rubrik, text = '') => tolka({ rubrik, text });
 
@@ -58,4 +58,16 @@ test('priset är köpeskillingen, inte hyran', () => {
 
 test('ett efternamn som också är en kommun räknas inte som kommun', () => {
   assert.equal(t('Klövern förvärvar fastighet', 'Fastigheten Pilen 1 köps, säger Anna Berg. Den ligger i Uppsala.').kommun, 'Uppsala');
+});
+
+test('MFN: svenskt pressmeddelande om köp tolkas, engelska och andra hoppas över', () => {
+  const item = (lang, title, text = '') => ({ url: 'https://mfn.se/a/alfa/alfa-koper', author: { name: 'Alfa AB' },
+    properties: { lang, type: 'ir' }, content: { title, text, publish_date: '2026-10-12T08:00:00+02:00' } });
+  assert.deepEqual(tolkaMfn(item('sv', 'Alfa förvärvar fastighet i Linköping för 160 mkr', 'Avtal om fastigheten Brevduvan 21.')), {
+    url: 'https://mfn.se/a/alfa/alfa-koper', utgivare: 'Alfa AB', rubrik: 'Alfa förvärvar fastighet i Linköping för 160 mkr',
+    datum: '2026-10-12T06:00:00.000Z', typ: 'kop', pris_kr: 160e6, kommun: 'Linköping', beteckningar: ['LINKÖPING BREVDUVAN 21'], adresser: [] });
+  assert.equal(tolkaMfn(item('en', 'Alfa acquires property in Linköping')), null);
+  assert.equal(tolkaMfn(item('sv', 'Alfa publicerar delårsrapport')), null);
+  assert.equal(tolkaMfn({ ...item('sv', 'Alfa förvärvar fastighet'), url: 'javascript:alert(1)' }), null);
+  assert.equal(tolkaMfn(null), null);
 });

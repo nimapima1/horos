@@ -164,5 +164,5 @@ ssh deploy@<IP> 'ln -sfn /opt/fastighetskarta/releases/<äldre> /opt/fastighetsk
 | Webbserver | Caddy: HTTPS, komprimering, säkerhetshuvuden (CSP m.m.), ingen åtkomstlogg |
 | Data | `/var/lib/fastighetskarta/public.sqlite`, öppnas skrivskyddat |
 | Scenarier | `/var/lib/horos-scenarion/scenarion.sqlite`, det enda appen skriver utöver kartcachen |
-| Cron (deploy) | `deploy/nyheter.sh` 05:15 och 15:15 UTC: nya pressmeddelanden, byter databasen och startar om om något ändrats; logg i `/var/lib/fastighetskarta/nyheter.log` (läggs in av `deploy.sh`) |
+| Cron (deploy) | `deploy/nyheter.sh` 05:15 och 15:15 UTC: nya pressmeddelanden från Cision och det MFN skickat till `/api/mfn` (`/var/lib/horos-scenarion/mfn.sqlite`), byter databasen och startar om om något ändrats; logg i `/var/lib/fastighetskarta/nyheter.log` (läggs in av `deploy.sh`) |
 | Integritet | Inga besökar-IP:n loggas; MapLibre serveras från egen server. Bakgrundskartan hämtas från OpenFreeMap (tredje part: besökarens webbläsare kontaktar deras servrar) |

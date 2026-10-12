@@ -15,7 +15,7 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
     mobil), deployad 2026-10-12 08:45 och kontrollerad med curl (ny kod serveras, `vmin=1,5` ger 200). Ovanpå
     PR #8 (scenarier och ny panel, 9551e02) och PR #2–#7 från 2026-10-11: alltid mörkt läge, mobilrättningar, Förorenade och Utsatta
     områden, Google Maps och Street View.
-  - Publik databas byggd 2026-10-10 14:25 med `--alla-bolag`, publicerad med `--data`: 0 fastigheter,
+  - Publik databas byggd 2026-10-11 17:52 (enligt `/api/status`) med `--alla-bolag`, publicerad med `--data`: 0 fastigheter,
     2,2 miljoner bolag (ägarkontrollen som ord: `stat`, `kommun`, `region` …), 120 177 adresser, inga
     arbetsställen (byggt utan `--scb-villkor`), 127 affärer ur pressmeddelanden (uppdateras av cron).
   - Servern: cloud-init v3 + ändringarna i v4–v5 inlagda för hand (www-blocket, inget `Via`-huvud,
@@ -123,9 +123,25 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
 - **Mejlen om tillstånd är skickade 2026-10-10** från `kontakt@horos.se` (Fastighetsvärlden, Fastighetsnytt,
   Modular Finance/MFN; mottagare i `PRIVAT.md`). Svaren kommer till Gmail via `kontakt@horos.se`
   (sök t.ex. `to:kontakt@horos.se -from:me`).
-  - Ja från MFN: lägg till MFN-flöden (`mfn.se/all/a/<bolag>.rss`) som källa i `lib/nyheter.mjs`; de flesta
-    noterade fastighetsbolagen finns där. Följ deras villkor (källa, hämtfrekvens). Cron-jobbet tar med dem
-    automatiskt när koden är deployad.
+  - **MFN svarade 2026-10-12**: de kan erbjuda pressmeddelanden för bolag som använder MFN som
+    distributionstjänst (inte alla bolag på mfn.se). Användaren svarade ja samma dag och frågade om leveranssätt
+    och hämtfrekvens, villkor/kostnad och källangivelse. MFN svarade direkt: de **skickar** (push) och vill veta
+    leveranssätt (HTTP(S)/SFTP), format (JSON/XML) och URL. Dokumentation: https://modfin.gitbook.io/mfn
+    (WebSub, News Item). Beslut: bygga mottagaren först, sedan svara HTTPS, JSON och `https://horos.se/api/mfn`.
+  - **Mottagaren** (gren `mfn-svar`): `POST /api/mfn` kontrollerar `X-Hub-Signature` (HMAC-SHA256, `MFN_SECRET`),
+    `tolkaMfn` behåller bara svenska köp/försäljningar, och de sparas utan text i `mfn.sqlite` i appens
+    StateDirectory. Cron (`deploy/nyheter.sh`) kör `import-nyheter --mfn` efter Cision och startar om om något
+    ändrats; MFN-pressmeddelanden syns alltså inom ett halvt dygn. Ingen root-ändring behövs.
+  - Kvar innan URL:en lämnas: merga, deploya, sätt `MFN_SECRET`
+    (`ssh deploy@37.27.152.172 "sudo -n /usr/local/sbin/fastighetskarta-admin set-secret MFN_SECRET"`, värdet
+    på en rad) och kontrollera att `https://horos.se/api/mfn?hub.challenge=x` svarar `x`. Hemligheten bestäms
+    med MFN (de lägger upp prenumerationen, eller vi gör det via deras hub).
+  - **Ta bort ett felaktigt MFN-pressmeddelande** (fel fastighet, fel pris): lägg dess url i undantagsfilen, så
+    tas det bort vid nästa cron-körning och kommer inte tillbaka:
+    `ssh deploy@37.27.152.172 "echo 'https://mfn.se/...' >> /var/lib/fastighetskarta/mfn-undantag.txt"`.
+    `mfn.sqlite` ägs av appen och kan inte ändras av deploy.
+  - Öppna frågor till MFN: hemligheten, vilka bolag (lista eller alla svenska), ir och pr, villkor, källangivelse
+    (lägg då till "Källa: MFN" i listorna och på metodsidan).
   - Ja från en tidning: bara rubrik + länk + det vi själva läser ut; ingen artikeltext, inget bakom betalvägg.
   - Fastighetsnytt fick också frågan om vem som svarar för DI (samma koncern, Bonnier News).
 - Skatteverket, Lantmäteriet (lagfarter, geodatasupport) och Geotorget-ärendena: se `CLAUDE.md` och `PRIVAT.md`.
@@ -138,7 +154,8 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
    2026-10-12 men inte provat på riktig iPhone. När taxeringen kommer: ta ytor (LOA/BOA) och
    bostads-/lokalvärde därifrån i stället för uppskattningen och skatteschablonen. Möjliga nästa steg: öppna
    standardvärden (t.ex. SCB:s bostadshyror per kommun) och finansiering (lån, ränta, amortering).
-1. Kolla Gmail efter svar på tillståndsmejlen.
+1. Kolla Gmail efter svar på tillståndsmejlen (MFN: svar på följdfrågorna; Fastighetsvärlden och Fastighetsnytt
+   har inte svarat, kollat 2026-10-12).
 2. Läs `nyheter.log` på servern: `ssh deploy@37.27.152.172 tail /var/lib/fastighetskarta/nyheter.log`. Första
    gången ett nytt pressmeddelande kommer ska raden sakna `(inget ändrades)`; då har bytet och omstarten med
    kontroll körts på riktigt för första gången. Står det `Appen svarar inte efter omstarten`: se
