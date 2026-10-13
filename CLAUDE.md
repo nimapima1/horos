@@ -64,7 +64,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 ## Server
 
 - Hetzner CX23 `horos-3`, Helsingfors, **37.27.152.172**, Ubuntu 24.04, `deploy/cloud-init.yaml` v3 plus ändringarna i v4–v5 (www-blocket, inget `Via`, `set-secret` utan längd), inlagda för hand som root 2026-10-10, och v6 (`deploy/scenarion.conf` som drop-in, `StateDirectory=horos-scenarion`) inlagd 2026-10-11. Root-lösenordet återställdes 2026-10-10 (Hetzner > Rescue).
-  Trafiktak (inte installerat än): `deploy/trafiktak.sh` begränsar utgående trafik till 50 Mbit/s med `tc` (högst 16,7 TB/månad, 20 TB ingår, ~1 €/TB över), så massnedladdning kan inte ge en räkning. Installeras en gång som root: `bash /opt/fastighetskarta/current/deploy/trafiktak.sh installera` (systemd-tjänsten `horos-trafiktak`).
+  Trafiktak (installerat 2026-10-13): `deploy/trafiktak.sh` begränsar utgående trafik till 50 Mbit/s med `tc` (högst 16,7 TB/månad, 20 TB ingår, ~1 €/TB över), så massnedladdning kan inte ge en räkning. Installeras en gång som root: `bash /opt/fastighetskarta/current/deploy/trafiktak.sh installera` (systemd-tjänsten `horos-trafiktak`).
   Hetzners webbkonsol tappar Skift vid inklistring (`_ { } : &` blir `- [ ] ; 7`): skriv dem som
   `\x5f \x7b \x7d \x3a` i sed och kör kommandon var för sig i stället för med `&&`.
   Domän horos.se (Loopia, LoopiaDNS, köpt 2026-10-10; A-post @ och www -> servern; www skickas vidare till horos.se).
