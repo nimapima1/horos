@@ -92,3 +92,51 @@ test('gemensam tolkning avkodar MFN:s HTML före kontrollen av privata köpare',
   const n = tolkaMfn({ ...item, content: { title: '<b>Alfa köper</b> i Uppsala för 10&nbsp;mkr', text: 'Säljaren är en <strong>privatperson</strong>.' } });
   assert.equal(n.typ, 'kop'); assert.equal(n.pris_kr, 10000000); assert.equal(n.kommun, 'Uppsala');
 });
+
+test('Halmstad 2026-09-02: bolagets samlade fastighetsvärde är inte affärspriset', () => {
+  // https://news.cision.com/se/svenska-handelsfastigheter/r/svenska-handelsfastigheter-forvarvar-i-halmstad,c4390615
+  const rubrik = 'SVENSKA HANDELSFASTIGHETER FÖRVÄRVAR I HALMSTAD';
+  const text = 'Därmed spränger bolaget gränsen till ett samlat fastighetsvärde om 25 miljarder kronor.';
+  assert.equal(t(rubrik, text).pris_kr, null);
+  assert.equal(tolkaMfn({ url: 'https://mfn.se/a/shf/halmstad', properties: { lang: 'sv' },
+    content: { title: rubrik, text } }).pris_kr, null);
+});
+
+test('prisregression: rubrikens pris och första tillåtna belopp behålls', () => {
+  for (const [rubrik, text, pris] of [
+    ['Skanska avyttrar byggrätter i Skarplöt, Västerhaninge, för 290 miljoner kronor', '', 290e6],
+    ['Corem säljer 14 fastigheter för cirka 1 200 mkr', '', 1200e6],
+    ['Alfa förvärvar fastighet', 'Köpeskillingen uppgår till cirka 300 MSEK.', 300e6],
+    ['Alfa förvärvar fastighet', 'Köpeskillingen är 300 mnkr.', 300e6],
+    ['Alfa förvärvar fastighet', 'Köpeskillingen är 2,5 miljarder kronor.', 2.5e9],
+    ['Alfa förvärvar fastighet', 'Fastigheten omfattar ca 25 000 kvm. Tillträde sker 2026. Köpeskillingen är 300 mkr.', 300e6],
+    ['Alfa förvärvar fastighet', 'Ett överenskommet fastighetsvärde om 1 062 mkr. Köpeskillingen för aktierna är 70 mkr.', 1062e6],
+    ['Trianon avyttrar fastigheter med ett fastighetsvärde om 1 062 Mkr', 'En preliminär kontant köpeskilling om cirka 70 Mkr.', 1062e6],
+    ['Alfa köper en portfölj för 300 mkr', '', 300e6],
+    ['Alfa köper fastigheter', 'En portfölj förvärvas till ett fastighetsvärde om 300 mkr.', 300e6],
+    ['Alfa förvärvar fastighet för 300 mkr', 'Bolagets samlade fastighetsvärde uppgår till 25 miljarder kronor.', 300e6],
+    ['Alfa förvärvar fastighet', 'Köpeskillingen är 100 mkr. Köpeskillingen för aktierna är 70 mkr.', 100e6],
+  ]) {
+    assert.equal(t(rubrik, text).pris_kr, pris, rubrik);
+    assert.equal(tolkaMfn({ url: 'https://mfn.se/a/alfa/kop', properties: { lang: 'sv' },
+      content: { title: rubrik, text } }).pris_kr, pris, rubrik);
+  }
+});
+
+test('bolagets samlade värden är inte affärspriser; ett senare pris får fortfarande läsas', () => {
+  for (const text of [
+    'Bolagets samlade fastighetsvärde är 25 miljarder kronor.',
+    'Bolagets totala fastighetsvärde uppgår till cirka 2,5 miljarder kronor.',
+    'Ett förvaltat fastighetsvärde om 25 miljarder kronor.',
+    'Bolaget förvaltar en portfölj om 25 000 MSEK.',
+    'Bolagets totala fastighetsportfölj är värd 25 miljarder kronor.',
+    'Koncernens fastighetsbestånd är värt 25 miljarder kronor.',
+    'Vårt fastighetsbestånd värderas till 25 miljarder kronor.',
+    'Bolagets portföljvärde uppgår till 25 miljarder kronor.',
+  ]) {
+    assert.equal(t('Alfa köper fastighet', text).pris_kr, null, text);
+    assert.equal(t('Alfa köper fastighet', text + ' Köpeskillingen är 300 mkr.').pris_kr, 300e6, text);
+    assert.equal(tolkaMfn({ url: 'https://mfn.se/a/alfa/kop', properties: { lang: 'sv' },
+      content: { title: 'Alfa köper fastighet', text } }).pris_kr, null, text);
+  }
+});
