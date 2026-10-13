@@ -5,7 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import { csvCell } from './lib/csv.mjs';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, statfs } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree, rebuildFastighetFts, fastighetsBet } from './lib/db.mjs';
@@ -139,8 +139,10 @@ async function lasJson(req, max) {
 }
 
 // Enkel hastighetsbegränsning per IP (skyddar en liten server mot massnedladdning).
-// Kartrutor har en egen, högre gräns eftersom en kartvy hämtar många på en gång.
+// Kartrutor har en egen, högre gräns eftersom en kartvy hämtar många på en gång. Historiska rutor och
+// hela databasen som fil har lägre gränser: de hämtas från Lantmäteriet respektive är de största svaren.
 const RATE = { windowMs: 10_000, api: Number(process.env.RATE_MAX ?? 200), tiles: Number(process.env.RATE_TILES ?? 800),
+  historisk: Number(process.env.RATE_HISTORISK ?? 300), export: Number(process.env.RATE_EXPORT ?? 2),
   spara: Number(process.env.RATE_SPARA ?? 5) };
 const hits = new Map();
 function rateLimited(req, bucket) {
@@ -199,6 +201,16 @@ const HIST_ZOOM = [10, 18];
 const STOCKHOLM = { minLon: 17.5, maxLon: 18.75, minLat: 59.05, maxLat: 59.6 };
 const CACHE_DIR = process.env.CACHE_DIR ?? join(ROOT, 'data', '_cache');
 const WORLD = 20037508.342789244;   // halva jordomkretsen i EPSG:3857
+// Diskcachen växer inte när det lediga utrymmet understiger gränsen: en full disk stoppar servern.
+const CACHE_MIN_LEDIGT = Number(process.env.CACHE_MIN_LEDIGT_GB ?? 10) * 1e9;
+let ledigt = { tid: 0, ok: false };
+async function diskRymmer() {
+  if (Date.now() - ledigt.tid > 60_000) {
+    const s = await statfs(CACHE_DIR).catch(() => null);
+    ledigt = { tid: Date.now(), ok: !!s && s.bavail * s.bsize > CACHE_MIN_LEDIGT };
+  }
+  return ledigt.ok;
+}
 
 const tileLonLat = (z, x, y) => {
   const n = 2 ** z;
@@ -227,7 +239,8 @@ async function historiskTile(res, ar, z, x, y) {
       return [502, { error: `flygfotot är inte tillgängligt just nu (${up.status})` }];
     }
     buf = Buffer.from(await up.arrayBuffer());
-    mkdir(dirname(file), { recursive: true }).then(() => writeFile(file, buf)).catch((err) => console.error('cache:', err.message));
+    mkdir(dirname(file), { recursive: true }).then(diskRymmer).then((ok) => ok && writeFile(file, buf))
+      .catch((err) => console.error('cache:', err.message));
   }
   res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=2592000' });
   res.end(buf);
@@ -947,7 +960,7 @@ const routes = [
   [/^\/tiles\/satellit\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'tiles',
     (m, _url, res) => satellitTile(res, ...m.slice(1).map(Number))],
 
-  [/^\/tiles\/historisk\/(\d{4})\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'tiles',
+  [/^\/tiles\/historisk\/(\d{4})\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'historisk',
     (m, _url, res) => historiskTile(res, ...m.slice(1).map(Number))],
 
   [/^\/data\/horos-traffar\.csv$/, 'api', (_m, url, res) => {
@@ -962,7 +975,7 @@ const routes = [
   }],
 
   // Det gamla filnamnet (-stockholm) fungerar fortfarande för befintliga länkar.
-  [/^\/data\/horos-fastigheter(?:-stockholm)?\.(csv|geojson)$/, 'api', async (m, _url, res) => {
+  [/^\/data\/horos-fastigheter(?:-stockholm)?\.(csv|geojson)$/, 'export', async (m, _url, res) => {
     const kind = m[1];
     if (kind === 'geojson' && !EXPORT_GEOMETRI) {
       return [403, { error: 'Fastighetsgränserna får inte laddas ner som fil ännu (väntar på Lantmäteriets villkor).' }];
