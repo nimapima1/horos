@@ -2,12 +2,12 @@
 //
 //   node scripts/import-lagfarter.mjs <fil.csv> --som transaktioner   överlåtelser med köpeskilling
 //   node scripts/import-lagfarter.mjs <fil.csv> --som agare           nuvarande lagfarna ägare
-//   flaggor: [--dry] [--append] [--map fält=kolumn ...]
+//   flaggor: [--dry] [--append] [--fullstandigt] [--kommun namn|kod] [--map fält=kolumn ...]
 //
 // Fält: beteckning, orgnr, andel, datum, kopeskilling, art, tomtratt (agare: tomträttsinnehav eller lagfart;
 // saknas kolumnen sparas upplåtelseformen som okänd, aldrig som äganderätt)
-// Rader med personnummer hoppas alltid över.
-import { openDb, normOrgnr, normBeteckning, withTransaction, markPrivata } from '../lib/db.mjs';
+// Privata ägare utesluts; privata överlåtelser sparas anonymt för historiken.
+import { openDb, normOrgnr, fastighetsBet, withTransaction, markPrivata } from '../lib/db.mjs';
 import { loadMapped, parseArgs, num, isoDate } from '../lib/csv.mjs';
 
 const args = parseArgs(process.argv.slice(2));
@@ -20,6 +20,7 @@ if (!file || !['transaktioner', 'agare'].includes(som)) {
 
 const FIELDS = {
   beteckning: ['fastighetsbeteckning', 'beteckning', 'fastighet', 'registerbeteckning'],
+  kommun: ['kommunnamn', 'kommunkod', 'kommun'],
   orgnr: ['organisationsnummer', 'orgnr', 'forvarvareid', 'agareid', 'personorganisationsnummer', 'idnummer',
     'forvarvare', 'kopare', 'lagfarenagare', 'agare', 'lagfaren'],
   andel: ['andel', 'agarandel'],
@@ -38,14 +39,14 @@ for (const r of rows) {
   const orgnr = normOrgnr(get(r, 'orgnr'));
   if (!orgnr) {                                          // personnummer: spara aldrig
     personer++;
-    if (som === 'agare') privata.add(normBeteckning(get(r, 'beteckning')));  // bara beteckningen
-    continue;
+    if (som === 'agare') privata.add(fastighetsBet(get(r, 'beteckning'), get(r, 'kommun') ?? args.kommun));  // bara beteckningen
+    if (som === 'agare') continue;
   }
-  recs.push({ bet: normBeteckning(get(r, 'beteckning')), orgnr, andel: get(r, 'andel'), datum: isoDate(get(r, 'datum')),
-    pris: num(get(r, 'kopeskilling')), art: get(r, 'art'),
+  recs.push({ bet: fastighetsBet(get(r, 'beteckning'), get(r, 'kommun') ?? args.kommun), orgnr, andel: orgnr ? get(r, 'andel') : null, datum: isoDate(get(r, 'datum')),
+    pris: num(get(r, 'kopeskilling')), art: orgnr ? get(r, 'art') : null,
     tomtratt: col.tomtratt == null ? null : /tomtr|^(1|j|ja|true)$/i.test(get(r, 'tomtratt') ?? '') ? 1 : 0 });
 }
-console.log(`${recs.length} rader att importera, ${personer} hoppade över (fysiska personer eller saknat org.nr).`);
+console.log(`${recs.length} rader att importera, ${personer} ${som === 'agare' ? 'uteslutna ägarrader' : 'anonyma överlåtelser'} (fysiska personer eller saknat org.nr).`);
 if (args.dry) { console.log('Exempel:', recs.slice(0, 3)); process.exit(0); }
 
 const db = openDb();
@@ -54,7 +55,7 @@ withTransaction(db, () => {
     if (!args.append) db.exec('DELETE FROM agande WHERE demo = 0');
     const ins = db.prepare('INSERT INTO agande (beteckning, orgnr, andel, inskrivningsdag, tomtratt, demo) VALUES (?, ?, ?, ?, ?, 0)');
     for (const r of recs) ins.run(r.bet, r.orgnr, r.andel, r.datum, r.tomtratt);
-    markPrivata(db, privata);
+    markPrivata(db, privata, 'lagfart', args.fullstandigt === true && !args.append ? recs.map((r) => r.bet) : []);
   } else {
     if (!args.append) db.exec('DELETE FROM transaktion WHERE demo = 0');
     const ins = db.prepare(`INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr, art, andel, demo)

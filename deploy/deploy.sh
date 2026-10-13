@@ -39,7 +39,7 @@ tar -czf - "${FILES[@]}" | "$SSH" "$TARGET" "set -e
     exec 9>/var/lib/fastighetskarta/databas.lock; flock 9
     if [ -f /var/lib/fastighetskarta/public.sqlite ]; then
       node --disable-warning=ExperimentalWarning \$d/scripts/import-nyheter.mjs --publik \$d/data/public.sqlite \
-        --behall /var/lib/fastighetskarta/public.sqlite || echo 'Varning: serverns pressmeddelanden följde inte med.'
+        --behall /var/lib/fastighetskarta/public.sqlite
     fi
     # Byt databasen atomärt så att servern aldrig läser en halv fil.
     mv \$d/data/public.sqlite /var/lib/fastighetskarta/public.sqlite.new

@@ -39,7 +39,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   `data/scenarion.sqlite`. Utan skrivbar plats blir länken `#sd=<scenariot komprimerat>`. Flera scenarier i
   `localStorage` (`horos.scenarion` med data, sparas vid varje ändring; `horos.aktivt` = det öppna); export som CSV och scenariofil (JSON).
   Scenarier som räknas (tabellen överst i scenariovyn): Med lägger ihop andra scenarier (`delar`, kopior med egna
-  antaganden som uppdateras från Mina scenarion när scenariot öppnas; `beraknaPortfolj` i kalkyl.js summerar, varje
+  antaganden som uppdateras när scenariot öppnas från Mina scenarion; delade länkar och filer behåller de sparade kopiorna; `beraknaPortfolj` i kalkyl.js summerar, varje
   fastighet en gång); Huvud väljer huvudscenariot (period och antaganden gäller först), gruppen flyttar dit. Kartan visar
   det öppna och de ihoplagda i tabellens färger, vitt där de överlappar. Horos har inga marknadshyror eller
   avkastningskrav: användaren fyller i dem.
@@ -50,6 +50,8 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
 - Tester: `npm test` (node:test, `test/`).
+- Importer: fastighetsbeteckningar kräver kommun i beteckningen, en kommunkolumn eller `--kommun namn|kod`. Taxering kräver `--enhet kr|tkr` om värdekolumnen saknar enhet.
+  `--fullstandigt` på ett fullständigt nytt ägaruttag av lagfart/taxering får häva privatmarkeringar endast från den källan och för kända juridiska ägare, aldrig med `--append`; markeringar med okänd källa ligger kvar.
   `build-public.mjs` bygger `data/public.sqlite` med bara tillåtna fastigheter; Lantmäteriets
   data kräver `--lm-beslut <ärendenr>`, planerna `--lm-planer <ärendenr>`, arbetsställena `--scb-villkor`. Förorenade och utsatta områden tas alltid med (utsatta områden: Polisen anger inga villkor; användaren beslutade 2026-10-11 att publicera utan att fråga). Live byggs med `--alla-bolag`.
 - Lokalt: `node --disable-warning=ExperimentalWarning server.mjs` (PATH: `/c/Program Files/nodejs`).
