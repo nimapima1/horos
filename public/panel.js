@@ -104,7 +104,7 @@ async function openFastighet(bet, adress) {
   const forraAr = f.taxering.find((t) => t.ar < ar && t.varde_tkr != null)?.ar;
   const forra = forraAr && f.taxering.filter((t) => t.ar === forraAr).reduce((s, t) => s + (t.varde_tkr ?? 0), 0);
   const andring = forra ? (varde - forra) / forra : null;
-  const kop = f.transaktioner.find((x) => x.kopeskilling_kr != null);
+  const kop = f.transaktioner.find((x) => x.forvarvare_orgnr && x.kopeskilling_kr != null);
   // Nyckeltal bara när köpet gällde hela fastigheten och bara den (inte en andel eller en paketaffär).
   const paket = kop?.i_affar > 1;
   const helKop = kop && (!kop.andel || kop.andel === '1/1') && !paket;
@@ -170,7 +170,8 @@ async function openFastighet(bet, adress) {
         <tr><td></td><td class="muted small" colspan="2">Mark ${mkr(t.markvarde_tkr)} · Byggnad ${mkr(t.byggvarde_tkr)}${t.taxeringsenhet ? ` · Enhet ${esc(t.taxeringsenhet)}` : ''}</td></tr>`),
       'Väntar på uppgifter från Skatteverket.')}
     <h3>Överlåtelser</h3>
-    ${table('<th>Datum</th><th>Förvärvare</th><th class="num">Köpeskilling</th>', f.transaktioner.map((x, i) => {
+    ${table('<th>Datum</th><th>Förvärvare</th><th class="num">Köpeskilling</th>', f.transaktioner.flatMap((x, i) => {
+      if (x.privat || !x.forvarvare_orgnr) return [];
       // Säljaren är förvärvaren i överlåtelsen före (listan är nyast först), om den finns i Horos.
       const fore = f.transaktioner[i + 1];
       const fran = fore?.forvarvare_orgnr && fore.forvarvare_orgnr !== x.forvarvare_orgnr

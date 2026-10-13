@@ -1,3 +1,4 @@
+import { csvCell } from '../lib/csv.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readDbf } from '../lib/csv.mjs';
@@ -22,4 +23,12 @@ function dbf(rader) {
 
 test('readDbf läser fält som text (UTF-8) och hoppar över raderade poster', () => {
   assert.deepEqual(readDbf(dbf([[false, 12, 'Västerås'], [true, 13, 'Borta']])), [{ ID: '12', NAMN: 'Västerås' }]);
+});
+
+test('CSV skyddar formelprefix i text, även efter blanksteg; tal och citering bevaras', () => {
+  for (const v of ['=1+1', '+1', '-1', '@SUM(A1)', ' \t=1+1']) assert.equal(csvCell(v), "'" + v);
+  assert.equal(csvCell(-1), '-1'); assert.equal(csvCell(0), '0'); assert.equal(csvCell(null), '');
+  assert.equal(csvCell('=1;"x"'), '"\'=1;""x"""');
+  assert.equal(csvCell('\r-1'), '"\'\r-1"');
+  assert.equal(csvCell('rad\rslut'), '"rad\rslut"');
 });

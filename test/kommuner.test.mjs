@@ -16,3 +16,8 @@ test('kommunen först i en beteckning; längsta namnet vinner', () => {
   assert.deepEqual(kommunForst('UPPLANDS VÄSBY BRUNNBY 1:2'), { kommun: 'Upplands Väsby', resten: 'BRUNNBY 1:2' });
   assert.equal(kommunForst('KUNGSBRON 1'), null);
 });
+
+test('kommunkoder och kommunnamn med omgivande blanksteg normaliseras', () => {
+  assert.equal(kommunAv('180'), 'Stockholm'); assert.equal(kommunAv('0184'), 'Solna');
+  assert.equal(kommunAv(' Stockholms kommun  '), 'Stockholm'); assert.equal(kommunAv('9999'), null);
+});

@@ -80,3 +80,15 @@ test('MFN: bara fastighetsbolag (SNI 68, namnet eller listan över moderbolag)',
   assert.equal(arFastighetsbolag('5560000001', { namn: 'Konsult AB', sni: '70220' }, 'Konsult AB'), false);
   assert.equal(arFastighetsbolag(null, { namn: 'X Fastigheter AB', sni: '68203' }), false);   // utan svenskt org.nr
 });
+
+test('gemensam tolkning avkodar MFN:s HTML före kontrollen av privata köpare', () => {
+  const item = { url: 'https://mfn.se/a/alfa/privat', properties: { lang: 'sv' },
+    author: { name: 'Alfa AB', local_refs: ['SE:5560000001'] },
+    content: { title: 'Alfa säljer fastighet i Uppsala' } };
+  for (const text of ['Köparen är en <strong>privatperson</strong>.', 'Köparen&nbsp;är&nbsp;en&nbsp;privatperson.',
+    'Köparen&#160;är&#32;en&#xA0;privatperson.', 'K&ouml;paren &auml;r en privat<strong>person</strong>.', '&lt;p&gt;Köparen är en privatperson.&lt;/p&gt;']) {
+    assert.equal(tolkaMfn({ ...item, content: { ...item.content, text } }), null, text);
+  }
+  const n = tolkaMfn({ ...item, content: { title: '<b>Alfa köper</b> i Uppsala för 10&nbsp;mkr', text: 'Säljaren är en <strong>privatperson</strong>.' } });
+  assert.equal(n.typ, 'kop'); assert.equal(n.pris_kr, 10000000); assert.equal(n.kommun, 'Uppsala');
+});

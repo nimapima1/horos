@@ -31,7 +31,7 @@ function publik(path, sql) {
 
 test('deploy --data: pressmeddelanden som bara finns på servern följer med, platser bara på fastigheter', () => {
   publik(GAMMAL, `INSERT INTO nyhet (url, kalla, utgivare, rubrik, typ) VALUES
-      ('${URL(1)}', 'cision', 'Alfa', 'Från cron', 'kop'), ('${URL(2)}', 'cision', 'Alfa', 'Gammal rubrik', 'kop');
+      ('${URL(1)}', 'cision', 'Alfa', 'Alfa köper från privatpersonen Test Testsson', 'kop'), ('${URL(2)}', 'cision', 'Alfa', 'Gammal rubrik', 'kop');
     INSERT INTO nyhet_plats (url, beteckning, adress, lon, lat) VALUES
       ('${URL(1)}', 'T 1:1', NULL, NULL, NULL), ('${URL(1)}', 'T 9:9', 'Gatan 1', 18.5, 59.5), ('${URL(2)}', 'T 1:1', NULL, NULL, NULL)`);
   publik(NY, `INSERT INTO nyhet (url, kalla, utgivare, rubrik, typ) VALUES ('${URL(2)}', 'cision', 'Alfa', 'Ny rubrik', 'kop')`);
@@ -40,7 +40,7 @@ test('deploy --data: pressmeddelanden som bara finns på servern följer med, pl
   assert.match(r.stdout, /Behöll 1 pressmeddelanden/);
   const db = openDb({ path: NY, readOnly: true });
   assert.deepEqual(db.prepare('SELECT url, rubrik FROM nyhet ORDER BY url').all().map((x) => ({ ...x })),
-    [{ url: URL(1), rubrik: 'Från cron' }, { url: URL(2), rubrik: 'Ny rubrik' }]);
+    [{ url: URL(1), rubrik: 'Fastighetsköp' }, { url: URL(2), rubrik: 'Fastighetsköp' }]);
   assert.deepEqual(db.prepare('SELECT url, beteckning FROM nyhet_plats').all().map((x) => ({ ...x })),
     [{ url: URL(1), beteckning: 'T 1:1' }]);
   assert.ok(!db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'har_privat_agare'").get());
@@ -62,7 +62,7 @@ test('cron --mfn: fastighetsbolagens affärer förs in med källan mfn, platser 
   const m = new DatabaseSync(MFN);
   m.exec(`CREATE TABLE mfn_nyhet (url TEXT PRIMARY KEY, utgivare TEXT NOT NULL, rubrik TEXT NOT NULL, datum TEXT, typ TEXT NOT NULL,
       pris_kr INTEGER, kommun TEXT, beteckningar TEXT NOT NULL, adresser TEXT NOT NULL, mottagen TEXT NOT NULL, orgnr TEXT);
-    INSERT INTO mfn_nyhet VALUES ('${URL(4)}', 'Alfa AB', 'Alfa köper', '2026-10-12T06:00:00.000Z', 'kop', 50000000, 'Testkommun',
+    INSERT INTO mfn_nyhet VALUES ('${URL(4)}', 'Alfa AB', 'Alfa köper från privatpersonen Test Testsson', '2026-10-12T06:00:00.000Z', 'kop', 50000000, 'Testkommun',
       '["T 1:1","T 9:9"]', '[]', '2026-10-12', '5560000001'),
       ('${URL(5)}', 'Konsult AB', 'Konsult AB förvärvar bolag', NULL, 'kop', NULL, 'Testkommun', '["T 1:1"]', '[]', '2026-10-12', '5569999999'),
       ('${URL(6)}', 'Gammal AB', 'Gammal förvärvar fastighet', NULL, 'kop', NULL, 'Testkommun', '["T 1:1"]', '[]', '2026-10-12', NULL)`);
@@ -73,6 +73,7 @@ test('cron --mfn: fastighetsbolagens affärer förs in med källan mfn, platser 
   const db = openDb({ path: NY, readOnly: true });
   assert.deepEqual({ ...db.prepare('SELECT url, kalla, utgivare, pris_kr FROM nyhet').get() },
     { url: URL(4), kalla: 'mfn', utgivare: 'Alfa AB', pris_kr: 50000000 });
+  assert.equal(db.prepare('SELECT rubrik FROM nyhet').get().rubrik, 'Alfa AB meddelar fastighetsköp för 50 000 000 kr');
   assert.deepEqual(db.prepare('SELECT beteckning FROM nyhet_plats').all().map((x) => x.beteckning), ['T 1:1']);
   db.close();
   // Ett felaktigt tas bort med undantagsfilen och kommer inte tillbaka.

@@ -22,8 +22,9 @@
 // områden (geodata som Polisen publicerar utan villkor) tas alltid med.
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { openDb, DB_PATH, ROOT, harJuridiskAgare, NYHET_PLATS_UTANFOR, rebuildAdressFts, rebuildBolagFts, rebuildRtree, withTransaction } from '../lib/db.mjs';
+import { openDb, DB_PATH, ROOT, harJuridiskAgare, NYHET_PLATS_UTANFOR, rebuildAdressFts, rebuildBolagFts, rebuildFastighetFts, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
+import { publiceraNyheter } from '../lib/nyheter.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const OUT = args.out ?? join(ROOT, 'data', 'public.sqlite');
@@ -61,6 +62,7 @@ withTransaction(db, () => {
     INSERT INTO taxering SELECT * FROM src.taxering WHERE demo = 0 AND agare_orgnr IS NOT NULL
       AND beteckning IN (SELECT beteckning FROM tillaten);
     INSERT INTO transaktion SELECT * FROM src.transaktion WHERE demo = 0 AND beteckning IN (SELECT beteckning FROM tillaten);
+    UPDATE transaktion SET kopeskilling_kr = NULL, andel = NULL, art = NULL WHERE forvarvare_orgnr IS NULL;
     -- Arbetsställen (SCB) bara på tillåtna fastigheter; importen har redan tagit bort enskilda
     -- firmor (reklamspärren följer med och visas), och villkoret på orgnr är en extra spärr mot personnummer.
     ${args['scb-villkor'] ? `INSERT INTO arbetsstalle SELECT * FROM src.arbetsstalle WHERE demo = 0
@@ -90,6 +92,8 @@ withTransaction(db, () => {
 });
 db.exec('DETACH DATABASE src');
 
+publiceraNyheter(db);
+rebuildFastighetFts(db);
 rebuildBolagFts(db);
 rebuildAdressFts(db);
 rebuildRtree(db, 'fastighet');

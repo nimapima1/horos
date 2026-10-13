@@ -14,7 +14,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { NYHET_PLATS_UTANFOR, openDb, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 import { pointInGeom } from '../lib/geo.mjs';
-import { CISION, arFastighetsbolag, lasRss, tolka } from '../lib/nyheter.mjs';
+import { CISION, arFastighetsbolag, lasRss, tolka, nyhetsRubrik, publiceraNyheter } from '../lib/nyheter.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const UA = 'Horos/0.1 (ideell fastighetskarta; kontakt@horos.se)';
@@ -33,6 +33,7 @@ if (args.publik && args.behall) {
     INSERT INTO main.nyhet SELECT * FROM gammal.nyhet WHERE url IN (SELECT url FROM bara_gamla);
     INSERT INTO main.nyhet_plats SELECT * FROM gammal.nyhet_plats
       WHERE url IN (SELECT url FROM bara_gamla) AND NOT ${NYHET_PLATS_UTANFOR};`));
+  publiceraNyheter(db);
   console.log(`Behöll ${db.prepare('SELECT count(*) AS n FROM bara_gamla').get().n} pressmeddelanden som bara fanns på servern.`);
   process.exit(0);
 }
@@ -48,6 +49,7 @@ const kandidater = db.prepare(`SELECT f.beteckning, f.geojson FROM fastighet f
   WHERE f.rowid IN (SELECT id FROM fastighet_rtree WHERE maxx >= ? AND minx <= ? AND maxy >= ? AND miny <= ?)`);
 const fastighetVid = (lon, lat) =>
   kandidater.all(lon, lon, lat, lat).find((f) => pointInGeom([lon, lat], JSON.parse(f.geojson)))?.beteckning ?? null;
+const nyhetsBolag = db.prepare('SELECT namn FROM bolag WHERE orgnr = ?');
 const insNyhet = db.prepare(`INSERT OR REPLACE INTO nyhet (url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
 const delPlats = db.prepare('DELETE FROM nyhet_plats WHERE url = ?');
@@ -85,7 +87,7 @@ function spara(n, utgivare, kalla) {
       + `\n    ${n.kommun ?? 'ingen kommun'} · ${n.beteckningar.join(', ') || 'ingen beteckning'} · ${n.adresser.map((x) => `${x.gata} ${x.nummer}`).join(', ') || 'ingen adress'} · ${kopplade} på kartan`);
     return;
   }
-  insNyhet.run(n.url, kalla, utgivare, n.rubrik, n.datum, n.typ, n.pris_kr, n.kommun);
+  insNyhet.run(n.url, kalla, utgivare, nyhetsRubrik({ ...n, utgivare }, kalla === 'mfn' ? nyhetsBolag.get(n.orgnr)?.namn : null), n.datum, n.typ, n.pris_kr, n.kommun);
   delPlats.run(n.url);
   for (const p of platser) insPlats.run(n.url, ...p);
 }
@@ -122,6 +124,7 @@ if (args.mfn) {
 }
 // Avbryts hämtningen blir slutkoden fel och deploy/nyheter.sh kastar kopian, så det räcker att städa här.
 if (args.publik && !args.dry) db.exec(`DELETE FROM nyhet_plats WHERE ${NYHET_PLATS_UTANFOR}`);
+if (args.publik && !args.dry) publiceraNyheter(db);
 const oforandrat = args.publik && innehall() === fore;
 console.log(`${args.dry ? 'Torrkörning: ' : 'Klart: '}${antal} affärer i pressmeddelanden, ${medPlats} med plats på kartan`
   + `${oforandrat ? ' (inget ändrades)' : ''}.`);

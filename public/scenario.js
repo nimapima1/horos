@@ -90,7 +90,7 @@ function aterstallAktivt() {
 // Gör ett scenario i listan till det öppna (laddar underlaget); visa: byt panelen till scenariot.
 async function oppnaPost(x, { visa = true } = {}) {
   const data = x.data ?? (x.lank ? await hamtaLank(new URL(x.lank).hash) : null);
-  return oppnaScenario(data, { nyckel: x.nyckel, lank: x.lank, visa });
+  return oppnaScenario(data, { nyckel: x.nyckel, lank: x.lank, visa, uppdateraDelar: true });
 }
 
 // Scenariot i länken: JSON, komprimerat (deflate) och base64url.
@@ -109,7 +109,7 @@ const kortLank = (hash) => `${location.origin}${location.pathname}${hash}`;
 
 // Öppnar scenariot (data i formatet från nyttScenario, t.ex. från en länk eller fil) med underlaget från servern,
 // och lägger det i Mina scenarion om det inte redan finns där.
-async function oppnaScenario(data, { nyckel, lank, visa = true } = {}) {
+async function oppnaScenario(data, { nyckel, lank, visa = true, uppdateraDelar = false, underlag } = {}) {
   if (data?.v !== 1 || !Array.isArray(data.bet)) return showPanel('<p class="empty">Det här är inte ett scenario från Horos.</p>');
   const s = await statusP;
   // Länkar och filer kommer utifrån: fyll i det som saknas och håll år och period inom rimliga gränser.
@@ -118,14 +118,14 @@ async function oppnaScenario(data, { nyckel, lank, visa = true } = {}) {
   d.ar = Math.min(10, Math.max(1, Math.round(d.ar) || 5));
   d.start = Math.min(2100, Math.max(1900, Math.round(d.start) || new Date().getFullYear()));
   for (const k of ['gemensamt', 'antaganden', 'egna']) if (typeof d[k] !== 'object' || !d[k]) d[k] = {};
-  // Ihoplagda scenarier: finns det kvar i Mina scenarion räknas dess senaste version, annars kopian i scenariot.
+  // Mina scenarion uppdaterar delarna; delade länkar och filer behåller sina kopior.
   const mina = minaScenarion();
   d.delar = (Array.isArray(d.delar) ? d.delar : []).filter((x) => Array.isArray(x?.bet)).map((x) => {
-    const senaste = x.nyckel && x.nyckel !== nyckel && mina.find((m) => m.nyckel === x.nyckel)?.data;
+    const senaste = uppdateraDelar && x.nyckel && x.nyckel !== nyckel && mina.find((m) => m.nyckel === x.nyckel)?.data;
     return delAv(senaste || x, x.nyckel);
   });
   let u;
-  try { u = await hamtaUnderlag(allaBet(d)); } catch (e) {
+  try { u = underlag ?? await hamtaUnderlag(allaBet(d)); } catch (e) {
     if (!visa) throw e;   // i bakgrunden (+-menyn): den som anropade visar felet
     return showPanel(`<p class="empty">${esc(e.message)}</p>`);
   }
@@ -141,7 +141,6 @@ async function oppnaScenario(data, { nyckel, lank, visa = true } = {}) {
 
 const hamtaLank = (hash) => (hash.startsWith('#s=') ? api(`/api/scenario/${encodeURIComponent(hash.slice(3))}`) : packaUpp(hash.slice(4)));
 async function oppnaScenarioLank(hash) {
-  if (scenario?.lank === kortLank(hash)) return visaScenario();
   try {
     await oppnaScenario(await hamtaLank(hash), { lank: kortLank(hash) });
   } catch (e) {
@@ -348,14 +347,19 @@ async function gorHuvud(el) {
   // Ett ihoplagt scenario som inte finns i Mina scenarion (från någon annans länk) blir ett nytt scenario av kopian.
   data ??= i >= 0 ? { ...nyttScenario(d.delar[i].namn, d.delar[i].bet), gemensamt: d.delar[i].gemensamt, antaganden: d.delar[i].antaganden,
     egna: d.delar[i].egna } : null;
-  if (!data) return;
+  if (data?.v !== 1 || !Array.isArray(data.bet)) return;
   // De ihoplagda: det nya huvudscenariots egna först (de ska inte försvinna), sedan gruppen; inget två gånger.
   const grupp = [delAv(d, gammal.nyckel), ...d.delar.filter((y, j) => j !== i && (!nyckel || y.nyckel !== nyckel))];
   const egna = Array.isArray(data.delar) ? data.delar.filter((y) => Array.isArray(y?.bet) && y.nyckel !== gammal.nyckel) : [];
   const delar = [...egna, ...grupp.filter((y) => !y.nyckel || !egna.some((e) => e.nyckel === y.nyckel))];
+  const fore = JSON.stringify(d);
+  let underlag;
+  try { underlag = await hamtaUnderlag(allaBet({ ...data, delar })); }
+  catch { el.checked = false; return; }
+  if (scenario !== gammal || JSON.stringify(d) !== fore) return;
   d.delar = [];
-  andrat();   // det förra huvudscenariot sparas utan ihoplagda
-  await oppnaScenario({ ...data, delar }, { nyckel: post ? nyckel : undefined });
+  andrat();
+  await oppnaScenario({ ...data, delar }, { nyckel: post ? nyckel : undefined, underlag });
 }
 
 // Ett fält i scenariot ändrades (se talFalt).
@@ -400,13 +404,16 @@ async function laggTillIScenario(bet) {
   return r.fastigheter.length;
 }
 async function sparaScenario(knapp) {
+  const sc = scenario;
   const s = await statusP;
-  const d = { ...scenario.data, underlagFran: scenario.byggd ?? undefined };
+  if (scenario !== sc) return;
+  const fore = JSON.stringify(sc.data), d = { ...structuredClone(sc.data), underlagFran: sc.byggd ?? undefined };
   let hash = null;
   if (s.kortlankar) hash = await api('/api/scenario', d).then((r) => `#s=${r.id}`, () => null);   // annars i länken
   hash ??= `#sd=${await packa(d)}`;
-  scenario.data = d;
-  scenario.lank = kortLank(hash);
+  if (scenario !== sc || JSON.stringify(sc.data) !== fore) return;
+  sc.data = d;
+  sc.lank = kortLank(hash);
   sparaLokalt();
   history.replaceState(null, '', `${location.pathname}${location.search}${hash}`);
   const falt = $('#sc-lank');
@@ -417,12 +424,10 @@ async function sparaScenario(knapp) {
 }
 
 // Tabellen som CSV för Excel (BOM, semikolon och decimalkomma, som träff-exporten).
-function scenarioCsv(s) {
+async function scenarioCsv(s) {
   const d = scenario.data, k = beraknaPortfolj(d, scenario.underlag), g = d.gemensamt;
-  // Text som börjar med = + - @ (t.ex. namnet från någon annans länk) blir annars en formel i Excel.
-  const text = (v) => (/^[=+\-@]/.test(v) ? `'${v}` : v);
-  const cell = (v) => (v == null ? '' : typeof v === 'number' ? String(Math.round(v * 100) / 100).replace('.', ',')
-    : /[;"\n]/.test(v) ? `"${text(v).replace(/"/g, '""')}"` : text(v));
+  const { csvCell } = await import('./csv.js');
+  const cell = (v) => (typeof v === 'number' ? String(Math.round(v * 100) / 100).replace('.', ',') : csvCell(v));
   const rader = [
     ['Scenario', d.namn], ['Startår', d.start], ['Kalkylperiod, år', d.ar], ['Hyresutveckling, %', g.hyresutv],
     ['Kostnadsutveckling, %', g.kostutv], ['Direktavkastningskrav, %', g.direktavk], ['Kalkylränta, %', k.kalkylranta * 100],
@@ -501,7 +506,9 @@ async function scenarioKlick(el) {
   if (a === 'ta-bort') {
     const bet = el.dataset.bet;
     scenario.data.bet = scenario.data.bet.filter((b) => b !== bet);
-    scenario.underlag = scenario.underlag.filter((f) => f.beteckning !== bet);
+    const kvar = new Set(allaBet(scenario.data));
+    scenario.underlag = scenario.underlag.filter((f) => kvar.has(f.beteckning));
+    scenario.saknas = scenario.saknas.filter((b) => kvar.has(b));
     delete scenario.data.egna[bet];
     andrat();
     return visaScenario();
@@ -509,7 +516,7 @@ async function scenarioKlick(el) {
   if (a === 'del') return sattDel(el);
   if (a === 'huvud') return gorHuvud(el);
   if (a === 'spara') return sparaScenario(el);
-  if (a === 'csv') return laddaNer(`${filnamn()}.csv`, scenarioCsv(s), 'text/csv;charset=utf-8');
+  if (a === 'csv') return laddaNer(`${filnamn()}.csv`, await scenarioCsv(s), 'text/csv;charset=utf-8');
   if (a === 'mall') return laddaNer('horos-mall.csv', INLASNING_MALL, 'text/csv;charset=utf-8');
   if (a === 'fil') return laddaNer(`${filnamn()}.json`, JSON.stringify(scenario.data, null, 1), 'application/json');
   if (a === 'stang') {   // scenariot ligger kvar i Mina scenarion, men inget är öppet (och inget på kartan)

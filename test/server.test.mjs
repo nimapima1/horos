@@ -5,15 +5,16 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { request } from 'node:http';
 import { createHmac } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { ROOT, openDb } from '../lib/db.mjs';
+import { ROOT, openDb, rebuildFastighetFts } from '../lib/db.mjs';
 
 const DB = join(ROOT, 'data', '_test', 'server-test.sqlite');
 const SCENARIO_DB = join(ROOT, 'data', '_test', 'scenario-test.sqlite');
 const MFN_DB = join(ROOT, 'data', '_test', 'mfn-test.sqlite');
 const MFN_SECRET = 'testhemlighet';
-const PORT = 3017;
+const PORT = 3005;
 let server;
 
 const rect = (x0, y0, x1, y1) => JSON.stringify({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
@@ -133,13 +134,13 @@ test('kommunkluster räknar med filtren i hela landet', async () => {
 test('pressmeddelanden i Affärer och på fastigheten', async () => {
   const db = openDb({ path: DB });
   db.exec(`INSERT INTO nyhet (url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun) VALUES
-    ('https://news.cision.com/se/a/r/1', 'cision', 'Alfa', 'Alfa köper', '2026-09-01T06:00:00Z', 'kop', 300000000, 'Testkommun');
+    ('https://news.cision.com/se/a/r/1', 'cision', 'Alfa AB', 'Alfa köper från privatpersonen Test Testsson', '2026-09-01T06:00:00Z', 'kop', 300000000, 'Testkommun');
     INSERT INTO nyhet_plats (url, beteckning, adress, lon, lat) VALUES
     ('https://news.cision.com/se/a/r/1', 'T 1:1', NULL, NULL, NULL), ('https://news.cision.com/se/a/r/1', 'FINNS INTE 1', NULL, NULL, NULL)`);
   db.close();
   const [n] = (await json('/api/affarer')).nyheter;
   assert.deepEqual([n.dag, n.beteckningar, n.minx, n.maxx], ['2026-09-01', ['T 1:1'], 18.000, 18.001]);
-  assert.equal((await json('/api/fastighet/T%201%3A1')).nyheter[0].rubrik, 'Alfa köper');
+  assert.equal((await json('/api/fastighet/T%201%3A1')).nyheter[0].rubrik, 'Alfa AB meddelar fastighetsköp för 300 000 000 kr');
   assert.deepEqual((await json('/api/fastighet/T%201%3A2')).nyheter, []);
 });
 
@@ -298,15 +299,104 @@ test('MFN: signerade pressmeddelanden tas emot, affärer sparas med org.nr och a
 test('inläsning från fil: beteckning och kommun krävs, kommunen från kolumnen eller först i beteckningen', async () => {
   const db = openDb({ path: DB });
   // En fastighet i en riktig kommun, långt från de andra (påverkar inga bbox-tester).
-  db.prepare("INSERT INTO fastighet (beteckning, kommun, areal_m2, geojson, minx, miny, maxx, maxy, kalla) VALUES ('R 1:1', 'Solna', 100, ?, 25, 66, 25.001, 66.0005, 'lantmateriet')")
+  db.prepare("INSERT INTO fastighet (beteckning, kommun, areal_m2, geojson, minx, miny, maxx, maxy, kalla) VALUES ('SOLNA R 1:1', 'Solna', 100, ?, 25, 66, 25.001, 66.0005, 'lantmateriet')")
     .run(rect(25, 66, 25.001, 66.0005));
   db.close();
   const rader = [{ bet: 'r 1:1', kommun: 'Solna' }, { bet: 'Solna R 1:1' }, { bet: 'R 1:1', kommun: 'SOLNA KOMMUN' },
     { bet: 'R 1:1' }, { bet: 'R 1:1', kommun: 'Sundbyberg' }, { bet: 'T 1:1', kommun: 'Testkommun' }, { adress: 'Ingen gata 1' }, {}];
   const r = await post('/api/matcha', { rader }).then((x) => x.json());
-  assert.deepEqual(r.traffar.map((t) => [t.beteckning, t.orsak ?? null]), [['R 1:1', null], ['R 1:1', null], ['R 1:1', null],
+  assert.deepEqual(r.traffar.map((t) => [t.beteckning, t.orsak ?? null]), [['SOLNA R 1:1', null], ['SOLNA R 1:1', null], ['SOLNA R 1:1', null],
     [null, 'kommun'], [null, 'okand'], [null, 'kommun'], [null, 'kommun'], [null, 'kommun']]);   // Testkommun är ingen riktig kommun
   assert.equal(r.traffar[0].via, 'beteckning');
   assert.equal((await post('/api/matcha', { rader: Array(1001).fill({ bet: 'R 1:1' }) })).status, 400);
   assert.equal((await post('/api/matcha', { rader: 'R 1:1' })).status, 400);
+});
+
+test('ogiltig URL ger 400 och servern fortsätter svara', async () => {
+  const status = await new Promise((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port: PORT, path: '//[' }, (res) => {
+      res.resume(); res.on('end', () => resolve(res.statusCode));
+    });
+    req.on('error', reject); req.end();
+  });
+  assert.equal(status, 400);
+  assert.equal((await get('/api/status')).status, 200);
+});
+
+test('taxeringsvärde räknar varje enhet en gång och behåller båda ägarna', async () => {
+  const db = openDb({ path: DB });
+  db.exec("UPDATE taxering SET taxeringsenhet = 'TE1', agare_orgnr = '7690000002' WHERE beteckning = 'T 1:2';"
+    + "INSERT INTO taxering (beteckning, taxeringsenhet, ar, varde_tkr, agare_orgnr) VALUES"
+    + "('T 1:2', 'TE1', 2025, 10000, '5560000001'), ('T 1:2', 'TE2', 2025, 10000, '5560000001')");
+  try {
+    const f = await json('/api/fastighet/T%201%3A2');
+    assert.equal(f.taxering.reduce((s, t) => s + (t.varde_tkr ?? 0), 0), 20000);
+    assert.deepEqual([...new Set(f.taxering.map((t) => t.agare_orgnr))].sort(), ['5560000001', '7690000002']);
+    const u = await post('/api/underlag', { bet: ['T 1:2'] }).then((r) => r.json());
+    assert.equal(u.fastigheter[0].varde_tkr, 20000);
+    assert.equal((await json('/api/fastigheter?' + BBOX)).features.find((f) => f.properties.beteckning === 'T 1:2').properties.varde_tkr, 20000);
+    assert.match(await get('/data/horos-fastigheter.csv').then((r) => r.text()), /T 1:2;Testkommun;500;[^\r\n]*;2025;20000;/);
+  } finally {
+    db.exec("DELETE FROM taxering WHERE beteckning = 'T 1:2' AND agare_orgnr = '5560000001';"
+      + "UPDATE taxering SET taxeringsenhet = NULL, agare_orgnr = NULL WHERE beteckning = 'T 1:2'"); db.close();
+  }
+});
+
+test('anonym överlåtelse bryter säljarkedjan och listas aldrig som en publik affär', async () => {
+  const db = openDb({ path: DB });
+  const gamla = db.prepare("SELECT * FROM transaktion WHERE beteckning = 'T 1:2'").all();
+  db.exec("DELETE FROM transaktion WHERE beteckning = 'T 1:2'; INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr) VALUES"
+    + "('T 1:2', '2018-01-01', 1000000, '5560000001'), ('T 1:2', '2020-01-01', 2000000, NULL), ('T 1:2', '2026-01-01', 3000000, '7690000002')");
+  try {
+    const a = await json('/api/affarer?ar=2026');
+    const kop = a.senaste.find((x) => x.beteckning === 'T 1:2');
+    assert.equal(kop.saljare_orgnr, null); assert.equal(kop.saljare, null);
+    assert.ok(!a.arLista.includes('2020'));
+    assert.ok(!(await json('/api/bolag/5560000001')).salt.some((x) => x.beteckning === 'T 1:2'));
+    const f = await json('/api/fastighet/T%201%3A2');
+    assert.deepEqual(f.transaktioner.map((x) => x.privat ? x : x.forvarvare_orgnr), ['7690000002', { privat: true }, '5560000001']);
+    assert.doesNotMatch(JSON.stringify(f.transaktioner), /2020-01-01|2000000/);
+    const grannen = await json('/api/fastighet/T%201%3A1');
+    assert.ok(!grannen.narKop.some((x) => x.beteckning === 'T 1:2' && x.dag === '2020-01-01'));
+    const rutter = ['/api/status', '/api/affarer', '/api/bolag/5560000001', '/api/bolag/7690000002',
+      '/api/fastighet/T%201%3A1', '/api/fastigheter?' + BBOX, '/api/punkter?' + BBOX,
+      '/api/fastigheter?' + BBOX + '&kar=2030&kmin=900', '/api/punkter?' + BBOX + '&kar=2030&kmin=900',
+      '/api/kommunkluster?kar=2030&kmin=900', '/data/horos-traffar.csv?' + BBOX, '/data/horos-fastigheter.csv'];
+    const svar = () => Promise.all(rutter.map(async (p) => { const r = await get(p); assert.equal(r.status, 200, p); return r.text(); }));
+    const fore = await svar();
+    db.exec("INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr) VALUES ('T 1:2', '2031-02-03', 987654321, NULL)");
+    assert.deepEqual(await svar(), fore);
+    const senaste = (await json('/api/fastighet/T%201%3A2')).transaktioner;
+    assert.deepEqual(senaste[0], { privat: true });
+    assert.deepEqual(senaste[2], { privat: true });
+    assert.doesNotMatch(JSON.stringify(senaste), /2031-02-03|987654321|2020-01-01|2000000/);
+  } finally {
+    db.exec("DELETE FROM transaktion WHERE beteckning = 'T 1:2'");
+    const ins = db.prepare('INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr, art, andel, demo) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    for (const r of gamla) ins.run(r.beteckning, r.inskrivningsdag, r.kopeskilling_kr, r.forvarvare_orgnr, r.art, r.andel, r.demo);
+    db.close();
+  }
+});
+
+test('serverns CSV-exporter skyddar bolagsnamn från Excel-formler', async () => {
+  const db = openDb({ path: DB }); db.exec("UPDATE bolag SET namn = '=1+1' WHERE orgnr = '5560000001'");
+  try {
+    for (const path of ['/data/horos-fastigheter.csv', '/data/horos-traffar.csv?' + BBOX]) {
+      const r = await get(path); assert.equal(r.status, 200);
+      const text = await r.text(); assert.match(text, /;'=1\+1;/); assert.doesNotMatch(text, /;=1\+1;/);
+    }
+  } finally { db.exec("UPDATE bolag SET namn = 'Alfa AB' WHERE orgnr = '5560000001'"); db.close(); }
+});
+
+test('fastighetssökning hittar pilen 1 utan kommunprefix via FTS', async () => {
+  const db = openDb({ path: DB });
+  db.exec("INSERT INTO fastighet (beteckning, kommun, geojson, kalla) VALUES"
+    + "('STOCKHOLM PILEN 1', 'Stockholm', '{}', 'lantmateriet'), ('SOLNA PILEN 10', 'Solna', '{}', 'lantmateriet'), ('STOCKHOLM PILEN 2', 'Stockholm', '{}', 'lantmateriet')");
+  rebuildFastighetFts(db);
+  try {
+    const r = await json('/api/sok?q=pilen%201');
+    assert.deepEqual(r.fastigheter.map((f) => f.beteckning).sort(), ['SOLNA PILEN 10', 'STOCKHOLM PILEN 1']);
+    assert.deepEqual((await json('/api/sok?q=stockholm%20pilen%201')).fastigheter.map((f) => f.beteckning), ['STOCKHOLM PILEN 1']);
+    assert.deepEqual((await json('/api/sok?q=5560000001')).fastigheter, []);
+  } finally { db.exec("DELETE FROM fastighet WHERE beteckning LIKE '% PILEN %'"); rebuildFastighetFts(db); db.close(); }
 });

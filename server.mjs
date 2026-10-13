@@ -1,16 +1,19 @@
 // Liten server utan beroenden: statiska filer från public/ + JSON-API.
 import { createServer } from 'node:http';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { csvCell } from './lib/csv.mjs';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, extname, join, normalize, sep } from 'node:path';
-import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree } from './lib/db.mjs';
+import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree, rebuildFastighetFts, fastighetsBet } from './lib/db.mjs';
 import { avstandM, innerPoints, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN, kommunAv, kommunForst } from './lib/kommuner.mjs';
 import { MAX_SCENARIO, MAX_SCENARIO_BYTE, giltigtScenario, oppnaScenarier } from './lib/scenarier.mjs';
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
-import { arFastighetsbolag, tolkaMfn } from './lib/nyheter.mjs';
+import { arFastighetsbolag, tolkaMfn, nyhetsRubrik } from './lib/nyheter.mjs';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -39,7 +42,14 @@ const HAS_AGARKONTROLL = hasColumn(db, 'bolag', 'agarkontroll');
 // Rumsliga index. build-public bygger dem i den publika databasen; lokalt byggs de om vid
 // start, så att de stämmer efter en import.
 // shortcut: ombyggnad vid varje lokal start tar några sekunder med hela landet; flytta till importskripten då.
-if (!PUBLIC_MODE) for (const t of ['fastighet', 'plan']) rebuildRtree(db, t);
+if (!PUBLIC_MODE) {
+  for (const t of ['fastighet', 'plan']) rebuildRtree(db, t);
+  rebuildFastighetFts(db);
+} else if (!hasTable('fastighet_fts')) {
+  // Äldre publika databaser kan också sökas med index, utan att originalet skrivs.
+  db.exec(`CREATE VIRTUAL TABLE temp.fastighet_fts USING fts5(beteckning, prefix='2 3');
+    INSERT INTO temp.fastighet_fts(rowid, beteckning) SELECT rowid, beteckning FROM main.fastighet;`);
+}
 // SQL-villkor "bbox överlappar", parametrar (minx, maxx, miny, maxy). Utan R-träd (en äldre
 // publik databas) används bbox-kolumnerna direkt.
 const overlapar = (table, alias) => (hasTable(`${table}_rtree`)
@@ -225,8 +235,9 @@ async function historiskTile(res, ar, z, x, y) {
 
 // --- Frågor ------------------------------------------------------------------
 // Summan av fastighetens taxeringsvärden det senaste taxeringsåret (alias f = fastighet).
-const SENASTE_VARDE = `(SELECT sum(t.varde_tkr) FROM taxering t WHERE t.beteckning = f.beteckning
-  AND t.ar = (SELECT max(ar) FROM taxering WHERE beteckning = f.beteckning))`;
+const SENASTE_VARDE = `(SELECT sum(varde) FROM (SELECT max(t.varde_tkr) AS varde FROM taxering t
+  WHERE t.beteckning = f.beteckning AND t.ar = (SELECT max(ar) FROM taxering WHERE beteckning = f.beteckning)
+  GROUP BY coalesce(t.taxeringsenhet, t.rowid)))`;
 // Fastigheten har taxeringstypen ? det senaste taxeringsåret.
 const harTyp = (alias) => `EXISTS (SELECT 1 FROM taxering t WHERE t.beteckning = ${alias}.beteckning AND t.typ = ?
   AND t.ar = (SELECT max(ar) FROM taxering WHERE beteckning = ${alias}.beteckning))`;
@@ -300,7 +311,7 @@ const filterParams = (url) => FILTER.flatMap(([k, f]) => {
 const countReal = (t) => `(SELECT count(*) FROM ${t}) - (SELECT count(*) FROM ${t} WHERE demo = 1)`;
 const counts = db.prepare(`SELECT ${countReal('bolag')} AS bolag, ${countReal('fastighet')} AS fastigheter,
   ${countReal('taxering')} AS taxeringar, ${countReal('agande')} AS agande,
-  ${countReal('transaktion')} AS transaktioner, (SELECT count(*) FROM fastighet WHERE demo = 1) AS demo`);
+  (SELECT count(*) FROM transaktion WHERE demo = 0 AND forvarvare_orgnr IS NOT NULL) AS transaktioner, (SELECT count(*) FROM fastighet WHERE demo = 1) AS demo`);
 
 // Fastigheter i en bbox med kartfiltren (se FILTER): med geometri för kartan, annars bara
 // mittpunkten (bboxens mitt) för prickarna vid låg zoom.
@@ -311,9 +322,9 @@ const inBboxSql = (geometri, limit) => `
       (SELECT b.namn FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
          WHERE a.beteckning = f.beteckning LIMIT 1) AS agare,
       -- Senaste köp = senaste överlåtelse med köpeskilling (en gåva utan pris räknas inte), som i panelen.
-      (SELECT kopeskilling_kr FROM transaktion x WHERE x.beteckning = f.beteckning AND x.kopeskilling_kr IS NOT NULL
+      (SELECT kopeskilling_kr FROM transaktion x WHERE x.beteckning = f.beteckning AND x.kopeskilling_kr IS NOT NULL AND x.forvarvare_orgnr IS NOT NULL
          ORDER BY inskrivningsdag DESC LIMIT 1) AS kop_kr,
-      (SELECT max(inskrivningsdag) FROM transaktion x WHERE x.beteckning = f.beteckning AND x.kopeskilling_kr IS NOT NULL) AS kop_dag,
+      (SELECT max(inskrivningsdag) FROM transaktion x WHERE x.beteckning = f.beteckning AND x.kopeskilling_kr IS NOT NULL AND x.forvarvare_orgnr IS NOT NULL) AS kop_dag,
       ${SENASTE_TYP} AS typ, ${FASTIGHET_LOA} AS loa_m2, ${UPPLATELSE} AS upplatelse,
       (SELECT b.jurform FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
          WHERE a.beteckning = f.beteckning LIMIT 1) AS agartyp
@@ -328,9 +339,23 @@ const BOLAGETS = `f.beteckning IN (SELECT beteckning FROM agande WHERE orgnr = ?
   UNION SELECT beteckning FROM taxering WHERE agare_orgnr = ?)`;
 const BOLAG_LISTA = 500;   // fastigheter i bolagspanelens lista
 
+const exportSql = (geometri) => `
+    SELECT f.beteckning, f.kommun, f.areal_m2, ${geometri ? 'f.geojson,' : ''}
+      (SELECT group_concat(a.orgnr, '|') FROM agande a WHERE a.beteckning = f.beteckning) AS agare_orgnr,
+      (SELECT group_concat(coalesce(b.namn, ''), '|') FROM agande a LEFT JOIN bolag b ON b.orgnr = a.orgnr
+         WHERE a.beteckning = f.beteckning) AS agare_namn,
+      (SELECT max(ar) FROM taxering WHERE beteckning = f.beteckning) AS taxeringsar,
+      ${SENASTE_VARDE} AS taxeringsvarde_tkr,
+      (SELECT inskrivningsdag FROM transaktion x WHERE x.beteckning = f.beteckning AND x.forvarvare_orgnr IS NOT NULL
+         ORDER BY inskrivningsdag DESC LIMIT 1) AS senaste_overlatelse,
+      (SELECT kopeskilling_kr FROM transaktion x WHERE x.beteckning = f.beteckning AND x.forvarvare_orgnr IS NOT NULL
+         ORDER BY inskrivningsdag DESC LIMIT 1) AS senaste_kopeskilling_kr
+    FROM fastighet f WHERE f.demo = 0 ORDER BY f.beteckning`;
+
 const q = {
   inBbox: db.prepare(inBboxSql(true, MAX_FEATURES + 1)),
   punkter: db.prepare(inBboxSql(false, MAX_PUNKTER + 1)),
+  traffCsv: db.prepare(inBboxSql(false, MAX_FEATURES + 1)),
   // Översikt under prickarnas zoom: antal per kommun i hela landet, placerat i fastigheternas medelpunkt.
   kommunKluster: db.prepare(`SELECT kommun, count(*) AS n, sum(varde_tkr) AS varde_tkr,
       round(avg(lon), 4) AS lon, round(avg(lat), 4) AS lat
@@ -342,7 +367,9 @@ const q = {
   planerIBbox: HAS_PLAN && db.prepare(`SELECT p.id, p.typ, p.planid, p.namn, p.datum, p.geojson, p.demo FROM plan p
     WHERE ${overlapar('plan', 'p')} ORDER BY p.datum DESC NULLS LAST LIMIT ${MAX_FEATURES + 1}`),
   fastighet: db.prepare('SELECT beteckning, kommun, areal_m2, kalla, demo, minx, miny, maxx, maxy FROM fastighet WHERE beteckning = ?'),
-  taxering: db.prepare(`SELECT t.*, b.namn AS agare_namn FROM taxering t
+  taxering: db.prepare(`SELECT t.beteckning, t.taxeringsenhet, t.typ, t.ar, t.agare_orgnr, t.andel, t.demo,
+    ${['varde_tkr', 'markvarde_tkr', 'byggvarde_tkr'].map((c) => `CASE WHEN row_number() OVER (PARTITION BY t.ar, coalesce(t.taxeringsenhet, t.rowid) ORDER BY t.varde_tkr DESC, t.rowid) = 1 THEN t.${c} END AS ${c}`).join(', ')},
+    b.namn AS agare_namn FROM taxering t
     LEFT JOIN bolag b ON b.orgnr = t.agare_orgnr
     WHERE t.beteckning = ? ORDER BY t.ar DESC`),
   // Tomträttshavaren först: det är den som har fastigheten i sin verksamhet.
@@ -384,7 +411,7 @@ const q = {
     JOIN transaktion y ON y.beteckning = x.beteckning AND y.inskrivningsdag = (SELECT min(z.inskrivningsdag)
       FROM transaktion z WHERE z.beteckning = x.beteckning AND z.inskrivningsdag > x.inskrivningsdag)
     JOIN fastighet f ON f.beteckning = x.beteckning LEFT JOIN bolag b ON b.orgnr = y.forvarvare_orgnr
-    WHERE x.forvarvare_orgnr = ? AND y.forvarvare_orgnr IS NOT x.forvarvare_orgnr
+    WHERE x.forvarvare_orgnr = ? AND y.forvarvare_orgnr IS NOT NULL AND y.forvarvare_orgnr IS NOT x.forvarvare_orgnr
     GROUP BY x.beteckning, x.inskrivningsdag, y.inskrivningsdag ORDER BY y.inskrivningsdag DESC LIMIT 50`),
   bolagFastigheter: db.prepare(`
     SELECT f.beteckning, f.areal_m2, f.minx, f.miny, f.maxx, f.maxy, ${SENASTE_VARDE} AS varde_tkr
@@ -402,8 +429,8 @@ const q = {
     : db.prepare('SELECT orgnr, namn, postort, demo, avregistrerad FROM bolag WHERE namn LIKE ? LIMIT 300'),
   agareLista: db.prepare(`SELECT b.orgnr, b.namn, b.postort, b.demo, b.avregistrerad, count(DISTINCT a.beteckning) AS n
     FROM agande a JOIN bolag b ON b.orgnr = a.orgnr GROUP BY b.orgnr`),
-  sokFastighet: db.prepare(`SELECT beteckning, minx, miny, maxx, maxy FROM fastighet
-    WHERE beteckning LIKE ? ORDER BY length(beteckning) LIMIT 10`),
+  sokFastighet: db.prepare(`SELECT f.beteckning, f.minx, f.miny, f.maxx, f.maxy FROM fastighet_fts
+    JOIN fastighet f ON f.rowid = fastighet_fts.rowid WHERE fastighet_fts MATCH ? LIMIT 10`),
   sokAdress: HAS_ADRESS && db.prepare(`SELECT a.gata, a.nummer, a.postnr, a.ort, a.lon, a.lat
     FROM adress_fts JOIN adress a ON a.id = adress_fts.rowid WHERE adress_fts MATCH ? LIMIT 200`),
   fastighetVidPunkt: db.prepare(`SELECT f.beteckning, f.geojson FROM fastighet f
@@ -426,20 +453,10 @@ const q = {
   narKop: db.prepare(`SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, x.forvarvare_orgnr AS orgnr, x.andel,
       b.namn, b.demo, f.beteckning, f.areal_m2, f.minx, f.miny, f.maxx, f.maxy
     FROM fastighet f JOIN transaktion x ON x.beteckning = f.beteckning LEFT JOIN bolag b ON b.orgnr = x.forvarvare_orgnr
-    WHERE ${overlapar('fastighet', 'f')} AND f.beteckning != ? AND x.kopeskilling_kr IS NOT NULL
+    WHERE ${overlapar('fastighet', 'f')} AND f.beteckning != ? AND x.kopeskilling_kr IS NOT NULL AND x.forvarvare_orgnr IS NOT NULL
     ORDER BY x.inskrivningsdag DESC LIMIT 40`),
-  export: db.prepare(`
-    SELECT f.beteckning, f.kommun, f.areal_m2, f.geojson,
-      (SELECT group_concat(a.orgnr, '|') FROM agande a WHERE a.beteckning = f.beteckning) AS agare_orgnr,
-      (SELECT group_concat(coalesce(b.namn, ''), '|') FROM agande a LEFT JOIN bolag b ON b.orgnr = a.orgnr
-         WHERE a.beteckning = f.beteckning) AS agare_namn,
-      (SELECT max(ar) FROM taxering WHERE beteckning = f.beteckning) AS taxeringsar,
-      ${SENASTE_VARDE} AS taxeringsvarde_tkr,
-      (SELECT inskrivningsdag FROM transaktion x WHERE x.beteckning = f.beteckning
-         ORDER BY inskrivningsdag DESC LIMIT 1) AS senaste_overlatelse,
-      (SELECT kopeskilling_kr FROM transaktion x WHERE x.beteckning = f.beteckning
-         ORDER BY inskrivningsdag DESC LIMIT 1) AS senaste_kopeskilling_kr
-    FROM fastighet f WHERE f.demo = 0 ORDER BY f.beteckning`),
+  export: db.prepare(exportSql(true)),
+  exportCsv: db.prepare(exportSql(false)),
 };
 
 // I publikt läge är databasen skrivskyddad och byts bara ut med en omstart: räkna en gång.
@@ -476,7 +493,7 @@ const AFFAR = `WITH affar AS (
   SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, x.forvarvare_orgnr AS orgnr,
     min(x.beteckning) AS beteckning, count(*) AS antal, max(x.demo) AS demo
   FROM transaktion x JOIN fastighet f ON f.beteckning = x.beteckning
-  WHERE x.kopeskilling_kr >= ? AND (? IS NULL OR f.kommun = ?)
+  WHERE x.forvarvare_orgnr IS NOT NULL AND x.kopeskilling_kr >= ? AND (? IS NULL OR f.kommun = ?)
   GROUP BY 1, 2, 3)`;
 // Säljaren = förvärvaren i fastighetens föregående överlåtelse (om den finns).
 const AFFAR_RAD = `SELECT a.dag, a.kr, a.orgnr, a.beteckning, a.antal, a.demo, b.namn, f.kommun,
@@ -488,6 +505,11 @@ const AFFAR_RAD = `SELECT a.dag, a.kr, a.orgnr, a.beteckning, a.antal, a.demo, b
 // Affärer i pressmeddelanden, senaste först, med fastigheterna som finns i Horos (eller adresspunkten)
 // som bbox och beteckningar för kartan.
 const NYHET_KOLUMNER = 'n.url, n.kalla, n.utgivare, n.rubrik, substr(n.datum, 1, 10) AS dag, n.typ, n.pris_kr, n.kommun';
+const nyhetsBolag = db.prepare('SELECT orgnr, namn FROM bolag WHERE namn = ?');
+const publikNyhet = (n) => {
+  const b = nyhetsBolag.get(n.utgivare);
+  return { ...n, rubrik: nyhetsRubrik(n, normOrgnr(b?.orgnr) ? b.namn : null) };
+};
 const qn = HAS_NYHET && {
   senaste: db.prepare(`SELECT ${NYHET_KOLUMNER},
       min(coalesce(f.minx, p.lon)) AS minx, min(coalesce(f.miny, p.lat)) AS miny,
@@ -555,7 +577,7 @@ function affarer(url) {
       perTyp: ar ? qa.perTyp.all(...p, ar) : [],
       kopare: ar ? qa.kopare.all(...p, ar) : [],
       perKommun: ar && !kommun ? qa.perKommun.all(...p, ar) : [],
-      nyheter: qn ? qn.senaste.all(kommun, kommun).map((n) => ({ ...n, beteckningar: JSON.parse(n.beteckningar) })) : [],
+      nyheter: qn ? qn.senaste.all(kommun, kommun).map((n) => ({ ...publikNyhet(n), beteckningar: JSON.parse(n.beteckningar) })) : [],
     };
   });
 }
@@ -716,9 +738,9 @@ function matchaRad(r) {
   if (!kommun) return { beteckning: null, via: null, orsak: 'kommun' };
   const iKommunen = (f) => f && (f.kommun ?? '').toUpperCase() === kommun.toUpperCase();
   if (bet) {
-    // Beteckningen kan stå med eller utan kommunnamnet i Horos (beror på Lantmäteriets fil); båda prövas.
-    const f = [bet, `${kommun.toUpperCase()} ${bet}`].map((b) => q.fastighet.get(b)).find(iKommunen);
-    if (f) return { beteckning: f.beteckning, via: 'beteckning' };
+    if (forst && forst.kommun !== kommun) return { beteckning: null, via: null, orsak: 'kommun' };
+    const f = q.fastighet.get(fastighetsBet(bet, kommun));
+    if (iKommunen(f)) return { beteckning: f.beteckning, via: 'beteckning' };
   }
   if (adress && q.sokAdress && /\p{L}/u.test(adress)) {
     // Alla träffar i adressökningen (sökrutan visar bara 6): samma gata finns i många orter.
@@ -741,22 +763,19 @@ const EXPORT_COLS = ['beteckning', 'kommun', 'areal_m2', 'agare_orgnr', 'agare_n
   'taxeringsvarde_tkr', 'senaste_overlatelse', 'senaste_kopeskilling_kr'];
 const exportCache = new Map();
 // BOM + semikolon så att svensk Excel öppnar filen rätt.
-const csvCell = (v) => (v == null ? '' : /[;"\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
 const toCsv = (cols, rows) => '﻿' + [cols.join(';'), ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(';'))].join('\r\n');
 
-function buildExport(kind) {
-  if (exportCache.has(kind)) return exportCache.get(kind);
-  const rows = q.export.all();
-  let body;
-  if (kind === 'csv') {
-    body = toCsv(EXPORT_COLS, rows);
-  } else {
-    const features = rows.map((r) => featureJson(r.geojson, Object.fromEntries(EXPORT_COLS.map((c) => [c, r[c]]))));
-    body = `{"type":"FeatureCollection","features":[${features.join(',')}]}`;
-  }
-  const buf = Buffer.from(body, 'utf8');
-  exportCache.set(kind, buf);
+function buildExport() {
+  if (exportCache.has('geojson')) return exportCache.get('geojson');
+  const features = q.export.all().map((r) => featureJson(r.geojson, Object.fromEntries(EXPORT_COLS.map((c) => [c, r[c]]))));
+  const buf = Buffer.from(`{"type":"FeatureCollection","features":[${features.join(',')}]}`, 'utf8');
+  exportCache.set('geojson', buf);
   return buf;
+}
+
+function* csvRader(rows) {
+  yield '﻿' + EXPORT_COLS.join(';');
+  for (const r of rows) yield '\r\n' + EXPORT_COLS.map((c) => csvCell(r[c])).join(';');
 }
 
 const MIME = {
@@ -891,9 +910,9 @@ const routes = [
     const bet = normBeteckning(decodeURIComponent(m[1]));
     const f = q.fastighet.get(bet);
     if (!f) return [404, { error: 'Fastigheten finns inte' }];
-    return [200, { ...f, upplatelse: q.upplatelse.get(bet).u, adresser: adresserPa(bet), planer: planerPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet),
+    return [200, { ...f, upplatelse: q.upplatelse.get(bet).u, adresser: adresserPa(bet), planer: planerPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet).map((x) => x.forvarvare_orgnr ? x : { privat: true }),
       hyresgaster: q.hyresgaster ? q.hyresgaster.all(bet) : [], anvandning: q.anvandning ? q.anvandning.all(bet) : [],
-      nyheter: qn ? qn.fastighet.all(bet) : [],
+      nyheter: qn ? qn.fastighet.all(bet).map(publikNyhet) : [],
       ...omgivning(bet), ...miljoRisk(bet) }];
   }],
 
@@ -922,7 +941,7 @@ const routes = [
     if (term.length < 2) return [200, { adresser: [], bolag: [], fastigheter: [] }];
     const orgnr = normOrgnr(term);
     const bolag = orgnr ? [q.bolag.get(orgnr)].filter(Boolean).map(bolagTraff) : sokBolag(term);
-    return [200, { adresser: orgnr ? [] : sokAdress(term), bolag, fastigheter: q.sokFastighet.all(`%${normBeteckning(term)}%`) }];
+    return [200, { adresser: orgnr ? [] : sokAdress(term), bolag, fastigheter: orgnr || !ftsQuery(term) ? [] : q.sokFastighet.all(ftsQuery(term)) }];
   }],
 
   [/^\/tiles\/satellit\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'tiles',
@@ -932,7 +951,7 @@ const routes = [
     (m, _url, res) => historiskTile(res, ...m.slice(1).map(Number))],
 
   [/^\/data\/horos-traffar\.csv$/, 'api', (_m, url, res) => {
-    const rows = traffar(url);
+    const rows = traffar(url, q.traffCsv);
     if (!rows) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
     res.writeHead(200, {
       'content-type': 'text/csv; charset=utf-8',
@@ -943,7 +962,7 @@ const routes = [
   }],
 
   // Det gamla filnamnet (-stockholm) fungerar fortfarande för befintliga länkar.
-  [/^\/data\/horos-fastigheter(?:-stockholm)?\.(csv|geojson)$/, 'api', (m, _url, res) => {
+  [/^\/data\/horos-fastigheter(?:-stockholm)?\.(csv|geojson)$/, 'api', async (m, _url, res) => {
     const kind = m[1];
     if (kind === 'geojson' && !EXPORT_GEOMETRI) {
       return [403, { error: 'Fastighetsgränserna får inte laddas ner som fil ännu (väntar på Lantmäteriets villkor).' }];
@@ -953,7 +972,8 @@ const routes = [
       'content-disposition': `attachment; filename="horos-fastigheter.${kind}"`,
       'cache-control': 'public, max-age=3600',
     });
-    res.end(buildExport(kind));
+    if (kind === 'csv') await pipeline(Readable.from(csvRader(q.exportCsv.iterate())), res);
+    else res.end(buildExport());
   }],
 ];
 
@@ -975,14 +995,16 @@ async function serveStatic(res, pathname) {
 }
 
 createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://localhost');
-  // Samma adress kan ha en rutt per metod (t.ex. /api/mfn).
-  const passar = routes.filter(([re]) => re.test(url.pathname));
-  const route = passar.find(([, , , m = 'GET']) => req.method === m || (m === 'GET' && req.method === 'HEAD')) ?? passar[0];
-  const metod = route?.[3] ?? 'GET';
-  if (req.method !== metod && !(metod === 'GET' && req.method === 'HEAD')) return json(res, 405, { error: `endast ${passar.map((r) => r[3] ?? 'GET').join(', ')}` });
-  if (rateLimited(req, route?.[1] ?? 'api')) return json(res, 429, { error: 'för många förfrågningar, försök igen om en stund' });
   try {
+    let url;
+    try { url = new URL(req.url, 'http://localhost'); }
+    catch { return json(res, 400, { error: 'ogiltig URL' }); }
+    // Samma adress kan ha en rutt per metod (t.ex. /api/mfn).
+    const passar = routes.filter(([re]) => re.test(url.pathname));
+    const route = passar.find(([, , , m = 'GET']) => req.method === m || (m === 'GET' && req.method === 'HEAD')) ?? passar[0];
+    const metod = route?.[3] ?? 'GET';
+    if (req.method !== metod && !(metod === 'GET' && req.method === 'HEAD')) return json(res, 405, { error: `endast ${passar.map((r) => r[3] ?? 'GET').join(', ')}` });
+    if (rateLimited(req, route?.[1] ?? 'api')) return json(res, 429, { error: 'för många förfrågningar, försök igen om en stund' });
     if (route) {
       const out = await route[2](url.pathname.match(route[0]), url, res, req);
       if (out) json(res, ...out);
@@ -992,6 +1014,7 @@ createServer(async (req, res) => {
     await serveStatic(res, url.pathname);
   } catch (e) {
     console.error(e);
+    if (res.headersSent) return res.destroy();
     json(res, 500, { error: PUBLIC_MODE ? 'internt fel' : String(e.message ?? e) });
   }
 }).listen(PORT, HOST, () => console.log(`Horos${PUBLIC_MODE ? ' (publikt läge)' : ''}: http://${HOST}:${PORT}`));
