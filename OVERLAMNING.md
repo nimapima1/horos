@@ -1,7 +1,7 @@
-# Överlämning 2026-10-12 (kväll)
+# Överlämning 2026-10-13 (kväll)
 
 Läs `CLAUDE.md` först (regler, teknik, server) och `PRIVAT.md` (inte i git: mejlkontakter, myndighetsärenden,
-kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 till 2026-10-12 och vad som ska göras härnäst.
+kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 till 2026-10-13 och vad som ska göras härnäst.
 Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNING-hyresgaster.md`.
 
 ## Läget
@@ -11,8 +11,10 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
 - **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt.
-  - Koden till och med PR #17 (83ccb4c, mergad 2026-10-12 kväll: inläsning från Excel/CSV och omstruktureringen),
-    deployad och kontrollerad med curl (`/api/matcha` svarar, `kortlankar: true`). Däri PR #16 (scenarier som
+  - Koden till och med PR #25 (50492f1, 2026-10-13 kväll), deployad och kontrollerad med curl. Däri från 2026-10-13:
+    PR #22 och #24 (skydd mot massnedladdning och trafiktak, se nedan), #23 (pressmeddelanden: bolagets samlade
+    fastighetsvärde är inget affärspris), #21 (rättningar efter Codex granskning, 17 fynd) och #20 (AGENTS.md, kopia
+    av CLAUDE.md för Codex; uppdatera båda). Tidigare: PR #17 (inläsning från Excel/CSV och omstruktureringen). PR #16 (scenarier som
     räknas ihop, Med/Huvud, scenarier på kartan), PR #12–#15 (MFN-mottagaren, se nedan), PR #11 (decimalkomma,
     Street View och scenariovyn på mobil), PR #8 (scenarier och ny panel) och PR #2–#7 från 2026-10-11.
   - Publik databas byggd 2026-10-11 17:52 (enligt `/api/status`) med `--alla-bolag`, publicerad med `--data`: 0 fastigheter,
@@ -22,9 +24,11 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
     `set-secret` utan längdutskrift), plus `frame-src https://www.google.com` i CSP:n (2026-10-11, i
     `/etc/caddy/Caddyfile.template` och `set-domain horos.se`). Root-lösenordet återställdes 2026-10-10
     (Hetzner > Rescue); användaren har det. Drop-in `fastighetskarta.service.d/scenarion.conf` (cloud-init v6,
-    `StateDirectory=horos-scenarion`) inlagd 2026-10-11: korta länkar till scenarier är på.
+    `StateDirectory=horos-scenarion`) inlagd 2026-10-11: korta länkar till scenarier är på. Trafiktaket
+    (`horos-trafiktak.service`, 50 Mbit/s ut) installerat som root 2026-10-13.
   - `secrets.env`: GEOTORGET_USER/PASS, GOOGLE_EMBED_KEY och MFN_SECRET (2026-10-12).
-- `npm test`: 55 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
+- Grenar: bara `master`, lokalt och på GitHub (alla mergade grenar togs bort 2026-10-13).
+- `npm test`: 87 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
   av en annan session). Starta om servern efter import eller demo-data.
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
   terminal (lösenfras **direkt**, annars stänger servern anslutningen; det hände två gånger 2026-10-10). Första
@@ -32,6 +36,23 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   som väntar på lösenfrasen och som Claude inte får stänga om användaren skrivit i den. Deploy
   laddar upp arbetskatalogen som den är: kontrollera `git status` först så att ingen annan sessions ocommittade
   ändringar följer med.
+
+## Gjort 2026-10-13: driftkostnader och skydd mot massnedladdning (PR #22, #24, #25)
+
+Användaren frågade vad Horos kostar och om massnedladdning kan ge en faktura. Kostnaderna står i `PRIVAT.md`
+(Driftkostnader). Det som kan växa med trafiken är bara Hetzners trafik över 20 TB/månad (~1 €/TB) och en
+Google-nyckel som går att använda mot betalda API:er. Båda är stängda:
+- **Trafiktak** (PR #24, `deploy/trafiktak.sh`): `tc` (htb + fq_codel) begränsar all utgående trafik till 50 Mbit/s,
+  högst 16,7 TB på 31 dygn. Under en attack blir sajten långsam i stället för dyr. Installerat som root i Hetzners
+  konsol med `bash /opt/fastighetskarta/current/deploy/trafiktak.sh installera` (systemd-tjänst, sätts vid varje
+  uppstart); utskriften visade `rate 50Mbit ceil 50Mbit`. Ta bort: kommandona överst i skriptet.
+- **Diskcachen för historiska flygfoton** (PR #22) växte utan gräns (Stockholm × 13 årgångar ≈ 150–200 GB, disken
+  är 40 GB): `diskRymmer()` i `server.mjs` slutar spara rutor när mindre än `CACHE_MIN_LEDIGT_GB` (10) är ledigt.
+- **Hastighetsgränser** (PR #22), nya hinkar i `RATE`: `historisk` 300/10 s (Lantmäteriets tjänst) och `export`
+  2/10 s för hela databasen som fil. Provat live: tredje nedladdningen inom 10 s fick 429.
+- **Google** (användaren i konsolen): nyckeln begränsad till bara Maps Embed API (utöver horos.se), budgetlarm
+  "Horos" 10 kr/månad (50/90/100 %, mejl).
+- Codex granskade PR #22 utan fynd i ändringen (se Tips om hur Codex beter sig här).
 
 ## Gjort 2026-10-12 (eftermiddag och kväll): lägga ihop scenarier och läsa in från fil (PR #16–#17)
 
@@ -206,8 +227,9 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
    `secrets.env` kan inte läsas av deploy; fråga användaren hur den ska förvaras.
 5. Planer: länk till kommunens plandokument när kolumnerna i planfilen är kända (filen finns inte i `data/raw/` än).
 6. **Google-provperioden går ut 2026-12-31.** Utan uppgradering pausar Google projektet och Street View-rutan
-   slutar fungera (länkarna fungerar ändå). Embed API har varit gratis: be användaren uppgradera i god tid och
-   lägga en budgetvarning (Set up budget alerts). Kontrollera Googles aktuella villkor och priser först.
+   slutar fungera (länkarna fungerar ändå). Embed API har varit gratis: be användaren uppgradera i god tid.
+   Budgetlarmet (10 kr/månad) och begränsningen till Maps Embed API är gjorda 2026-10-13. Kontrollera Googles
+   aktuella villkor och priser först.
 7. När fastigheterna finns live: öppna några och klicka Street View (stadskärna, industriområde, stor tomt).
    Okänt hur rutan ser ut när bilden saknas nära mittpunkten; byt `mittpunkt` mot en punkt i polygonen om
    L-formade eller stora fastigheter hamnar fel.
@@ -257,6 +279,10 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
   Deploy startas med `run_in_terminal` i en ny flik; användaren skriver lösenfrasen där, Claude läser av fliken.
 - Hetzners konsol: `sed -i 's,a,b,' fil` med `,` som avgränsare och `\x3a` för kolon fungerade utan Skift
   (2026-10-11). Konsolen nås via knappen `>_` uppe till höger på serversidan.
+- Codex (`codex:codex-rescue`, 2026-10-13): kommandoverktyget föll första gången ("setup refresh had errors");
+  andra gången körde det men testerna föll på skrivskydd i Codex sandlåda (EPERM), så räkna inte dess testsiffror.
+  Det läste också grenen mot en gammal `origin/master` och rapporterade ett fel som redan var rättat på master.
+- `read_terminal` på deploy-fliken fungerade 2026-10-13 efter att användaren skrivit lösenfrasen.
 - Den lokala servern har ingen Google-nyckel: prova rutan genom att sätta `(await statusP).streetview = 'x'` i
   konsolen och öppna en fastighet (Google svarar "API key is invalid", det är väntat).
 
@@ -277,6 +303,9 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
   lokal import. Ett pressmeddelande som tagits bort lokalt kan komma tillbaka vid `--data` om det redan fallit ur
   Cisions flöde (ovanligt).
 - Om cron-jobbet misslyckas syns det bara i `nyheter.log`; ingen avisering.
+- Hastighetsgränserna är per IP och i minnet: många adresser tar sig förbi dem (trafiktaket begränsar ändå
+  kostnaden). Trafiktaket är inte provat under full last, och spärren för full disk är inte provad. Taket försvinner
+  om nätverket startas om utan omstart av servern (då: `systemctl restart horos-trafiktak`).
 - `/api/kommunkluster` räknar över alla fastigheter vid första anropet med ett nytt filter; inte mätt med
   rikstäckande data (förberäkna i build-public om det blir långsamt).
 - Uppskattad LOA kan bli orimlig (stora arbetsgivare, lokaler utan företag); tumreglerna står på metodsidan.
