@@ -361,6 +361,7 @@ label.copy { display: inline-flex; align-items: center; }
 .panel th { text-align: left; font-weight: 600; font-size: 13px; color: var(--subtle); padding: 0 6px 6px 0; }
 .panel td { padding: 9px 6px 9px 0; border-top: 1px solid var(--border); vertical-align: top; }
 .panel td.num, .panel th.num { text-align: right; padding-right: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.panel td.num .kalla { white-space: normal; overflow-wrap: normal; word-break: normal; }   /* "Enligt Fastighetsvärlden" får brytas i den smala priskolumnen */
 .panel td .small { margin-top: 1px; }
 .panel td.dag { width: 1%; white-space: nowrap; padding-right: 14px; font-variant-numeric: tabular-nums; }
 .panel a { cursor: pointer; font-weight: 600; }
