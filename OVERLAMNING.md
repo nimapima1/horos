@@ -11,9 +11,10 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
 - **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt.
-  - Koden till och med PR #36 (`4b9d4c2`, publicerad 2026-10-15 13:38 UTC): #36 index på `bolag.namn` (se nedan).
-    **PR #37** (sök i Transaktioner: affärerna i minnet) mergades 13:29 UTC, efter att koden hämtats, och är
-    **inte live** än. Dessförinnan PR #34 (2026-10-15 eftermiddag): #31 Fastighetsvärlden, #32/#34 dubbletter mellan källor
+  - Koden till och med PR #38 (`524c293`, publicerad 2026-10-15 13:45 UTC utan `--data`): #37 sök i Transaktioner
+    (affärerna i minnet, egen gräns `RATE_SOK`), #36 index på `bolag.namn` (se nedan). Kontrollerat med curl.
+    Två sessioner som publicerar samtidigt skriver över varandra: publiceringen 13:38 UTC (databasen, kod `4b9d4c2`)
+    tog bort #37 som publicerats 13:34. Dessförinnan PR #34 (2026-10-15 eftermiddag): #31 Fastighetsvärlden, #32/#34 dubbletter mellan källor
     (se nedan), #33 sök bland transaktioner och #29/#30 mobilrättningar (de två sista från en annan session).
     Kontrollerat med curl. Före det PR #27 (MFN-gränsen 10 MB). Från 2026-10-13:
     PR #22 och #24 (skydd mot massnedladdning och trafiktak, se nedan), #23 (pressmeddelanden: bolagets samlade
