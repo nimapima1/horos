@@ -22,6 +22,8 @@ const vanta = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Den publika databasen öppnas utan openDb: schemat skulle skapa tabeller som gör att servern vägrar starta.
 const db = args.publik ? new DatabaseSync(args.publik) : openDb();
+// Indexet för dubblettkontrollen (lib/db.mjs) även i publika databaser byggda före det.
+if (args.publik) db.exec('CREATE INDEX IF NOT EXISTS nyhet_affar ON nyhet(typ, pris_kr, datum)');
 if (!args.publik) rebuildRtree(db, 'fastighet');
 
 // Cron hämtar pressmeddelanden på servern, så den gamla publika databasen kan ha sådana som den nya
