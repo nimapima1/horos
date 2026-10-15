@@ -190,6 +190,17 @@ test('affärer räknar en paketaffär en gång', async () => {
   assert.deepEqual((await json('/api/affarer?min=100')).arLista, ['2024']);   // köpet 2020 är under 100 Mkr
 });
 
+test('sök transaktioner', async () => {
+  const sok = async (s, extra = '') => (await json(`/api/affarer?sok=${encodeURIComponent(s)}${extra}`)).traffar?.map((r) => r.dag);
+  assert.deepEqual(await sok('t 1:3'), ['2024-05-01']);          // andra fastigheten i paketaffären
+  assert.deepEqual(await sok('ALFA'), ['2024-05-01']);
+  assert.deepEqual(await sok('769000-0002'), ['2020-01-01']);    // org.nr med bindestreck
+  assert.deepEqual(await sok('brf beta'), ['2020-01-01']);
+  assert.deepEqual(await sok('beta', '&min=100'), []);           // köpeskillingsfiltret gäller
+  assert.deepEqual(await sok('gamma'), []);
+  assert.equal(await sok('a'), undefined);                       // minst två tecken
+});
+
 test('största ägare', async () => {
   const r = await json('/api/storsta-agare?efter=varde');
   assert.equal(r.agare[0].namn, 'Alfa AB');

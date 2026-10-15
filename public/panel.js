@@ -344,11 +344,12 @@ const affarRad = (r) => `<tr>${dagCell(r.dag)}
   <td class="num">${mkr(r.kr / 1000)}</td></tr>`;
 
 // Affär ur ett pressmeddelande: rubriken länkar till källan, "Visa på kartan" ramar in fastigheterna.
+// Kommunen visas inte (står oftast i rubriken); MFN anges som källa under priset.
 const nyhetRad = (n) => `<tr>${dagCell(n.dag)}
   <td><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.rubrik)}</a>
-    <div class="muted small">${n.kalla === 'cision' || n.kalla === 'mfn' ? `${esc(n.utgivare)} ${n.typ === 'kop' ? 'köper' : 'säljer'}` : `Enligt ${esc(n.utgivare)}`}${n.kommun ? ` · ${esc(n.kommun)}` : ''}${n.kalla === 'mfn' ? ' · via MFN' : ''}${n.minx != null
+    <div class="muted small">${n.kalla === 'cision' || n.kalla === 'mfn' ? `${esc(n.utgivare)} ${n.typ === 'kop' ? 'köper' : 'säljer'}` : `Enligt ${esc(n.utgivare)}`}${n.minx != null
       ? ` · <a data-ram="${[n.minx, n.miny, n.maxx, n.maxy].join(',')}" data-markera="${esc(JSON.stringify(n.beteckningar))}">Visa på kartan</a>` : ''}</div></td>
-  <td class="num">${n.pris_kr ? mkr(n.pris_kr / 1000) : '–'}</td></tr>`;
+  <td class="num">${n.pris_kr ? mkr(n.pris_kr / 1000) : '–'}${n.kalla === 'mfn' ? '<div class="muted small">via MFN</div>' : ''}</td></tr>`;
 
 // Transaktioner: volym, antal och de senaste och största köpen, som Datschas transaktionsöversikt.
 async function openAffarer(p = {}) {
@@ -369,7 +370,12 @@ async function openAffarer(p = {}) {
       ${field('Kommun', 'kommun', options(s.kommuner ?? [], a.kommun, 'Alla kommuner'))}
       ${field('År', 'ar', options(a.arLista, a.ar))}
       ${field('Köpeskilling', 'min', options([[0, 'Alla'], [10, 'Över 10 Mkr'], [40, 'Över 40 Mkr'], [100, 'Över 100 Mkr']], a.min))}
+      <label class="hel">Sök transaktioner<input type="search" name="sok" value="${esc(p.sok ?? '')}"
+        placeholder="Fastighet, köpare, säljare eller org.nr" autocomplete="off" enterkeyhint="search"></label>
     </form>
+    ${a.sok ? `<h3>Träffar för ”${esc(p.sok)}”</h3>
+    <div class="meta small">Alla år${a.traffar.length === 50 ? ', de 50 senaste' : ''}.</div>
+    ${table('<th>Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.traffar.map(affarRad), 'Inga transaktioner hittades.')}` : ''}
     ${a.nyheter.length ? `<h3>Senaste i pressmeddelanden och nyheter</h3>
     <div class="meta small">Fastighetsbolagens pressmeddelanden (Cision, MFN) och notiser i Fastighetsvärlden. Pris enligt källan; affären syns i lagfarterna några månader senare.</div>
     ${table('<th>Datum</th><th>Affär</th><th class="num">Pris</th>', a.nyheter.map(nyhetRad), '')}` : ''}

@@ -638,10 +638,14 @@ $('#panel').addEventListener('click', (e) => {
 });
 
 // Panelvyerna (panel.js): formulär, länkar i sidhuvudet och #-adresser.
+const visaFormVy = (form) => VIEWS[`#${form.dataset.view}`](Object.fromEntries([...new FormData(form)].filter(([, v]) => v !== '')));
 $('#panel').addEventListener('change', (e) => {
   const form = e.target.closest('form[data-view]');
-  if (form) VIEWS[`#${form.dataset.view}`](Object.fromEntries([...new FormData(form)].filter(([, v]) => v !== '')));
+  if (form && e.target.type !== 'search') visaFormVy(form);   // sökfältet söker med Enter (submit nedan)
   if (e.target.matches('[data-sc-fil]') && e.target.files[0]) { lasScenarioFil(e.target.files[0]); e.target.value = ''; }   // samma fil kan väljas igen
+});
+$('#panel').addEventListener('submit', (e) => {
+  if (e.target.matches('form[data-view]')) { e.preventDefault(); visaFormVy(e.target); }
 });
 $('#panel').addEventListener('input', (e) => { if (e.target.dataset.k && scenario) scenarioInput(e.target); });
 for (const a of document.querySelectorAll('.topbar a[href^="#"]')) {
