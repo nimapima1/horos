@@ -199,6 +199,25 @@ test('sök transaktioner', async () => {
   assert.deepEqual(await sok('beta', '&min=100'), []);           // köpeskillingsfiltret gäller
   assert.deepEqual(await sok('gamma'), []);
   assert.equal(await sok('a'), undefined);                       // minst två tecken
+
+  // Paket med fastigheter i två kommuner och olika säljare: hela paketet är sökbart, även med kommunfilter.
+  const db = openDb({ path: DB });
+  db.exec(`INSERT INTO bolag (orgnr, namn) VALUES ('5560000011', 'Nordhus AB'), ('5560000012', 'Sydhem AB');
+    INSERT INTO fastighet (beteckning, kommun, geojson, minx, miny, maxx, maxy, kalla) VALUES
+      ('P 1:1', 'Testkommun', '{}', 21, 66, 21.001, 66.001, 'lantmateriet'), ('P 1:2', 'Annankommun', '{}', 21.01, 66, 21.011, 66.001, 'lantmateriet');
+    INSERT INTO transaktion (beteckning, inskrivningsdag, kopeskilling_kr, forvarvare_orgnr) VALUES
+      ('P 1:1', '2015-01-01', 1000000, '5560000011'), ('P 1:2', '2015-01-01', 1000000, '5560000012'),
+      ('P 1:1', '2022-06-01', 50000000, '5560000001'), ('P 1:2', '2022-06-01', 50000000, '5560000001')`);
+  try {
+    assert.deepEqual(await sok('sydhem'), ['2022-06-01', '2015-01-01']);   // säljaren av den andra fastigheten
+    const [paket] = (await json('/api/affarer?sok=p%201%3A2&kommun=Testkommun')).traffar;
+    assert.deepEqual([paket.dag, paket.beteckning, paket.antal, paket.saljare], ['2022-06-01', 'P 1:1', 2, 'Nordhus AB']);
+    assert.deepEqual(await sok('p 1:2', '&kommun=Testkommun'), ['2022-06-01']);   // köpet 2015 ligger bara i Annankommun
+  } finally {
+    db.exec(`DELETE FROM transaktion WHERE beteckning LIKE 'P %'; DELETE FROM fastighet WHERE beteckning LIKE 'P %';
+      DELETE FROM bolag WHERE orgnr IN ('5560000011', '5560000012')`);
+    db.close();
+  }
 });
 
 test('största ägare', async () => {

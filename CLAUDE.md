@@ -104,7 +104,7 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
   CSV-nedladdning (`/data/horos-traffar.csv`); "Färga efter" värde, värde/m², användning, ägartyp,
   köpår; prickar/kluster zoom 10–14 (`/api/punkter`), antal per kommun under zoom 10 (`/api/kommunkluster`); hovringsruta; delbar adress (`?l=&f=&farg=` + filter).
 - Panelvyer: Transaktioner (`#transaktioner`, hette Affärer, `#affarer` fungerar fortfarande; `/api/affarer`: volym, per användning/kommun, köpare, största,
-  senaste, säljare; sökfält `sok`: fastighet, köpare, säljare eller org.nr, alla år, cachas inte) och Största ägare (`#agare`, `/api/storsta-agare`, även i kartutsnittet).
+  senaste, säljare; sökfält `sok`: fastighet, köpare, säljare eller org.nr, alla år; affärerna i minnet (`byggAffarSok`), egen gräns `RATE_SOK`) och Största ägare (`#agare`, `/api/storsta-agare`, även i kartutsnittet).
 - Fastighetspanelen: ägare sedan, köp/m², K/T-kvot, taxeringsändring, säljare, grannar, köp i närheten.
 - Bolagspanelen: tomtareal, köp, sålt, "Visa alla på kartan" (`/api/fastigheter?org=`).
 - Sök: ägare först med antal fastigheter (ägarlistan i minnet). Servertester i `test/server.test.mjs`.
