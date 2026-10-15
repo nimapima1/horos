@@ -240,8 +240,9 @@ button { font: inherit; color: inherit; }
 .panel dd { margin: 0; }
 .view-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 10px; margin-top: 14px; }
 .view-form label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
-.view-form select { width: 100%; height: 40px; padding: 0 8px; font: inherit; font-size: 14px; color: var(--text); background: var(--surface-sunken); border: 1px solid transparent; border-radius: var(--radius-sm); }
-.view-form select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.view-form .hel { grid-column: 1 / -1; }
+.view-form :is(select, input) { width: 100%; height: 40px; padding: 0 8px; font: inherit; font-size: 14px; color: var(--text); background: var(--surface-sunken); border: 1px solid transparent; border-radius: var(--radius-sm); }
+.view-form :is(select, input):focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
 .copy {
   margin-top: 16px; min-height: 40px; padding: 8px 14px; border: 0; border-radius: var(--radius-sm); cursor: pointer;
   background: var(--accent-soft); color: var(--accent-strong); font-weight: 600;
@@ -447,7 +448,7 @@ label.copy { display: inline-flex; align-items: center; }
   .links a { padding: 10px 6px; }
   .links .wide-only { display: none; }   /* samma sida som Metod; får inte plats */
   .search input { font-size: 16px; }   /* hindrar iOS från att zooma in vid fokus */
-  #filter input, #filter select, .view-form select { height: 44px; font-size: 16px; }
+  #filter input, #filter select, .view-form :is(select, input) { height: 44px; font-size: 16px; }
   /* Tryckytor minst 44 px. */
   .links a, .verktyg > * { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
   .close, .sc-meny > summary, .lagg-till { width: 44px; height: 44px; }

@@ -369,7 +369,12 @@ async function openAffarer(p = {}) {
       ${field('Kommun', 'kommun', options(s.kommuner ?? [], a.kommun, 'Alla kommuner'))}
       ${field('År', 'ar', options(a.arLista, a.ar))}
       ${field('Köpeskilling', 'min', options([[0, 'Alla'], [10, 'Över 10 Mkr'], [40, 'Över 40 Mkr'], [100, 'Över 100 Mkr']], a.min))}
+      <label class="hel">Sök transaktioner<input type="search" name="sok" value="${esc(p.sok ?? '')}"
+        placeholder="Fastighet, köpare, säljare eller org.nr" autocomplete="off" enterkeyhint="search"></label>
     </form>
+    ${a.sok ? `<h3>Träffar för ”${esc(p.sok)}”</h3>
+    <div class="meta small">Alla år${a.traffar.length === 50 ? ', de 50 senaste' : ''}.</div>
+    ${table('<th>Datum</th><th>Fastighet och köpare</th><th class="num">Pris</th>', a.traffar.map(affarRad), 'Inga transaktioner hittades.')}` : ''}
     ${a.nyheter.length ? `<h3>Senaste i pressmeddelanden och nyheter</h3>
     <div class="meta small">Fastighetsbolagens pressmeddelanden (Cision, MFN) och notiser i Fastighetsvärlden. Pris enligt källan; affären syns i lagfarterna några månader senare.</div>
     ${table('<th>Datum</th><th>Affär</th><th class="num">Pris</th>', a.nyheter.map(nyhetRad), '')}` : ''}

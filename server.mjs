@@ -504,7 +504,7 @@ const TRAFF_COLS = ['beteckning', 'agare', 'agartyp', 'typ', 'varde_tkr', 'areal
 // Lantmäteriets förvärvs-id när det finns i filen.
 const AFFAR = `WITH affar AS (
   SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, x.forvarvare_orgnr AS orgnr,
-    min(x.beteckning) AS beteckning, count(*) AS antal, max(x.demo) AS demo
+    min(x.beteckning) AS beteckning, group_concat(x.beteckning, ' ') AS beteckningar, count(*) AS antal, max(x.demo) AS demo
   FROM transaktion x JOIN fastighet f ON f.beteckning = x.beteckning
   WHERE x.forvarvare_orgnr IS NOT NULL AND x.kopeskilling_kr >= ? AND (? IS NULL OR f.kommun = ?)
   GROUP BY 1, 2, 3)`;
@@ -540,7 +540,15 @@ const qn = HAS_NYHET && {
     WHERE n.url IN (SELECT url FROM nyhet_plats WHERE beteckning = ?) AND ${INTE_DUBBLETT} ORDER BY n.datum DESC`),
 };
 
+// Sökningen i Transaktioner: alla ord ska finnas i texten (versaler och å/ä/ö spelar ingen roll, som agareMed).
+db.function('sok_traff', { deterministic: true }, (text, term) => {
+  const t = text.toLocaleLowerCase('sv');
+  return term.split(' ').every((o) => t.includes(o)) ? 1 : 0;
+});
 const qa = {
+  // Fastigheterna (alla i en paketaffär), köparen och säljaren med namn och org.nr, alla år.
+  sok: db.prepare(`${AFFAR} ${AFFAR_RAD} WHERE sok_traff(concat_ws(' ', a.beteckningar, a.orgnr, b.namn, sb.orgnr, sb.namn), ?)
+    ORDER BY a.dag DESC LIMIT 50`),
   ar: db.prepare(`${AFFAR} SELECT DISTINCT substr(dag, 1, 4) AS ar FROM affar WHERE dag IS NOT NULL ORDER BY ar DESC`),
   summa: db.prepare(`${AFFAR} SELECT count(*) AS antal, sum(kr) AS kr FROM affar WHERE substr(dag, 1, 4) = ?`),
   dagar30: db.prepare(`${AFFAR} SELECT count(*) AS antal, sum(kr) AS kr FROM affar WHERE dag >= date('now', '-30 days')`),
@@ -586,7 +594,10 @@ function affarer(url) {
   const p = [minMkr * 1e6, kommun, kommun];
   const arLista = cached(`affarAr|${kommun}|${minMkr}`, () => qa.ar.all(...p).map((r) => r.ar));
   const ar = oneOf(url.searchParams.get('ar'), arLista) ?? arLista[0] ?? null;
-  return cached(`affarer|${kommun}|${minMkr}|${ar}`, () => {
+  // Org.nr skrivs med eller utan bindestreck; i databasen står det utan.
+  const sok = (url.searchParams.get('sok') ?? '').toLocaleLowerCase('sv').replace(/\b(\d{6})-(\d{4})\b/g, '$1$2')
+    .split(/\s+/).filter(Boolean).join(' ').slice(0, 60);
+  const oversikt = cached(`affarer|${kommun}|${minMkr}|${ar}`, () => {
     return {
       kommun, min: minMkr, ar, arLista,
       summa: ar ? qa.summa.get(...p, ar) : { antal: 0, kr: null },
@@ -599,6 +610,8 @@ function affarer(url) {
       nyheter: qn ? qn.senaste.all(kommun, kommun).map((n) => ({ ...publikNyhet(n), beteckningar: JSON.parse(n.beteckningar) })) : [],
     };
   });
+  // Sökningen cachas inte (godtyckliga nycklar, som kartutsnittet i storsta).
+  return sok.length >= 2 ? { ...oversikt, sok, traffar: qa.sok.all(...p, sok) } : oversikt;
 }
 
 function storsta(url) {
