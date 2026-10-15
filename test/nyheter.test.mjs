@@ -164,18 +164,26 @@ test('tidningar: Fastighetsvärldens flöde (sitemap.rss) läses, och tidningen 
   assert.equal(db.prepare('SELECT rubrik FROM nyhet').get().rubrik, `Fastighetsköp för ${(286e6).toLocaleString('sv-SE')} kr`);
 });
 
-test('tidningar: aktören i rubriken bara när namnet exakt är ett registrerat bolag', () => {
+test('tidningar: aktören i rubriken, exakt eller ett fastighetsbolag som är nära nog', () => {
   const db = new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE bolag (orgnr TEXT, namn TEXT); INSERT INTO bolag VALUES
-      ('5560000001', 'NP3 AB (publ)'), ('5560000002', 'Anna Andersson Fastigheter AB'),
-      ('5560000003', 'Tvilling AB'), ('5560000004', 'Tvilling'), ('8001011234', 'Person AB');
+  db.exec(`CREATE TABLE bolag (orgnr TEXT, namn TEXT, sni TEXT, avregistrerad TEXT); INSERT INTO bolag VALUES
+      ('5560000001', 'NP3 AB (publ)', '64202', NULL), ('5560000002', 'Anna Andersson Holding AB', '00000', NULL),
+      ('5560000003', 'Tvilling AB', '68201', NULL), ('5560000004', 'Tvilling', '68201', NULL), ('8001011234', 'Person AB', '68201', NULL),
+      ('5560000005', 'Sävebo Aktiebolag', '68201', NULL), ('5560000006', 'Sävebo Malmö 1 AB', '68201', NULL),
+      ('5560000007', 'Balder Sweden AB', '64212', NULL), ('5560000008', 'Fastighets AB Balder', '68203', NULL),
+      ('5560000009', 'Gamla Fastigheter AB', '68201', '2020-01-01');
+    CREATE VIRTUAL TABLE bolag_fts USING fts5(namn, content='bolag', content_rowid='rowid');
+    INSERT INTO bolag_fts(bolag_fts) VALUES('rebuild');
     CREATE TABLE nyhet (url TEXT, kalla TEXT, utgivare TEXT, rubrik TEXT, typ TEXT, pris_kr INTEGER, kommun TEXT, aktor_orgnr TEXT);
     INSERT INTO nyhet VALUES ('u', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', 'salj', 286000000, NULL, '5560000001')`);
   const aktor = aktorBolag(db);
-  assert.deepEqual({ ...aktor('NP3') }, { orgnr: '5560000001', namn: 'NP3 AB (publ)' });
-  assert.equal(aktor('Anna Andersson'), null);   // bara början av namnet
-  assert.equal(aktor('Tvilling'), null);         // två bolag heter så
+  assert.deepEqual({ ...aktor('NP3') }, { orgnr: '5560000001', namn: 'NP3 AB (publ)' });   // exakt
+  assert.equal(aktor('Sävebo')?.namn, 'Sävebo Aktiebolag');      // nära nog; "Malmö 1" är fler ord
+  assert.equal(aktor('Balder')?.namn, 'Fastighets AB Balder');   // SNI 68 före holdingbolaget
+  assert.equal(aktor('Anna Andersson'), null);   // varken fastighets- eller holdingbolag
+  assert.equal(aktor('Tvilling'), null);         // två bolag heter exakt så
   assert.equal(aktor('Person'), null);           // inget giltigt org.nr
+  assert.equal(aktor('Gamla'), null);            // avregistrerat
   assert.equal(aktor(null), null);
   publiceraNyheter(db);
   assert.equal(db.prepare('SELECT rubrik FROM nyhet').get().rubrik, `Fastighetsförsäljning av NP3 AB (publ) för ${(286e6).toLocaleString('sv-SE')} kr`);
