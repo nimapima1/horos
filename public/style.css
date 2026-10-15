@@ -450,7 +450,9 @@ label.copy { display: inline-flex; align-items: center; }
   #filter input, #filter select, .view-form select { height: 44px; font-size: 16px; }
   /* Tryckytor minst 44 px. */
   .links a, .verktyg > * { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
-  .close, .sc-meny > summary, .lagg-till, .maplibregl-ctrl-group button { width: 44px; height: 44px; }
+  .close, .sc-meny > summary, .lagg-till { width: 44px; height: 44px; }
+  /* Bara zoomknapparna: Detaljplaner och Street View är också knappar i en kontrollgrupp, men 104 px breda. */
+  .maplibregl-ctrl-group :is(.maplibregl-ctrl-zoom-in, .maplibregl-ctrl-zoom-out) { width: 44px; height: 44px; }
   .copy, #filter button { min-height: 44px; }
   #filter-csv { display: flex; align-items: center; min-height: 44px; }
   .sc-fler summary { padding: 12px 0; }
