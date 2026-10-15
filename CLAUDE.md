@@ -122,7 +122,7 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
   Ingen kostnad; MFN vill att de anges som källa. **Fastighetsvärlden** (2026-10-15): öppet flöde
   `sitemap.rss` (rubrik, länk, datum; pekas ut i robots.txt, inget förbehåll mot insamling), `TIDNINGAR` i
   `lib/nyheter.mjs`; bara `/notiser/` och bara affärer där den som köper eller säljer (`aktorIRubrik`) är ett bolag i
-  `bolag_fts`; rubriken på sidan utan bolagsnamn, "Enligt Fastighetsvärlden"; meddelande till redaktionen (utkast 2026-10-15,
+  `bolag_fts`; rubriken på sidan utan bolagsnamn, "Enligt Fastighetsvärlden"; samma affär som ett pressmeddelande (typ och pris lika, högst 3 dagar isär, `INTE_DUBBLETT` i server.mjs) visas bara som pressmeddelandet; meddelande till redaktionen (utkast 2026-10-15,
   publicera först när det är skickat; slutar om de invänder). **Bonnier News (Fastighetsnytt, DI) förbjuder insamling** utan skriftligt tillstånd
   (robots.txt, bonniernews.se/info/upphovsratt-och-ai): inte med; begäran om tillstånd som utkast 2026-10-15 (se `PRIVAT.md`). På servern: cron (som deploy, inlagd av `deploy.sh`) kör
   `deploy/nyheter.sh` 05:15 och 15:15 UTC: `import-nyheter --publik` på en kopia av den publika databasen

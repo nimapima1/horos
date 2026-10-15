@@ -144,6 +144,22 @@ test('pressmeddelanden i Affärer och på fastigheten', async () => {
   assert.deepEqual((await json('/api/fastighet/T%201%3A2')).nyheter, []);
 });
 
+test('samma affär i en tidning och ett pressmeddelande visas en gång; tidningen blir aldrig köpare', async () => {
+  const db = openDb({ path: DB });
+  db.exec(`INSERT INTO bolag (orgnr, namn) VALUES ('5560000009', 'Fastighetsvärlden');
+    INSERT INTO nyhet (url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun) VALUES
+    ('https://www.fastighetsvarlden.se/notiser/1/', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', '2026-09-03T06:00:00Z', 'kop', 300000000, NULL),
+    ('https://www.fastighetsvarlden.se/notiser/2/', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', '2026-09-20T06:00:00Z', 'kop', 300000000, NULL),
+    ('https://www.fastighetsvarlden.se/notiser/3/', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', '2026-09-02T06:00:00Z', 'kop', NULL, NULL)`);
+  db.close();
+  const urls = (await json('/api/affarer')).nyheter.map((n) => n.url);
+  // 1 är samma affär som Alfas pressmeddelande (samma pris, två dagar senare); 2 är för långt ifrån, 3 saknar pris.
+  assert.ok(!urls.includes('https://www.fastighetsvarlden.se/notiser/1/'));
+  assert.ok(urls.includes('https://www.fastighetsvarlden.se/notiser/2/') && urls.includes('https://www.fastighetsvarlden.se/notiser/3/'));
+  const n2 = (await json('/api/affarer')).nyheter.find((n) => n.url.endsWith('/2/'));
+  assert.equal(n2.rubrik, `Fastighetsköp för ${(300e6).toLocaleString('sv-SE')} kr`);   // inte "Fastighetsvärlden meddelar …"
+});
+
 test('affärer räknar en paketaffär en gång', async () => {
   const a = await json('/api/affarer');
   assert.deepEqual(a.arLista, ['2024', '2020']);
