@@ -517,11 +517,14 @@ const AFFAR_RAD = `SELECT a.dag, a.kr, a.orgnr, a.beteckning, a.antal, a.demo, b
   JOIN fastighet f ON f.beteckning = a.beteckning LEFT JOIN bolag b ON b.orgnr = a.orgnr`;
 // Affärer i pressmeddelanden, senaste först, med fastigheterna som finns i Horos (eller adresspunkten)
 // som bbox och beteckningar för kartan.
-const NYHET_KOLUMNER = 'n.url, n.kalla, n.utgivare, n.rubrik, substr(n.datum, 1, 10) AS dag, n.typ, n.pris_kr, n.kommun';
+// aktor_orgnr saknas i publika databaser byggda före kolumnen (lib/db.mjs).
+const NYHET_KOLUMNER = 'n.url, n.kalla, n.utgivare, n.rubrik, substr(n.datum, 1, 10) AS dag, n.typ, n.pris_kr, n.kommun'
+  + (hasColumn(db, 'nyhet', 'aktor_orgnr') ? ', n.aktor_orgnr' : '');
 const nyhetsBolag = db.prepare('SELECT orgnr, namn FROM bolag WHERE namn = ?');
+const aktorsBolag = db.prepare('SELECT orgnr, namn FROM bolag WHERE orgnr = ?');
 const PRESSMEDDELANDE = "('cision', 'mfn')";   // övriga källor är tidningar: källan, inte köparen eller säljaren
-const publikNyhet = (n) => {
-  const b = PRESSMEDDELANDE.includes(`'${n.kalla}'`) ? nyhetsBolag.get(n.utgivare) : null;
+const publikNyhet = ({ aktor_orgnr, ...n }) => {
+  const b = PRESSMEDDELANDE.includes(`'${n.kalla}'`) ? nyhetsBolag.get(n.utgivare) : aktor_orgnr ? aktorsBolag.get(aktor_orgnr) : null;
   return { ...n, rubrik: nyhetsRubrik(n, normOrgnr(b?.orgnr) ? b.namn : null) };
 };
 // Samma affär i flera källor (samma typ och pris, högst 3 dagar isär, inte olika kända kommuner) visas en gång:

@@ -33,7 +33,8 @@ test('deploy --data: pressmeddelanden som bara finns på servern följer med, pl
   publik(GAMMAL, `INSERT INTO nyhet (url, kalla, utgivare, rubrik, typ) VALUES
       ('${URL(1)}', 'cision', 'Alfa', 'Alfa köper från privatpersonen Test Testsson', 'kop'), ('${URL(2)}', 'cision', 'Alfa', 'Gammal rubrik', 'kop');
     INSERT INTO nyhet_plats (url, beteckning, adress, lon, lat) VALUES
-      ('${URL(1)}', 'T 1:1', NULL, NULL, NULL), ('${URL(1)}', 'T 9:9', 'Gatan 1', 18.5, 59.5), ('${URL(2)}', 'T 1:1', NULL, NULL, NULL)`);
+      ('${URL(1)}', 'T 1:1', NULL, NULL, NULL), ('${URL(1)}', 'T 9:9', 'Gatan 1', 18.5, 59.5), ('${URL(2)}', 'T 1:1', NULL, NULL, NULL);
+    ALTER TABLE nyhet DROP COLUMN aktor_orgnr`);   // serverns databas kan vara byggd före kolumnen
   publik(NY, `INSERT INTO nyhet (url, kalla, utgivare, rubrik, typ) VALUES ('${URL(2)}', 'cision', 'Alfa', 'Ny rubrik', 'kop')`);
   const r = node([join(ROOT, 'scripts', 'import-nyheter.mjs'), '--publik', NY, '--behall', GAMMAL]);
   assert.equal(r.status, 0, r.stderr);

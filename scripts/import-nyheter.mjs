@@ -11,10 +11,10 @@
 //                                                     skickat till /api/mfn, utom url:er i --undanta; ingen hämtning)
 import { existsSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { NYHET_PLATS_UTANFOR, openDb, rebuildRtree, withTransaction } from '../lib/db.mjs';
+import { NYHET_PLATS_UTANFOR, hasColumn, openDb, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 import { pointInGeom } from '../lib/geo.mjs';
-import { CISION, TIDNINGAR, aktorIRubrik, arFastighetsbolag, lasRss, tolka, nyhetsRubrik, publiceraNyheter } from '../lib/nyheter.mjs';
+import { CISION, TIDNINGAR, aktorBolag, aktorIRubrik, arFastighetsbolag, arTidning, lasRss, tolka, nyhetsRubrik, publiceraNyheter } from '../lib/nyheter.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const UA = 'Horos/0.1 (ideell fastighetskarta; kontakt@horos.se)';
@@ -24,15 +24,19 @@ const vanta = (ms) => new Promise((r) => setTimeout(r, ms));
 const db = args.publik ? new DatabaseSync(args.publik) : openDb();
 // Indexet för dubblettkontrollen (lib/db.mjs) även i publika databaser byggda före det.
 if (args.publik) db.exec('CREATE INDEX IF NOT EXISTS nyhet_affar ON nyhet(typ, pris_kr, datum)');
+// Kolumnen aktor_orgnr (lib/db.mjs) även i publika databaser byggda före den.
+if (args.publik && !hasColumn(db, 'nyhet', 'aktor_orgnr')) db.exec('ALTER TABLE nyhet ADD COLUMN aktor_orgnr TEXT');
 if (!args.publik) rebuildRtree(db, 'fastighet');
 
 // Cron hämtar pressmeddelanden på servern, så den gamla publika databasen kan ha sådana som den nya
 // (byggd lokalt) saknar. Platserna följer bara med på fastigheter i den nya.
 if (args.publik && args.behall) {
   db.exec(`ATTACH DATABASE '${String(args.behall).replace(/'/g, "''")}' AS gammal`);
+  // Den gamla kan sakna senare kolumner (aktor_orgnr): bara de den har.
+  const kol = db.prepare("SELECT name FROM pragma_table_info('nyhet', 'gammal')").all().map((k) => k.name).join(', ');
   withTransaction(db, () => db.exec(`
     CREATE TEMP TABLE bara_gamla AS SELECT url FROM gammal.nyhet WHERE url NOT IN (SELECT url FROM main.nyhet);
-    INSERT INTO main.nyhet SELECT * FROM gammal.nyhet WHERE url IN (SELECT url FROM bara_gamla);
+    INSERT INTO main.nyhet (${kol}) SELECT ${kol} FROM gammal.nyhet WHERE url IN (SELECT url FROM bara_gamla);
     INSERT INTO main.nyhet_plats SELECT * FROM gammal.nyhet_plats
       WHERE url IN (SELECT url FROM bara_gamla) AND NOT ${NYHET_PLATS_UTANFOR};`));
   publiceraNyheter(db);
@@ -42,7 +46,7 @@ if (args.publik && args.behall) {
 
 // Innehållet i nyhet/nyhet_plats, för att se om något ändrades (då behöver servern inte startas om).
 const innehall = () => db.prepare(`SELECT
-  (SELECT json_group_array(json_array(url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun)) FROM (SELECT * FROM nyhet ORDER BY url))
+  (SELECT json_group_array(json_array(url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun, aktor_orgnr)) FROM (SELECT * FROM nyhet ORDER BY url))
   || (SELECT json_group_array(json_array(url, beteckning, adress, lon, lat)) FROM (SELECT * FROM nyhet_plats ORDER BY 1, 2, 3, 4, 5)) AS s`).get().s;
 const fore = args.publik && innehall();
 const finnsFastighet = db.prepare('SELECT 1 FROM fastighet WHERE beteckning = ?');
@@ -52,8 +56,9 @@ const kandidater = db.prepare(`SELECT f.beteckning, f.geojson FROM fastighet f
 const fastighetVid = (lon, lat) =>
   kandidater.all(lon, lon, lat, lat).find((f) => pointInGeom([lon, lat], JSON.parse(f.geojson)))?.beteckning ?? null;
 const nyhetsBolag = db.prepare('SELECT namn FROM bolag WHERE orgnr = ?');
-const insNyhet = db.prepare(`INSERT OR REPLACE INTO nyhet (url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+const insNyhet = db.prepare(`INSERT OR REPLACE INTO nyhet (url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun, aktor_orgnr)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+const aktor = aktorBolag(db);
 const delPlats = db.prepare('DELETE FROM nyhet_plats WHERE url = ?');
 const delNyhet = db.prepare('DELETE FROM nyhet WHERE url = ?');
 const insPlats = db.prepare('INSERT INTO nyhet_plats (url, beteckning, adress, lon, lat) VALUES (?, ?, ?, ?, ?)');
@@ -89,7 +94,10 @@ function spara(n, utgivare, kalla) {
       + `\n    ${n.kommun ?? 'ingen kommun'} · ${n.beteckningar.join(', ') || 'ingen beteckning'} · ${n.adresser.map((x) => `${x.gata} ${x.nummer}`).join(', ') || 'ingen adress'} · ${kopplade} på kartan`);
     return;
   }
-  insNyhet.run(n.url, kalla, utgivare, nyhetsRubrik({ ...n, utgivare }, kalla === 'mfn' ? nyhetsBolag.get(n.orgnr)?.namn : null), n.datum, n.typ, n.pris_kr, n.kommun);
+  // I en tidning: den som köper eller säljer, om namnet i rubriken är ett registrerat bolag.
+  const a = arTidning(kalla) ? aktor(aktorIRubrik(n.rubrik)) : null;
+  insNyhet.run(n.url, kalla, utgivare, nyhetsRubrik({ ...n, utgivare, kalla }, kalla === 'mfn' ? nyhetsBolag.get(n.orgnr)?.namn : a?.namn),
+    n.datum, n.typ, n.pris_kr, n.kommun, a?.orgnr ?? null);
   delPlats.run(n.url);
   for (const p of platser) insPlats.run(n.url, ...p);
 }
