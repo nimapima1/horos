@@ -371,7 +371,7 @@ async function openAffarer(p = {}) {
       ${field('År', 'ar', options(a.arLista, a.ar))}
       ${field('Köpeskilling', 'min', options([[0, 'Alla'], [10, 'Över 10 Mkr'], [40, 'Över 40 Mkr'], [100, 'Över 100 Mkr']], a.min))}
       <label class="hel">Sök transaktioner<input type="search" name="sok" value="${esc(p.sok ?? '')}"
-        placeholder="Fastighet, köpare, säljare eller org.nr" autocomplete="off" enterkeyhint="search"></label>
+        placeholder="Fastighet, köpare, säljare eller org.nr" maxlength="60" autocomplete="off" enterkeyhint="search"></label>
     </form>
     ${a.sok ? `<h3>Träffar för ”${esc(p.sok)}”</h3>
     <div class="meta small">Alla år${a.traffar.length === 50 ? ', de 50 senaste' : ''}.</div>

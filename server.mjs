@@ -143,7 +143,7 @@ async function lasJson(req, max) {
 // hela databasen som fil har lägre gränser: de hämtas från Lantmäteriet respektive är de största svaren.
 const RATE = { windowMs: 10_000, api: Number(process.env.RATE_MAX ?? 200), tiles: Number(process.env.RATE_TILES ?? 800),
   historisk: Number(process.env.RATE_HISTORISK ?? 300), export: Number(process.env.RATE_EXPORT ?? 2),
-  spara: Number(process.env.RATE_SPARA ?? 5), mfn: Number(process.env.RATE_MFN ?? 30) };
+  spara: Number(process.env.RATE_SPARA ?? 5), mfn: Number(process.env.RATE_MFN ?? 30), sok: Number(process.env.RATE_SOK ?? 20) };
 const hits = new Map();
 function rateLimited(req, bucket) {
   const ip = (TRUST_PROXY && req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress;
@@ -504,7 +504,7 @@ const TRAFF_COLS = ['beteckning', 'agare', 'agartyp', 'typ', 'varde_tkr', 'areal
 // Lantmäteriets förvärvs-id när det finns i filen.
 const AFFAR = `WITH affar AS (
   SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, x.forvarvare_orgnr AS orgnr,
-    min(x.beteckning) AS beteckning, group_concat(x.beteckning, ' ') AS beteckningar, count(*) AS antal, max(x.demo) AS demo
+    min(x.beteckning) AS beteckning, count(*) AS antal, max(x.demo) AS demo
   FROM transaktion x JOIN fastighet f ON f.beteckning = x.beteckning
   WHERE x.forvarvare_orgnr IS NOT NULL AND x.kopeskilling_kr >= ? AND (? IS NULL OR f.kommun = ?)
   GROUP BY 1, 2, 3)`;
@@ -546,16 +546,8 @@ const qn = HAS_NYHET && {
       AND ${inteDubblett('AND d.url IN (SELECT url FROM nyhet_plats WHERE beteckning = ?)')} ORDER BY n.datum DESC`),
 };
 
-// Sökningen i Transaktioner: alla ord ska finnas i texten (versaler och å/ä/ö spelar ingen roll, som agareMed).
-db.function('sok_traff', { deterministic: true }, (text, term) => {
-  const t = text.toLocaleLowerCase('sv');
-  return term.split(' ').every((o) => t.includes(o)) ? 1 : 0;
-});
 const qa = {
-  // Fastigheterna (alla i en paketaffär), köparen och säljaren med namn och org.nr, alla år.
-  sok: db.prepare(`${AFFAR} ${AFFAR_RAD} WHERE sok_traff(concat_ws(' ', a.beteckningar, a.orgnr, b.namn, sb.orgnr, sb.namn), ?)
-    ORDER BY a.dag DESC LIMIT 50`),
-  ar: db.prepare(`${AFFAR} SELECT DISTINCT substr(dag, 1, 4) AS ar FROM affar WHERE dag IS NOT NULL ORDER BY ar DESC`),
+  ar:db.prepare(`${AFFAR} SELECT DISTINCT substr(dag, 1, 4) AS ar FROM affar WHERE dag IS NOT NULL ORDER BY ar DESC`),
   summa: db.prepare(`${AFFAR} SELECT count(*) AS antal, sum(kr) AS kr FROM affar WHERE substr(dag, 1, 4) = ?`),
   dagar30: db.prepare(`${AFFAR} SELECT count(*) AS antal, sum(kr) AS kr FROM affar WHERE dag >= date('now', '-30 days')`),
   senaste: db.prepare(`${AFFAR} ${AFFAR_RAD} WHERE substr(a.dag, 1, 4) = ? ORDER BY a.dag DESC LIMIT 25`),
@@ -616,8 +608,60 @@ function affarer(url) {
       nyheter: qn ? qn.senaste.all(kommun, kommun).map((n) => ({ ...publikNyhet(n), beteckningar: JSON.parse(n.beteckningar) })) : [],
     };
   });
-  // Sökningen cachas inte (godtyckliga nycklar, som kartutsnittet i storsta).
-  return sok.length >= 2 ? { ...oversikt, sok, traffar: qa.sok.all(...p, sok) } : oversikt;
+  return sok.length >= 2 ? { ...oversikt, sok, traffar: sokAffarer(sok, minMkr * 1e6, kommun) } : oversikt;
+}
+
+// Sökningen i Transaktioner: alla affärer i minnet, senaste först, med en söktext (alla fastigheter i paketet,
+// köparen och varje fastighets säljare, namn och org.nr) och kommunerna paketet berör. Samma affär och säljare
+// som AFFAR/AFFAR_RAD, men hela paketet grupperas före kommunfiltret. Byggs vid start i publikt läge
+// (databasen ändras inte), annars vid varje sökning. shortcut: linjär sökning i minnet (600 000 affärer:
+// ~100 ms per sökning); byt mot FTS i build-public om den blir långsam med rikstäckande lagfarter.
+const affarSokRader = db.prepare(`SELECT x.inskrivningsdag AS dag, x.kopeskilling_kr AS kr, x.forvarvare_orgnr AS orgnr,
+    x.beteckning, x.demo, b.namn, f.kommun, sb.orgnr AS saljare_orgnr, sb.namn AS saljare
+  FROM transaktion x JOIN fastighet f ON f.beteckning = x.beteckning LEFT JOIN bolag b ON b.orgnr = x.forvarvare_orgnr
+  LEFT JOIN bolag sb ON sb.orgnr = (SELECT p.forvarvare_orgnr FROM transaktion p
+    WHERE p.beteckning = x.beteckning AND p.inskrivningsdag < x.inskrivningsdag ORDER BY p.inskrivningsdag DESC LIMIT 1)
+  WHERE x.forvarvare_orgnr IS NOT NULL AND x.kopeskilling_kr IS NOT NULL
+  ORDER BY x.inskrivningsdag DESC, x.kopeskilling_kr, x.forvarvare_orgnr, x.beteckning`);
+// Visningsuppgifterna (som AFFAR_RAD) hämtas bara för träffarna, så att listan i minnet hålls liten.
+const affarSokDetalj = db.prepare(`SELECT b.namn, f.kommun, f.minx, f.miny, f.maxx, f.maxy, sb.orgnr AS saljare_orgnr, sb.namn AS saljare
+  FROM fastighet f LEFT JOIN bolag b ON b.orgnr = ?
+  LEFT JOIN bolag sb ON sb.orgnr = (SELECT p.forvarvare_orgnr FROM transaktion p
+    WHERE p.beteckning = f.beteckning AND p.inskrivningsdag < ? ORDER BY p.inskrivningsdag DESC LIMIT 1)
+  WHERE f.beteckning = ?`);
+function byggAffarSok() {
+  const lista = [];
+  let a = null;
+  const klar = (x) => { x.text = x.text.filter(Boolean).join(' ').toLocaleLowerCase('sv'); x.kommuner = `|${[...new Set(x.kommuner)].join('|')}|`; };
+  for (const r of affarSokRader.iterate()) {
+    // Första raden i affären har den minsta beteckningen: den och dess säljare visas, som i AFFAR_RAD.
+    if (!a || r.dag !== a.dag || r.kr !== a.kr || r.orgnr !== a.orgnr) {
+      if (a) klar(a);
+      a = { dag: r.dag, kr: r.kr, orgnr: r.orgnr, beteckning: r.beteckning, antal: 0, demo: r.demo, text: [r.orgnr, r.namn], kommuner: [] };
+      lista.push(a);
+    }
+    a.antal++;
+    a.demo ||= r.demo;
+    a.text.push(r.beteckning, r.saljare_orgnr, r.saljare);
+    a.kommuner.push(r.kommun);
+  }
+  if (a) klar(a);
+  return lista;
+}
+let AFFAR_SOK = null;
+const affarSok = () => (PUBLIC_MODE ? (AFFAR_SOK ??= byggAffarSok()) : byggAffarSok());
+// Byggs efter listen: anrop under bygget (600 000 affärer ~15 s, ~200 MB) väntar i kön i stället för att nekas.
+if (PUBLIC_MODE) setImmediate(affarSok);
+// Alla ord ska finnas (versaler och å/ä/ö spelar ingen roll, som agareMed); högst 50 träffar.
+function sokAffarer(sok, minKr, kommun) {
+  const ord = sok.split(' ');
+  const traffar = [];
+  for (const a of affarSok()) {
+    if (a.kr >= minKr && (!kommun || a.kommuner.includes(`|${kommun}|`)) && ord.every((o) => a.text.includes(o))) traffar.push(a);
+    if (traffar.length === 50) break;
+  }
+  return traffar.map(({ dag, kr, orgnr, beteckning, antal, demo }) =>
+    ({ dag, kr, orgnr, beteckning, antal, demo, ...affarSokDetalj.get(orgnr, dag, beteckning) }));
 }
 
 function storsta(url) {
@@ -964,7 +1008,9 @@ const routes = [
     return [200, `{"type":"FeatureCollection","truncated":${rows.length > MAX_FEATURES},"features":[${features.join(',')}]}`];
   }],
 
-  [/^\/api\/affarer$/, 'api', (_m, url) => [200, affarer(url)]],
+  // Sökningen cachas inte (godtyckliga nycklar) och har därför en egen, lägre gräns.
+  [/^\/api\/affarer$/, 'api', (_m, url, _res, req) => (url.searchParams.get('sok') && rateLimited(req, 'sok')
+    ? [429, { error: 'för många sökningar, försök igen om en stund' }] : [200, affarer(url)])],
   [/^\/api\/storsta-agare$/, 'api', (_m, url) => [200, storsta(url)]],
 
   [/^\/api\/bolag\/([\d-]+)$/, 'api', (m) => {
