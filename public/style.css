@@ -133,7 +133,7 @@ button { font: inherit; color: inherit; }
   display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
   min-height: 44px; padding: 11px 10px; border-radius: 7px; cursor: pointer;
 }
-.results li[data-kind]:hover { background: var(--accent-soft); }
+.results li[data-kind]:hover, .results li[data-kind]:focus { background: var(--accent-soft); }
 /* +: lägg till i ett scenario (sökträffarna och fastighetspanelen). */
 .lagg-till { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px;
   cursor: pointer; font: 600 18px/1 var(--font-body); background: var(--accent-soft); color: var(--accent-strong); }
@@ -145,7 +145,8 @@ button { font: inherit; color: inherit; }
 .sc-meny > summary { width: 40px; height: 40px; border-radius: 50%; list-style: none; }
 .sc-meny > summary::-webkit-details-marker { display: none; }
 .sc-meny[open] > summary { background: var(--accent); color: var(--surface-solid); }
-.sc-meny-lista { position: absolute; z-index: 3; top: 46px; right: 0; width: 240px; padding: 6px;
+/* Högerkant i linje med stängknappen, så att listan ryms i panelen även på de smalaste telefonerna. */
+.sc-meny-lista { position: absolute; z-index: 3; top: 46px; right: -48px; width: min(240px, calc(100vw - 80px)); padding: 6px;
   background: var(--surface-solid); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow); }
 .sc-meny-rubrik { padding: 6px 10px 4px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle); }
 .sc-meny-lista button { display: block; width: 100%; min-height: 40px; padding: 8px 10px; border: 0; border-radius: 7px;
@@ -194,7 +195,9 @@ button { font: inherit; color: inherit; }
 .notice { padding: 11px 14px; font-size: 14px; background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
 
 /* --- Informationspanel ------------------------------------------------------ */
-.panel { position: relative; flex: 0 1 auto; min-height: 0; overflow: auto; padding: 18px 18px 20px; }
+/* overflow-wrap: långa bolagsnamn och beteckningar bryts i stället för att trycka ut tabellerna. */
+.panel { position: relative; flex: 0 1 auto; min-height: 0; overflow: auto; padding: 18px 18px 20px; overflow-wrap: anywhere; }
+.results { overflow-wrap: anywhere; }
 .close {
   float: right;
   width: 40px; height: 40px; margin: -6px -6px 0 8px; display: grid; place-items: center;
@@ -257,7 +260,7 @@ label.copy { display: inline-flex; align-items: center; }
 .scenario .stats { grid-template-columns: repeat(3, 1fr); }
 .scenario input { width: 100%; height: 36px; padding: 0 10px; font: inherit; font-size: 14px; color: var(--text);
   background: var(--surface-sunken); border: 1px solid transparent; border-radius: var(--radius-sm); }
-.scenario input[inputmode="decimal"] { text-align: right; font-variant-numeric: tabular-nums; }
+.scenario input[data-tal] { text-align: right; font-variant-numeric: tabular-nums; }
 .scenario input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
 .scenario input::placeholder { color: var(--subtle); opacity: .6; }
 /* Namnet ser ut som en rubrik och blir ett fält först vid hovring och fokus. */
@@ -444,8 +447,20 @@ label.copy { display: inline-flex; align-items: center; }
   .links a { padding: 10px 6px; }
   .links .wide-only { display: none; }   /* samma sida som Metod; får inte plats */
   .search input { font-size: 16px; }   /* hindrar iOS från att zooma in vid fokus */
+  #filter input, #filter select, .view-form select { height: 44px; font-size: 16px; }
+  /* Tryckytor minst 44 px. */
+  .links a, .verktyg > * { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+  .close, .sc-meny > summary, .lagg-till, .maplibregl-ctrl-group button { width: 44px; height: 44px; }
+  .copy, #filter button { min-height: 44px; }
+  #filter-csv { display: flex; align-items: center; min-height: 44px; }
+  .sc-fler summary { padding: 12px 0; }
+  .sc-fastighet summary { padding: 11px 0; }
+  .sc-ihop input { width: 24px; height: 24px; }
+  .basemap-select select, .plan-toggle button, .streetview button { height: 44px; }
+  /* Bladet nedtill. --tangentbord (app.js) lyfter det över skärmtangentbordet när ett fält i panelen har fokus. */
   .panel {
-    position: fixed; left: 10px; right: 10px; bottom: 10px; max-height: 58vh;
+    position: fixed; left: 10px; right: 10px; bottom: calc(10px + var(--tangentbord, 0px));
+    max-height: min(58vh, calc(100vh - 20px - var(--tangentbord, 0px)));
   }
   .notice { padding: 9px 12px; font-size: 13px; line-height: 1.4; }
   /* Kontrollerna nedtill till höger: överst skulle sökrutan och notisen täcka dem. */
@@ -460,7 +475,9 @@ label.copy { display: inline-flex; align-items: center; }
   .legend-title { display: grid; gap: 4px; font-size: 13px; }
   .legend-scale { grid-template-columns: 1fr; gap: 3px; }
   .legend .counts { display: none; }
-  body:has(#panel:not([hidden])) .legend, body:has(.filters[open]) .legend { display: none; }
+  /* Panelen och filtret täcker den nedre delen: kontrollerna skulle annars sticka upp halvt bakom dem. */
+  body:has(#panel:not([hidden])) :is(.legend, .maplibregl-ctrl-top-right),
+  body:has(.filters[open]) :is(.legend, .maplibregl-ctrl-top-right) { display: none; }
 }
 /* Minsta telefonerna: menyn på en rad, och källhänvisningen (två rader här) under teckenförklaringen. */
 @media (max-width: 340px) {
@@ -469,6 +486,18 @@ label.copy { display: inline-flex; align-items: center; }
   .legend { bottom: 62px; padding: 9px 8px; }
   .legend-title select { padding: 0 2px; }
   .maplibregl-ctrl-top-right { bottom: 52px; }
+}
+/* Liggande telefon: lågt fönster, så sloganen tas bort och panelen följer under sökfältet (som på datorn)
+   i stället för att som blad nedtill täcka det. */
+@media (max-height: 500px) {
+  .tagline { display: none; }
+  .brand-row { margin-bottom: 8px; }
+  .topbar { padding: 10px 12px 12px; }
+  .legend .counts { display: none; }   /* annars når teckenförklaringen upp till kartkontrollerna */
+}
+@media (max-width: 640px) and (max-height: 500px) {
+  .sidebar { bottom: 10px; }
+  .panel { position: relative; inset: auto; max-height: none; }
 }
 
 /* --- Textsidor (metod.html) ---------------------------------------------------- */
@@ -490,6 +519,15 @@ label.copy { display: inline-flex; align-items: center; }
 .page .btn:hover { background: var(--accent-strong); color: #0B1120; text-decoration: none; }
 .page .btn[aria-disabled="true"] { background: var(--surface-sunken); color: var(--subtle); pointer-events: none; }
 .page code { font-size: 14px; background: var(--surface-sunken); padding: 1px 5px; border-radius: 5px; }
+/* Mobil: tabellraderna som kort, varje uppgift med kolumnens rubrik ovanför (data-rubrik, metod.js). */
+@media (max-width: 640px) {
+  .page table, .page tbody, .page tr, .page td { display: block; }
+  .page tr:has(> th) { display: none; }
+  .page tr { padding: 12px 0; border-top: 1px solid var(--border); }
+  .page td { padding: 0; border: 0; }
+  .page td + td { margin-top: 8px; }
+  .page td[data-rubrik]::before { content: attr(data-rubrik); display: block; font-size: 13px; font-weight: 600; color: var(--subtle); }
+}
 
 /* --- Snabbinfo vid hovring ------------------------------------------------------- */
 .tip { pointer-events: none; }

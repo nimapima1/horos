@@ -475,6 +475,11 @@ function showPanel(html) {
   $('#panel').hidden = false;
   $('#panel').scrollTop = 0;
 }
+// Skärmtangentbordet: bladet nedtill på mobil lyfts över det när ett fält i panelen har fokus (--tangentbord i style.css).
+const tangentbord = () => document.body.style.setProperty('--tangentbord', `${$('#panel').contains(document.activeElement)
+  ? Math.max(0, Math.round(innerHeight - visualViewport.height - visualViewport.offsetTop)) : 0}px`);
+window.visualViewport?.addEventListener('resize', tangentbord);
+window.visualViewport?.addEventListener('scroll', tangentbord);
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#panel').hidden && !e.target.closest?.('input, select')) $('#close').click(); });
 $('#close').addEventListener('click', () => {
   $('#panel').hidden = true;
@@ -516,6 +521,16 @@ $('#q').addEventListener('keydown', (e) => {
   if (e.key === 'Escape') $('#results').hidden = true;
   if (e.key === 'Enter') $('#results li[data-kind]')?.click();
 });
+// Piltangenterna flyttar fokus mellan sökfältet och träffarna, Enter öppnar träffen och Escape går tillbaka.
+$('.search').addEventListener('keydown', (e) => {
+  const li = e.target.matches('li[data-kind]') ? e.target : null;
+  if (li && e.key === 'Enter') li.click();
+  if (li && e.key === 'Escape') { e.stopPropagation(); $('#results').hidden = true; $('#q').focus(); }
+  if ((e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || $('#results').hidden) return;
+  const val = [$('#q'), ...document.querySelectorAll('#results li[data-kind]')];
+  e.preventDefault();
+  val[(val.indexOf(li ?? $('#q')) + (e.key === 'ArrowDown' ? 1 : val.length - 1)) % val.length].focus();
+});
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.search')) $('#results').hidden = true;
   for (const m of document.querySelectorAll('.sc-meny[open]')) if (!m.contains(e.target)) m.open = false;
@@ -542,6 +557,7 @@ async function runSearch() {
   }
   if (!items.length) items.push('<li class="group">Inga träffar</li>');
   $('#results').innerHTML = items.join('');
+  for (const li of document.querySelectorAll('#results li[data-kind]')) li.tabIndex = -1;   // piltangenterna (ovan)
   $('#results').hidden = false;
 }
 
