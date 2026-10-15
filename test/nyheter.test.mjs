@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { aktorIRubrik, arFastighetsbolag, lasRss, publiceraNyheter, tolka, tolkaMfn } from '../lib/nyheter.mjs';
+import { aktorBolag, aktorIRubrik, arFastighetsbolag, lasRss, publiceraNyheter, tolka, tolkaMfn } from '../lib/nyheter.mjs';
 
 const t = (rubrik, text = '') => tolka({ rubrik, text });
 
@@ -162,4 +162,21 @@ test('tidningar: Fastighetsvärldens flöde (sitemap.rss) läses, och tidningen 
     INSERT INTO nyhet VALUES ('u', 'fastighetsvarlden', 'Fastighetsvärlden', 'NP3 förvärvar …', 'kop', 286000000, NULL)`);
   publiceraNyheter(db);
   assert.equal(db.prepare('SELECT rubrik FROM nyhet').get().rubrik, `Fastighetsköp för ${(286e6).toLocaleString('sv-SE')} kr`);
+});
+
+test('tidningar: aktören i rubriken bara när namnet exakt är ett registrerat bolag', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec(`CREATE TABLE bolag (orgnr TEXT, namn TEXT); INSERT INTO bolag VALUES
+      ('5560000001', 'NP3 AB (publ)'), ('5560000002', 'Anna Andersson Fastigheter AB'),
+      ('5560000003', 'Tvilling AB'), ('5560000004', 'Tvilling'), ('8001011234', 'Person AB');
+    CREATE TABLE nyhet (url TEXT, kalla TEXT, utgivare TEXT, rubrik TEXT, typ TEXT, pris_kr INTEGER, kommun TEXT, aktor_orgnr TEXT);
+    INSERT INTO nyhet VALUES ('u', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', 'salj', 286000000, NULL, '5560000001')`);
+  const aktor = aktorBolag(db);
+  assert.deepEqual({ ...aktor('NP3') }, { orgnr: '5560000001', namn: 'NP3 AB (publ)' });
+  assert.equal(aktor('Anna Andersson'), null);   // bara början av namnet
+  assert.equal(aktor('Tvilling'), null);         // två bolag heter så
+  assert.equal(aktor('Person'), null);           // inget giltigt org.nr
+  assert.equal(aktor(null), null);
+  publiceraNyheter(db);
+  assert.equal(db.prepare('SELECT rubrik FROM nyhet').get().rubrik, `Fastighetsförsäljning av NP3 AB (publ) för ${(286e6).toLocaleString('sv-SE')} kr`);
 });
