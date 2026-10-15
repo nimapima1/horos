@@ -344,11 +344,12 @@ const affarRad = (r) => `<tr>${dagCell(r.dag)}
   <td class="num">${mkr(r.kr / 1000)}</td></tr>`;
 
 // Affär ur ett pressmeddelande: rubriken länkar till källan, "Visa på kartan" ramar in fastigheterna.
+// Kommunen visas inte (står oftast i rubriken); MFN anges som källa under priset.
 const nyhetRad = (n) => `<tr>${dagCell(n.dag)}
   <td><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.rubrik)}</a>
-    <div class="muted small">${n.kalla === 'cision' || n.kalla === 'mfn' ? `${esc(n.utgivare)} ${n.typ === 'kop' ? 'köper' : 'säljer'}` : `Enligt ${esc(n.utgivare)}`}${n.kommun ? ` · ${esc(n.kommun)}` : ''}${n.kalla === 'mfn' ? ' · via MFN' : ''}${n.minx != null
+    <div class="muted small">${n.kalla === 'cision' || n.kalla === 'mfn' ? `${esc(n.utgivare)} ${n.typ === 'kop' ? 'köper' : 'säljer'}` : `Enligt ${esc(n.utgivare)}`}${n.minx != null
       ? ` · <a data-ram="${[n.minx, n.miny, n.maxx, n.maxy].join(',')}" data-markera="${esc(JSON.stringify(n.beteckningar))}">Visa på kartan</a>` : ''}</div></td>
-  <td class="num">${n.pris_kr ? mkr(n.pris_kr / 1000) : '–'}</td></tr>`;
+  <td class="num">${n.pris_kr ? mkr(n.pris_kr / 1000) : '–'}${n.kalla === 'mfn' ? '<div class="muted small">via MFN</div>' : ''}</td></tr>`;
 
 // Transaktioner: volym, antal och de senaste och största köpen, som Datschas transaktionsöversikt.
 async function openAffarer(p = {}) {
