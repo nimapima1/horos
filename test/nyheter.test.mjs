@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { arFastighetsbolag, lasRss, tolka, tolkaMfn } from '../lib/nyheter.mjs';
+import { DatabaseSync } from 'node:sqlite';
+import { aktorIRubrik, arFastighetsbolag, lasRss, publiceraNyheter, tolka, tolkaMfn } from '../lib/nyheter.mjs';
 
 const t = (rubrik, text = '') => tolka({ rubrik, text });
 
@@ -139,4 +140,26 @@ test('bolagets samlade värden är inte affärspriser; ett senare pris får fort
     assert.equal(tolkaMfn({ url: 'https://mfn.se/a/alfa/kop', properties: { lang: 'sv' },
       content: { title: 'Alfa köper fastighet', text } }).pris_kr, null, text);
   }
+});
+
+test('tidningar: den som köper eller säljer står först i rubriken', () => {
+  assert.equal(aktorIRubrik('Emilshus köper nio för 341 mkr – Castellum på säljsidan'), 'Emilshus');
+  assert.equal(aktorIRubrik('NP3 förvärvar elva fastigheter för 286 mkr'), 'NP3');
+  assert.equal(aktorIRubrik('Atrium Ljungberg säljer i Uppsala'), 'Atrium Ljungberg');
+  assert.equal(aktorIRubrik('Hyreshöjning i Stockholm – 50 000 lägenheter berörs'), null);
+  assert.equal(aktorIRubrik('Köper fastighet i Solna'), null);   // ingen före verbet
+});
+
+test('tidningar: Fastighetsvärldens flöde (sitemap.rss) läses, och tidningen blir aldrig köpare i rubriken', () => {
+  const [n] = lasRss(`<rss><channel><item><guid><![CDATA[https://www.fastighetsvarlden.se/notiser/x/]]></guid>
+    <link><![CDATA[https://www.fastighetsvarlden.se/notiser/x/]]></link><title>NP3 förvärvar elva fastigheter för 286 mkr</title>
+    <pubDate><![CDATA[Wed, 14 Oct 2026 08:00:00 +0000]]></pubDate></item></channel></rss>`);
+  assert.deepEqual(n, { rubrik: 'NP3 förvärvar elva fastigheter för 286 mkr', url: 'https://www.fastighetsvarlden.se/notiser/x/',
+    text: '', datum: '2026-10-14T08:00:00.000Z' });
+  const db = new DatabaseSync(':memory:');
+  db.exec(`CREATE TABLE bolag (orgnr TEXT, namn TEXT); INSERT INTO bolag VALUES ('5560000001', 'Fastighetsvärlden');
+    CREATE TABLE nyhet (url TEXT, kalla TEXT, utgivare TEXT, rubrik TEXT, typ TEXT, pris_kr INTEGER, kommun TEXT);
+    INSERT INTO nyhet VALUES ('u', 'fastighetsvarlden', 'Fastighetsvärlden', 'NP3 förvärvar …', 'kop', 286000000, NULL)`);
+  publiceraNyheter(db);
+  assert.equal(db.prepare('SELECT rubrik FROM nyhet').get().rubrik, `Fastighetsköp för ${(286e6).toLocaleString('sv-SE')} kr`);
 });

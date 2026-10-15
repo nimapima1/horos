@@ -14,7 +14,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { NYHET_PLATS_UTANFOR, openDb, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 import { pointInGeom } from '../lib/geo.mjs';
-import { CISION, arFastighetsbolag, lasRss, tolka, nyhetsRubrik, publiceraNyheter } from '../lib/nyheter.mjs';
+import { CISION, TIDNINGAR, aktorIRubrik, arFastighetsbolag, lasRss, tolka, nyhetsRubrik, publiceraNyheter } from '../lib/nyheter.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const UA = 'Horos/0.1 (ideell fastighetskarta; kontakt@horos.se)';
@@ -110,17 +110,28 @@ if (args.mfn) {
     for (const url of undanta) if (!args.dry) { delNyhet.run(url); delPlats.run(url); }
     for (const r of rader.filter(tas)) spara({ ...r, beteckningar: JSON.parse(r.beteckningar), adresser: JSON.parse(r.adresser) }, r.utgivare, 'mfn');
   });
-} else for (const [namn, utgivare] of CISION) {
-  const res = await fetch(`https://news.cision.com/se/${namn}/ListItems?format=rss&pageSize=100`, { headers: { 'user-agent': UA } });
-  if (!res.ok) { console.error(`${utgivare}: Cision svarade ${res.status}`); continue; }
-  const alla = lasRss(await res.text()).map((n) => ({ ...n, ...tolka(n) }));
-  const affarer = alla.filter((n) => n.typ && n.url.startsWith('https://news.cision.com/'));   // länken visas på sidan
-  withTransaction(db, () => {
-    // Pressmeddelanden som inte (längre) räknas som affärer, t.ex. efter ändrade regler i lib/nyheter.mjs.
-    if (!args.dry) for (const n of alla) if (!affarer.includes(n)) { delNyhet.run(n.url); delPlats.run(n.url); }
-    for (const n of affarer) spara(n, utgivare, 'cision');
-  });
-  await vanta(1000);   // en förfrågan i sekunden
+} else {
+  // En tidningsrubrik kan nämna en privatperson: bara affärer där den som köper eller säljer är ett bolag i registret.
+  const bolagFts = db.prepare('SELECT 1 FROM bolag_fts WHERE bolag_fts MATCH ? LIMIT 1');
+  const arBolag = (namn) => {
+    const ord = namn?.match(/[\p{L}\p{N}]+/gu);
+    return !!ord && ord.length <= 4 && !!bolagFts.get(ord.map((o) => `"${o}"`).join(' '));
+  };
+  const kallor = [...CISION.map(([namn, utgivare]) => ['cision', utgivare,
+    `https://news.cision.com/se/${namn}/ListItems?format=rss&pageSize=100`, 'https://news.cision.com/']), ...TIDNINGAR];
+  for (const [kalla, utgivare, flode, lank] of kallor) {
+    const res = await fetch(flode, { headers: { 'user-agent': UA } });
+    if (!res.ok) { console.error(`${utgivare}: svarade ${res.status}`); continue; }
+    const alla = lasRss(await res.text()).map((n) => ({ ...n, ...tolka(n) }));
+    const affarer = alla.filter((n) => n.typ && n.url.startsWith(lank)   // länken visas på sidan
+      && (kalla === 'cision' || arBolag(aktorIRubrik(n.rubrik))));
+    withTransaction(db, () => {
+      // Det som inte (längre) räknas som affärer, t.ex. efter ändrade regler i lib/nyheter.mjs.
+      if (!args.dry) for (const n of alla) if (!affarer.includes(n)) { delNyhet.run(n.url); delPlats.run(n.url); }
+      for (const n of affarer) spara(n, utgivare, kalla);
+    });
+    await vanta(1000);   // en förfrågan i sekunden
+  }
 }
 // Avbryts hämtningen blir slutkoden fel och deploy/nyheter.sh kastar kopian, så det räcker att städa här.
 if (args.publik && !args.dry) db.exec(`DELETE FROM nyhet_plats WHERE ${NYHET_PLATS_UTANFOR}`);

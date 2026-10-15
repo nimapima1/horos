@@ -119,8 +119,12 @@ Också live sedan 2026-10-10 (idéer från Datscha/Property Intel, bara gränssn
   `mfn.sqlite` i appens StateDirectory (`/var/lib/horos-scenarion`), en rad per mottaget i journalen. Cron för in
   bara fastighetsbolagens (`arFastighetsbolag`: SNI 68, namnet, eller listan `MFN_FASTIGHETSBOLAG` för moderbolag
   med SNI 70100/64xxx) med `import-nyheter --publik <fil> --mfn <mfn.sqlite>` (källa `mfn`, visas "via MFN").
-  Ingen kostnad; MFN vill att de anges som källa. DI, Fastighetsnytt, Fastighetsvärlden skrapas inte; tillstånd för rubrik + länk
-  efterfrågas (mejlen skickade 2026-10-10, väntar på svar; se `PRIVAT.md`). På servern: cron (som deploy, inlagd av `deploy.sh`) kör
+  Ingen kostnad; MFN vill att de anges som källa. **Fastighetsvärlden** (2026-10-15): öppet flöde
+  `sitemap.rss` (rubrik, länk, datum; pekas ut i robots.txt, inget förbehåll mot insamling), `TIDNINGAR` i
+  `lib/nyheter.mjs`; bara `/notiser/` och bara affärer där den som köper eller säljer (`aktorIRubrik`) är ett bolag i
+  `bolag_fts`; rubriken på sidan utan bolagsnamn, "Enligt Fastighetsvärlden"; meddelande till redaktionen (utkast 2026-10-15,
+  publicera först när det är skickat; slutar om de invänder). **Bonnier News (Fastighetsnytt, DI) förbjuder insamling** utan skriftligt tillstånd
+  (robots.txt, bonniernews.se/info/upphovsratt-och-ai): inte med; begäran om tillstånd som utkast 2026-10-15 (se `PRIVAT.md`). På servern: cron (som deploy, inlagd av `deploy.sh`) kör
   `deploy/nyheter.sh` 05:15 och 15:15 UTC: `import-nyheter --publik` på en kopia av den publika databasen
   (platser bara på fastigheter i den, samma regel `NYHET_PLATS_UTANFOR` som build-public och serverns spärr), byter
   filen och startar om bara om något ändrades; hoppar över om appen är stoppad. Lås `databas.lock` delas med
