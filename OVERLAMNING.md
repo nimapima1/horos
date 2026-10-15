@@ -189,7 +189,7 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
   - **MFN:s svar 2026-10-12** (hemligheten skickad samma dag): de lägger upp prenumerationen (förnyas inte),
     skickar **alla** bolags pressmeddelanden (filtrera själva), ingen kostnad, källa "MFN", leveransen börjar
     direkt med riktiga pressmeddelanden. De frågade om gränser (tecken, storlek, bilder, video, formatering,
-    tabeller); användaren svarade 13:41 (vi visar bara rubrik, datum och länk). Mottagaren tar högst 1 MB.
+    tabeller); användaren svarade 13:41 (vi visar bara rubrik, datum och länk). Mottagaren tog högst 1 MB; MFN svarade 2026-10-15 att pressmeddelanden kan vara större och att flödet är uppsatt, så gränsen är 10 MB (egen hastighetsgräns, `RATE_MFN`) och avvisade anrop loggas (`MFN avvisad: …`).
   - **Filtret** (PR efter #14): mottagaren sparar alla svenska affärer med utgivarens org.nr; cron tar bara med
     fastighetsbolagens (`arFastighetsbolag`: SNI 68, namn med fastighet/bostad/property/real estate, eller
     `MFN_FASTIGHETSBOLAG` för moderbolag med SNI 70100/64xxx: Castellum, Sagax, SBB, Pandox, K-Fast, Eastnine,

@@ -92,9 +92,9 @@ const scenarier = oppnaScenarier(process.env.SCENARIO_DB
 // i den publika (arFastighetsbolag i lib/nyheter.mjs). Utan MFN_SECRET finns ingen mottagare.
 const MFN_DB = process.env.MFN_DB
   ?? (process.env.STATE_DIRECTORY ? join(process.env.STATE_DIRECTORY, 'mfn.sqlite') : PUBLIC_MODE ? null : join(ROOT, 'data', 'mfn.sqlite'));
-// Hela pressmeddelandet med HTML; läses innan signaturen kan kontrolleras, så inte större än nödvändigt.
-// MFN skickar alla bolags pressmeddelanden; ett för stort avvisas och skickas om, så marginal för långa rapporter.
-const MAX_MFN_BYTE = 1024 * 1024;
+// Hela pressmeddelandet med HTML; läses innan signaturen kan kontrolleras. MFN: pressmeddelanden kan vara större
+// än 1 MB (2026-10-15), och ett för stort skickas om. Egen hastighetsgräns (RATE.mfn) håller minnet nere.
+const MAX_MFN_BYTE = 10 * 1024 * 1024;
 const bolagFor = db.prepare('SELECT namn, sni FROM bolag WHERE orgnr = ?');
 let qm = null;
 try {
@@ -143,7 +143,7 @@ async function lasJson(req, max) {
 // hela databasen som fil har lägre gränser: de hämtas från Lantmäteriet respektive är de största svaren.
 const RATE = { windowMs: 10_000, api: Number(process.env.RATE_MAX ?? 200), tiles: Number(process.env.RATE_TILES ?? 800),
   historisk: Number(process.env.RATE_HISTORISK ?? 300), export: Number(process.env.RATE_EXPORT ?? 2),
-  spara: Number(process.env.RATE_SPARA ?? 5) };
+  spara: Number(process.env.RATE_SPARA ?? 5), mfn: Number(process.env.RATE_MFN ?? 30) };
 const hits = new Map();
 function rateLimited(req, bucket) {
   const ip = (TRUST_PROXY && req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress;
@@ -860,11 +860,12 @@ const routes = [
     if (!qm) return [404, { error: 'okänd endpoint' }];
     return c && c.length <= 200 ? [200, c] : [400, { error: 'hub.challenge saknas' }];
   }],
-  [/^\/api\/mfn$/, 'api', async (_m, _url, _res, req) => {
+  [/^\/api\/mfn$/, 'mfn', async (_m, _url, _res, req) => {
     if (!qm) return [404, { error: 'okänd endpoint' }];
     const { kropp, fel } = await lasKropp(req, MAX_MFN_BYTE);
-    if (fel) return fel;
-    if (!mfnSignaturOk(kropp, req.headers['x-hub-signature'])) return [403, { error: 'fel signatur' }];
+    // Avvisade loggas också: annars syns det inte om MFN skickar för stort eller med fel hemlighet.
+    if (fel) { console.log(`MFN avvisad: större än ${MAX_MFN_BYTE / 1024 / 1024} MB`); return fel; }
+    if (!mfnSignaturOk(kropp, req.headers['x-hub-signature'])) { console.log('MFN avvisad: fel signatur'); return [403, { error: 'fel signatur' }]; }
     let item;
     try { item = JSON.parse(kropp); } catch { return [400, { error: 'ogiltig JSON' }]; }
     const n = tolkaMfn(item);
