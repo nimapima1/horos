@@ -123,8 +123,10 @@ async function lasInFastigheter(fil) {
       ? 'Ingen rad har en kommun som Horos känner igen. Lägg till en kolumn Kommun (kommunen, inte postorten: Stockholm, inte Bromma), eller skriv kommunen först i beteckningen ("Stockholm Kungsbron 1").'
       : `Ingen av de ${rader.length.toLocaleString('sv-SE')} raderna matchade en fastighet i Horos.`);
   }
-  await oppnaScenario(nyttScenario(fil.name.replace(/\.[^.]+$/, ''), hittade), { visa: false });
-  await visaScenario();
+  try {
+    await oppnaScenario(nyttScenario(fil.name.replace(/\.[^.]+$/, ''), hittade), { visa: false });
+    await visaScenario();
+  } catch (e) { return fel(e.message); }
   $('#sc-resultat').insertAdjacentHTML('beforebegin', inlasningsruta({ fil: fil.name, rader: rader.length, hittade: hittade.length,
     viaAdress: traffar.filter((t) => t.via === 'adress').length, ej }));
 }

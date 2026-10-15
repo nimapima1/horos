@@ -158,8 +158,10 @@ async function nyttScenarioFran(namn, bet) {
 }
 
 // Sifferfält bundet till en plats i scenariot (vag), med det som används när fältet är tomt som platshållare.
-// Textfält, inte type="number": Safari och Firefox ger ett tomt värde för "4,5" i ett sifferfält.
-const talFalt = (vag, varde, platshallare, etikett) => `<input inputmode="decimal"
+// Textfält, inte type="number": Safari och Firefox ger ett tomt värde för "4,5" i ett sifferfält. data-tal märker
+// sifferfälten (scenarioInput); fält som kan vara negativa får vanligt tangentbord, iOS decimaltangentbord saknar minus.
+const KAN_VARA_NEGATIV = new Set(['hyresutv', 'kostutv']);
+const talFalt = (vag, varde, platshallare, etikett) => `<input data-tal inputmode="${KAN_VARA_NEGATIV.has(vag.at(-1)) ? 'text' : 'decimal'}"
   data-k="${esc(JSON.stringify(vag))}" value="${esc(String(varde ?? '').replace('.', ','))}" placeholder="${esc(platshallare ?? '')}"${etikett ? ` aria-label="${esc(etikett)}"` : ''}>`;
 const andel = (x) => (x == null || !Number.isFinite(x) ? '–' : `${(x * 100 + 0).toLocaleString('sv-SE', { maximumFractionDigits: 1 })} %`);
 const heltal = (x) => Math.round(x).toLocaleString('sv-SE');
@@ -365,8 +367,8 @@ async function gorHuvud(el) {
 // Ett fält i scenariot ändrades (se talFalt).
 function scenarioInput(el) {
   const vag = JSON.parse(el.dataset.k), d = scenario.data;
-  const tal = el.value.replace(/\s/g, '').replace(',', '.');   // "1 000,5" som besökaren skriver det
-  const v = el.inputMode === 'decimal' ? (tal === '' || !Number.isFinite(+tal) ? undefined : +tal) : el.value.slice(0, 100);
+  const tal = el.value.replace(/\s/g, '').replace(',', '.').replace('−', '-');   // "1 000,5" och "−1" som besökaren skriver det
+  const v = 'tal' in el.dataset ? (tal === '' || !Number.isFinite(+tal) ? undefined : +tal) : el.value.slice(0, 100);
   let o = d;
   for (const k of vag.slice(0, -1)) o = o[k] ??= {};
   if (v === undefined) delete o[vag.at(-1)]; else o[vag.at(-1)] = v;
