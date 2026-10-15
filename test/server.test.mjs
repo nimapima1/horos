@@ -162,6 +162,21 @@ test('samma affär i en tidning och ett pressmeddelande visas en gång; tidninge
   assert.equal(n2.rubrik, `Fastighetsköp för ${(300e6).toLocaleString('sv-SE')} kr`);   // inte "Fastighetsvärlden meddelar …"
 });
 
+test('dubbletter: olika kommuner är olika affärer; fastighetspanelen döljer bara det som ersätts där', async () => {
+  const db = openDb({ path: DB });
+  db.exec(`INSERT INTO nyhet (url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun) VALUES
+    ('https://www.fastighetsvarlden.se/notiser/5/', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', '2026-09-02T06:00:00Z', 'kop', 300000000, 'Uppsala'),
+    ('https://news.cision.com/se/a/r/2', 'cision', 'Alfa AB', 'x', '2026-10-01T06:00:00Z', 'kop', 50000000, NULL),
+    ('https://www.fastighetsvarlden.se/notiser/6/', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', '2026-10-02T06:00:00Z', 'kop', 50000000, NULL);
+    INSERT INTO nyhet_plats (url, beteckning, adress, lon, lat) VALUES ('https://www.fastighetsvarlden.se/notiser/6/', 'T 1:2', NULL, NULL, NULL)`);
+  db.close();
+  const urls = (await json('/api/affarer')).nyheter.map((n) => n.url);
+  assert.ok(urls.includes('https://www.fastighetsvarlden.se/notiser/5/'));    // Uppsala, inte Alfas köp i Testkommun
+  assert.ok(!urls.includes('https://www.fastighetsvarlden.se/notiser/6/'));   // samma affär som Alfas pressmeddelande 2
+  // Pressmeddelande 2 är inte kopplat till T 1:2, så notisen är det enda som visas där.
+  assert.deepEqual((await json('/api/fastighet/T%201%3A2')).nyheter.map((n) => n.url), ['https://www.fastighetsvarlden.se/notiser/6/']);
+});
+
 test('affärer räknar en paketaffär en gång', async () => {
   const a = await json('/api/affarer');
   assert.deepEqual(a.arLista, ['2024', '2020']);

@@ -524,10 +524,15 @@ const publikNyhet = (n) => {
   const b = PRESSMEDDELANDE.includes(`'${n.kalla}'`) ? nyhetsBolag.get(n.utgivare) : null;
   return { ...n, rubrik: nyhetsRubrik(n, normOrgnr(b?.orgnr) ? b.namn : null) };
 };
-// Samma affär i flera källor (samma typ och pris, högst 3 dagar isär) visas en gång: pressmeddelandet, som är
-// förstahandskällan och namnger bolaget, annars tidningen som var först. Utan pris går det inte att avgöra.
-const INTE_DUBBLETT = `NOT (n.kalla NOT IN ${PRESSMEDDELANDE} AND EXISTS (SELECT 1 FROM nyhet d
-  WHERE d.url != n.url AND d.typ = n.typ AND d.pris_kr = n.pris_kr AND abs(julianday(d.datum) - julianday(n.datum)) <= 3
+// Samma affär i flera källor (samma typ och pris, högst 3 dagar isär, inte olika kända kommuner) visas en gång:
+// pressmeddelandet, som är förstahandskällan och namnger bolaget, annars tidningen som var först. Utan pris går det
+// inte att avgöra. Datumintervallet som text (ISO, som datum sparas) så att indexet nyhet_affar används; `extra`
+// begränsar vilka nyheter som får ersätta (i fastighetspanelen bara de som visas där).
+const ISO = "'%Y-%m-%dT%H:%M:%fZ'";
+const inteDubblett = (extra = '') => `NOT (n.kalla NOT IN ${PRESSMEDDELANDE} AND EXISTS (SELECT 1 FROM nyhet d
+  WHERE d.typ = n.typ AND d.pris_kr = n.pris_kr
+    AND d.datum BETWEEN strftime(${ISO}, n.datum, '-3 days') AND strftime(${ISO}, n.datum, '+3 days')
+    AND d.url != n.url AND (d.kommun IS NULL OR n.kommun IS NULL OR d.kommun = n.kommun) ${extra}
     AND (d.kalla IN ${PRESSMEDDELANDE} OR d.datum < n.datum OR (d.datum = n.datum AND d.url < n.url))))`;
 const qn = HAS_NYHET && {
   senaste: db.prepare(`SELECT ${NYHET_KOLUMNER},
@@ -535,9 +540,10 @@ const qn = HAS_NYHET && {
       max(coalesce(f.maxx, p.lon)) AS maxx, max(coalesce(f.maxy, p.lat)) AS maxy,
       json_group_array(f.beteckning) FILTER (WHERE f.beteckning IS NOT NULL) AS beteckningar
     FROM nyhet n LEFT JOIN nyhet_plats p ON p.url = n.url LEFT JOIN fastighet f ON f.beteckning = p.beteckning
-    WHERE (? IS NULL OR n.kommun = ?) AND ${INTE_DUBBLETT} GROUP BY n.url ORDER BY n.datum DESC LIMIT 30`),
+    WHERE (? IS NULL OR n.kommun = ?) AND ${inteDubblett()} GROUP BY n.url ORDER BY n.datum DESC LIMIT 30`),
   fastighet: db.prepare(`SELECT ${NYHET_KOLUMNER} FROM nyhet n
-    WHERE n.url IN (SELECT url FROM nyhet_plats WHERE beteckning = ?) AND ${INTE_DUBBLETT} ORDER BY n.datum DESC`),
+    WHERE n.url IN (SELECT url FROM nyhet_plats WHERE beteckning = ?)
+      AND ${inteDubblett('AND d.url IN (SELECT url FROM nyhet_plats WHERE beteckning = ?)')} ORDER BY n.datum DESC`),
 };
 
 const qa = {
@@ -932,7 +938,7 @@ const routes = [
     if (!f) return [404, { error: 'Fastigheten finns inte' }];
     return [200, { ...f, upplatelse: q.upplatelse.get(bet).u, adresser: adresserPa(bet), planer: planerPa(bet), taxering: q.taxering.all(bet), agare: q.agare.all(bet), transaktioner: q.transaktioner.all(bet).map((x) => x.forvarvare_orgnr ? x : { privat: true }),
       hyresgaster: q.hyresgaster ? q.hyresgaster.all(bet) : [], anvandning: q.anvandning ? q.anvandning.all(bet) : [],
-      nyheter: qn ? qn.fastighet.all(bet).map(publikNyhet) : [],
+      nyheter: qn ? qn.fastighet.all(bet, bet).map(publikNyhet) : [],
       ...omgivning(bet), ...miljoRisk(bet) }];
   }],
 
