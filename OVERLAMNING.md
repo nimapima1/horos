@@ -1,7 +1,7 @@
-# Överlämning 2026-10-13 (kväll)
+# Överlämning 2026-10-15
 
 Läs `CLAUDE.md` först (regler, teknik, server) och `PRIVAT.md` (inte i git: mejlkontakter, myndighetsärenden,
-kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 till 2026-10-13 och vad som ska göras härnäst.
+kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 till 2026-10-15 och vad som ska göras härnäst.
 Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNING-hyresgaster.md`.
 
 ## Läget
@@ -11,7 +11,8 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
 - **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt.
-  - Koden till och med PR #25 (50492f1, 2026-10-13 kväll), deployad och kontrollerad med curl. Däri från 2026-10-13:
+  - Koden till och med PR #27 (059f9cc, deployad 2026-10-15 08:48 UTC och kontrollerad med curl: MFN-gränsen
+    10 MB). Däri från 2026-10-13:
     PR #22 och #24 (skydd mot massnedladdning och trafiktak, se nedan), #23 (pressmeddelanden: bolagets samlade
     fastighetsvärde är inget affärspris), #21 (rättningar efter Codex granskning, 17 fynd) och #20 (AGENTS.md, kopia
     av CLAUDE.md för Codex; uppdatera båda). Tidigare: PR #17 (inläsning från Excel/CSV och omstruktureringen). PR #16 (scenarier som
@@ -36,6 +37,17 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   som väntar på lösenfrasen och som Claude inte får stänga om användaren skrivit i den. Deploy
   laddar upp arbetskatalogen som den är: kontrollera `git status` först så att ingen annan sessions ocommittade
   ändringar följer med.
+
+## Gjort 2026-10-15: MFN-flödet är igång (PR #27)
+
+- MFN (Markus) skrev att flödet är uppsatt och att pressmeddelanden kan vara större än 1 MB. Gränsen för
+  `/api/mfn` är nu 10 MB med egen hastighetsgräns (`RATE_MFN`, 30 per 10 s), och avvisade anrop loggas
+  (`MFN avvisad: större än 10 MB` / `fel signatur`).
+- **Kontrollerat i journalen** samma morgon: leveranser med rätt signatur sedan 06:52 UTC, alla `ingen affär`
+  (rapportinbjudningar, kallelser, återköp, order). Ingen `affär` än, så inget "via MFN" på sidan. Raden
+  `08:49:04 MFN avvisad: fel signatur` var Claudes provanrop (2 MB) efter publiceringen, inte MFN.
+- Användaren kan bekräfta för Markus att det fungerar (inte gjort i sessionen). Läs **inte** Markus mejl i
+  sin helhet: de citerar mejlet med hemligheten (snippet/`MINIMAL` räcker).
 
 ## Gjort 2026-10-13: driftkostnader och skydd mot massnedladdning (PR #22, #24, #25)
 
@@ -214,8 +226,11 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
    2026-10-12 men inte provat på riktig iPhone. När taxeringen kommer: ta ytor (LOA/BOA) och
    bostads-/lokalvärde därifrån i stället för uppskattningen och skatteschablonen. Möjliga nästa steg: öppna
    standardvärden (t.ex. SCB:s bostadshyror per kommun) och finansiering (lån, ränta, amortering).
-1. Kolla Gmail efter svar på tillståndsmejlen (MFN: svar på följdfrågorna; Fastighetsvärlden och Fastighetsnytt
-   har inte svarat, kollat 2026-10-12).
+1. Kolla Gmail efter svar från Fastighetsvärlden och Fastighetsnytt (inte svarat, kollat 2026-10-15). MFN är klart.
+   Följ MFN i journalen: `ssh deploy@37.27.152.172 "sudo -n /usr/local/sbin/fastighetskarta-admin logs 2000" |
+   Select-String MFN`. Första `MFN affär:` ska synas "via MFN" efter nästa cron (05:15/15:15 UTC);
+   `affär, inte fastighetsbolag` från ett fastighetsbolag: lägg till org.nr i `MFN_FASTIGHETSBOLAG`;
+   `avvisad: större än 10 MB` från MFN: höj gränsen; `avvisad: fel signatur` från MFN: hemligheten stämmer inte.
 2. Läs `nyheter.log` på servern: `ssh deploy@37.27.152.172 tail /var/lib/fastighetskarta/nyheter.log`. Första
    gången ett nytt pressmeddelande kommer ska raden sakna `(inget ändrades)`; då har bytet och omstarten med
    kontroll körts på riktigt för första gången. Står det `Appen svarar inte efter omstarten`: se
