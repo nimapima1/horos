@@ -524,11 +524,11 @@ const publikNyhet = (n) => {
   const b = PRESSMEDDELANDE.includes(`'${n.kalla}'`) ? nyhetsBolag.get(n.utgivare) : null;
   return { ...n, rubrik: nyhetsRubrik(n, normOrgnr(b?.orgnr) ? b.namn : null) };
 };
-// Samma affär i en tidning och i ett pressmeddelande (samma typ och pris, högst 3 dagar isär): bara pressmeddelandet,
-// som är förstahandskällan och namnger bolaget. Utan pris går det inte att avgöra, och då visas båda.
+// Samma affär i flera källor (samma typ och pris, högst 3 dagar isär) visas en gång: pressmeddelandet, som är
+// förstahandskällan och namnger bolaget, annars tidningen som var först. Utan pris går det inte att avgöra.
 const INTE_DUBBLETT = `NOT (n.kalla NOT IN ${PRESSMEDDELANDE} AND EXISTS (SELECT 1 FROM nyhet d
-  WHERE d.kalla IN ${PRESSMEDDELANDE} AND d.typ = n.typ AND d.pris_kr = n.pris_kr
-    AND abs(julianday(d.datum) - julianday(n.datum)) <= 3))`;
+  WHERE d.url != n.url AND d.typ = n.typ AND d.pris_kr = n.pris_kr AND abs(julianday(d.datum) - julianday(n.datum)) <= 3
+    AND (d.kalla IN ${PRESSMEDDELANDE} OR d.datum < n.datum OR (d.datum = n.datum AND d.url < n.url))))`;
 const qn = HAS_NYHET && {
   senaste: db.prepare(`SELECT ${NYHET_KOLUMNER},
       min(coalesce(f.minx, p.lon)) AS minx, min(coalesce(f.miny, p.lat)) AS miny,

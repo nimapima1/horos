@@ -150,11 +150,13 @@ test('samma affär i en tidning och ett pressmeddelande visas en gång; tidninge
     INSERT INTO nyhet (url, kalla, utgivare, rubrik, datum, typ, pris_kr, kommun) VALUES
     ('https://www.fastighetsvarlden.se/notiser/1/', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', '2026-09-03T06:00:00Z', 'kop', 300000000, NULL),
     ('https://www.fastighetsvarlden.se/notiser/2/', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', '2026-09-20T06:00:00Z', 'kop', 300000000, NULL),
-    ('https://www.fastighetsvarlden.se/notiser/3/', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', '2026-09-02T06:00:00Z', 'kop', NULL, NULL)`);
+    ('https://www.fastighetsvarlden.se/notiser/3/', 'fastighetsvarlden', 'Fastighetsvärlden', 'x', '2026-09-02T06:00:00Z', 'kop', NULL, NULL),
+    ('https://www.fastighetsnytt.se/artikel/4', 'fastighetsnytt', 'Fastighetsnytt', 'x', '2026-09-21T06:00:00Z', 'kop', 300000000, NULL)`);
   db.close();
   const urls = (await json('/api/affarer')).nyheter.map((n) => n.url);
-  // 1 är samma affär som Alfas pressmeddelande (samma pris, två dagar senare); 2 är för långt ifrån, 3 saknar pris.
-  assert.ok(!urls.includes('https://www.fastighetsvarlden.se/notiser/1/'));
+  // 1 är samma affär som Alfas pressmeddelande (samma pris, två dagar senare); 2 är för långt ifrån, 3 saknar pris;
+  // 4 är samma affär som 2 i en annan tidning, en dag senare.
+  assert.ok(!urls.includes('https://www.fastighetsvarlden.se/notiser/1/') && !urls.includes('https://www.fastighetsnytt.se/artikel/4'));
   assert.ok(urls.includes('https://www.fastighetsvarlden.se/notiser/2/') && urls.includes('https://www.fastighetsvarlden.se/notiser/3/'));
   const n2 = (await json('/api/affarer')).nyheter.find((n) => n.url.endsWith('/2/'));
   assert.equal(n2.rubrik, `Fastighetsköp för ${(300e6).toLocaleString('sv-SE')} kr`);   // inte "Fastighetsvärlden meddelar …"
