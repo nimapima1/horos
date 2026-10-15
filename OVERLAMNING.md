@@ -1,4 +1,4 @@
-# Överlämning 2026-10-15
+# Överlämning 2026-10-15 (kväll)
 
 Läs `CLAUDE.md` först (regler, teknik, server) och `PRIVAT.md` (inte i git: mejlkontakter, myndighetsärenden,
 kostnader). Den här filen beskriver läget efter sessionerna 2026-10-10 till 2026-10-15 och vad som ska göras härnäst.
@@ -11,8 +11,9 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
 - **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt.
-  - Koden till och med PR #27 (059f9cc, deployad 2026-10-15 08:48 UTC och kontrollerad med curl: MFN-gränsen
-    10 MB). Däri från 2026-10-13:
+  - Koden till och med PR #34 (2026-10-15 eftermiddag): #31 Fastighetsvärlden, #32/#34 dubbletter mellan källor
+    (se nedan), #33 sök bland transaktioner och #29/#30 mobilrättningar (de två sista från en annan session).
+    Kontrollerat med curl. Före det PR #27 (MFN-gränsen 10 MB). Från 2026-10-13:
     PR #22 och #24 (skydd mot massnedladdning och trafiktak, se nedan), #23 (pressmeddelanden: bolagets samlade
     fastighetsvärde är inget affärspris), #21 (rättningar efter Codex granskning, 17 fynd) och #20 (AGENTS.md, kopia
     av CLAUDE.md för Codex; uppdatera båda). Tidigare: PR #17 (inläsning från Excel/CSV och omstruktureringen). PR #16 (scenarier som
@@ -29,7 +30,7 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
     (`horos-trafiktak.service`, 50 Mbit/s ut) installerat som root 2026-10-13.
   - `secrets.env`: GEOTORGET_USER/PASS, GOOGLE_EMBED_KEY och MFN_SECRET (2026-10-12).
 - Grenar: bara `master`, lokalt och på GitHub (alla mergade grenar togs bort 2026-10-13).
-- `npm test`: 87 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
+- `npm test`: 91 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
   av en annan session). Starta om servern efter import eller demo-data.
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
   terminal (lösenfras **direkt**, annars stänger servern anslutningen; det hände två gånger 2026-10-10). Första
@@ -37,6 +38,32 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   som väntar på lösenfrasen och som Claude inte får stänga om användaren skrivit i den. Deploy
   laddar upp arbetskatalogen som den är: kontrollera `git status` först så att ingen annan sessions ocommittade
   ändringar följer med.
+
+## Gjort 2026-10-15 (eftermiddag): Fastighetsvärlden och dubbletter (PR #31, #32, #34)
+
+- **Tidningarna**: Fastighetsnytt och Fastighetsvärlden svarade inte på mejlen från 2026-10-10.
+  - **Bonnier News (Fastighetsnytt, DI) förbjuder insamling** utan skriftligt tillstånd, i robots.txt och på
+    bonniernews.se/info/upphovsratt-och-ai. Inte med. Utkast till påminnelse (Björn Rundström) och begäran till
+    press@bonniernews.se ligger i Gmail; om de är skickade framgår inte här. En "Sök på Fastighetsnytt"-knapp
+    valdes bort (för lite värde).
+  - **Fastighetsvärlden** (Tidnings AB Fastighetsvärlden) har inget förbehåll och ett öppet flöde, `sitemap.rss`
+    (rubrik, länk, datum). Meddelande till redaktionen **skickat 2026-10-15** (vi visar rubrik/datum/länk, slutar om
+    de invänder). `TIDNINGAR` i `lib/nyheter.mjs`, bara `/notiser/`, bara affärer där den som köper eller säljer
+    (`aktorIRubrik`) finns i `bolag_fts`. Rubriken på sidan byggs av fakta utan bolagsnamn, raden visar "Enligt
+    Fastighetsvärlden". Första hämtningen live: cron 15:15 UTC 2026-10-15.
+- **Dubbletter**: samma affär i flera källor (typ och pris lika, högst 3 dagar isär, inte olika kända kommuner)
+  visas en gång: pressmeddelandet, annars tidningen som var först (`inteDubblett` i server.mjs, index
+  `nyhet_affar`). I fastighetspanelen ersätter bara nyheter kopplade till samma fastighet. Kvar: en notis utan
+  kommun med samma pris inom 3 dagar som ett orelaterat pressmeddelande döljs.
+- **Codex granskade** #31/#32: fynd 2–4 åtgärdade i #34. **Fynd 1 åtgärdas inte (användarens beslut)**: FTS-träffen
+  bevisar inte att aktören är ett bolag ("Anna Andersson köper …" passerar om "Anna Andersson Fastigheter AB" finns).
+- **MFN**: de första affärerna syns live (t.ex. NP3 förvärvar fastigheter för 286 miljoner kronor, via MFN).
+- **Samma mapp, två sessioner**: en annan session arbetade ocommittat på `master` i `C:\Claude-projects\fastighetskarta`
+  samtidigt. Den här sessionen arbetade därför i en egen arbetskopia, `.worktrees/fv` (git worktree, i
+  `.git/info/exclude`), och publicerade därifrån med exakt `origin/master`. Byt aldrig gren i en mapp där en
+  annan session har ocommittade ändringar; `git worktree remove .worktrees/fv` när den inte behövs.
+- `npm test`: 91 gröna. `test/server.test.mjs` använder port 3005; kör en annan sessions server där, byt porten
+  tillfälligt (committa inte).
 
 ## Gjort 2026-10-15: MFN-flödet är igång (PR #27)
 
@@ -226,7 +253,9 @@ nyckeltal). Horos version, utan inloggning och utan licensierade schabloner:
    2026-10-12 men inte provat på riktig iPhone. När taxeringen kommer: ta ytor (LOA/BOA) och
    bostads-/lokalvärde därifrån i stället för uppskattningen och skatteschablonen. Möjliga nästa steg: öppna
    standardvärden (t.ex. SCB:s bostadshyror per kommun) och finansiering (lån, ränta, amortering).
-1. Kolla Gmail efter svar från Fastighetsvärlden och Fastighetsnytt (inte svarat, kollat 2026-10-15). MFN är klart.
+1. Kolla att Fastighetsvärldens affärer kom in vid cron 15:15 UTC 2026-10-15 ("Enligt Fastighetsvärlden" i
+   Transaktioner; Emilshus 341 mkr ska visas en gång). Kolla Gmail efter svar från Fastighetsvärlden (invänder de:
+   ta bort raden i `TIDNINGAR`), Fastighetsnytt och Bonnier News. MFN är klart.
    Följ MFN i journalen: `ssh deploy@37.27.152.172 "sudo -n /usr/local/sbin/fastighetskarta-admin logs 2000" |
    Select-String MFN`. Första `MFN affär:` ska synas "via MFN" efter nästa cron (05:15/15:15 UTC);
    `affär, inte fastighetsbolag` från ett fastighetsbolag: lägg till org.nr i `MFN_FASTIGHETSBOLAG`;
