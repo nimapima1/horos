@@ -11,7 +11,9 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   kostnader, nycklar) läggs i `PRIVAT.md`. Äldre commits innehåller fortfarande mejlutkast och mottagaradresser
   (015a319, 8fa017e); historiken skrivs **inte** om (beslut 2026-10-10: redaktionernas publika adresser, redan pushat).
 - **Live**: https://horos.se och https://www.horos.se (skickas vidare), HTTPS med Let's Encrypt.
-  - Koden till och med PR #34 (2026-10-15 eftermiddag): #31 Fastighetsvärlden, #32/#34 dubbletter mellan källor
+  - Koden till och med PR #36 (`4b9d4c2`, publicerad 2026-10-15 13:38 UTC): #36 index på `bolag.namn` (se nedan).
+    **PR #37** (sök i Transaktioner: affärerna i minnet) mergades 13:29 UTC, efter att koden hämtats, och är
+    **inte live** än. Dessförinnan PR #34 (2026-10-15 eftermiddag): #31 Fastighetsvärlden, #32/#34 dubbletter mellan källor
     (se nedan), #33 sök bland transaktioner och #29/#30 mobilrättningar (de två sista från en annan session).
     Kontrollerat med curl. Före det PR #27 (MFN-gränsen 10 MB). Från 2026-10-13:
     PR #22 och #24 (skydd mot massnedladdning och trafiktak, se nedan), #23 (pressmeddelanden: bolagets samlade
@@ -19,7 +21,8 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
     av CLAUDE.md för Codex; uppdatera båda). Tidigare: PR #17 (inläsning från Excel/CSV och omstruktureringen). PR #16 (scenarier som
     räknas ihop, Med/Huvud, scenarier på kartan), PR #12–#15 (MFN-mottagaren, se nedan), PR #11 (decimalkomma,
     Street View och scenariovyn på mobil), PR #8 (scenarier och ny panel) och PR #2–#7 från 2026-10-11.
-  - Publik databas byggd 2026-10-11 17:52 (enligt `/api/status`) med `--alla-bolag`, publicerad med `--data`: 0 fastigheter,
+  - Publik databas byggd 2026-10-15 13:27 UTC (meta `byggd`) med `--alla-bolag`, publicerad med `--data`; samma fil
+    ligger i huvudmappens `data/public.sqlite` (den förra som `data/public_GAMMAL.sqlite`, kan tas bort): 0 fastigheter,
     2,2 miljoner bolag (ägarkontrollen som ord: `stat`, `kommun`, `region` …), 120 177 adresser, inga
     arbetsställen (byggt utan `--scb-villkor`), 127 affärer ur pressmeddelanden (uppdateras av cron).
   - Servern: cloud-init v3 + ändringarna i v4–v5 inlagda för hand (www-blocket, inget `Via`-huvud,
@@ -30,7 +33,7 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
     (`horos-trafiktak.service`, 50 Mbit/s ut) installerat som root 2026-10-13.
   - `secrets.env`: GEOTORGET_USER/PASS, GOOGLE_EMBED_KEY och MFN_SECRET (2026-10-12).
 - Grenar: bara `master`, lokalt och på GitHub (alla mergade grenar togs bort 2026-10-13).
-- `npm test`: 91 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
+- `npm test`: 92 gröna. Prova lokalt: `preview_start {name: "horos-3005"}` (autoPort; port 3005 kan vara upptagen
   av en annan session). Starta om servern efter import eller demo-data.
 - Publicera: `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh deploy@37.27.152.172 [--data]` i användarens
   terminal (lösenfras **direkt**, annars stänger servern anslutningen; det hände två gånger 2026-10-10). Första
@@ -38,6 +41,18 @@ Detaljer om SCB:s arbetsställen (API, fält, koder, villkor) står i `OVERLAMNI
   som väntar på lösenfrasen och som Claude inte får stänga om användaren skrivit i den. Deploy
   laddar upp arbetskatalogen som den är: kontrollera `git status` först så att ingen annan sessions ocommittade
   ändringar följer med.
+
+## Gjort 2026-10-15 (kväll): index på bolag.namn (PR #36)
+
+- `GET /api/affarer` tog 17–40 s utan cache och blockerade servern under tiden (allt annat, t.ex. klick på en
+  ägare, fick vänta). Orsak: `publikNyhet` slår upp pressmeddelandets utgivare med `nyhetsBolag`
+  (`bolag WHERE namn = ?`, upp till 30 gånger), och `bolag.namn` saknade index: SCAN över 2,2 miljoner bolag,
+  ~690 ms per uppslag. Samma uppslag används i fastighetspanelens "I pressmeddelanden".
+- Åtgärd: `CREATE INDEX bolag_namn ON bolag(namn)` i schemat (`lib/db.mjs`); build-public får det via `openDb`.
+  Uppslaget tar ~0,03 ms. Mätt live efter publiceringen: `/api/affarer` 0,11 s (första anropet efter omstart),
+  `/api/bolag/…` och `/api/storsta-agare` 0,05 s.
+- Den live databasen är skrivskyddad: den får nya index bara genom `build-public` + `deploy.sh --data`. Att skapa
+  indexet i en befintlig databas tar ~3,5 s första gången `openDb` körs (lokalt redan gjort).
 
 ## Gjort 2026-10-15 (eftermiddag): Fastighetsvärlden och dubbletter (PR #31, #32, #34)
 
