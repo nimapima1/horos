@@ -519,19 +519,25 @@ const AFFAR_RAD = `SELECT a.dag, a.kr, a.orgnr, a.beteckning, a.antal, a.demo, b
 // som bbox och beteckningar för kartan.
 const NYHET_KOLUMNER = 'n.url, n.kalla, n.utgivare, n.rubrik, substr(n.datum, 1, 10) AS dag, n.typ, n.pris_kr, n.kommun';
 const nyhetsBolag = db.prepare('SELECT orgnr, namn FROM bolag WHERE namn = ?');
+const PRESSMEDDELANDE = "('cision', 'mfn')";   // övriga källor är tidningar: källan, inte köparen eller säljaren
 const publikNyhet = (n) => {
-  const b = nyhetsBolag.get(n.utgivare);
+  const b = PRESSMEDDELANDE.includes(`'${n.kalla}'`) ? nyhetsBolag.get(n.utgivare) : null;
   return { ...n, rubrik: nyhetsRubrik(n, normOrgnr(b?.orgnr) ? b.namn : null) };
 };
+// Samma affär i flera källor (samma typ och pris, högst 3 dagar isär) visas en gång: pressmeddelandet, som är
+// förstahandskällan och namnger bolaget, annars tidningen som var först. Utan pris går det inte att avgöra.
+const INTE_DUBBLETT = `NOT (n.kalla NOT IN ${PRESSMEDDELANDE} AND EXISTS (SELECT 1 FROM nyhet d
+  WHERE d.url != n.url AND d.typ = n.typ AND d.pris_kr = n.pris_kr AND abs(julianday(d.datum) - julianday(n.datum)) <= 3
+    AND (d.kalla IN ${PRESSMEDDELANDE} OR d.datum < n.datum OR (d.datum = n.datum AND d.url < n.url))))`;
 const qn = HAS_NYHET && {
   senaste: db.prepare(`SELECT ${NYHET_KOLUMNER},
       min(coalesce(f.minx, p.lon)) AS minx, min(coalesce(f.miny, p.lat)) AS miny,
       max(coalesce(f.maxx, p.lon)) AS maxx, max(coalesce(f.maxy, p.lat)) AS maxy,
       json_group_array(f.beteckning) FILTER (WHERE f.beteckning IS NOT NULL) AS beteckningar
     FROM nyhet n LEFT JOIN nyhet_plats p ON p.url = n.url LEFT JOIN fastighet f ON f.beteckning = p.beteckning
-    WHERE (? IS NULL OR n.kommun = ?) GROUP BY n.url ORDER BY n.datum DESC LIMIT 30`),
+    WHERE (? IS NULL OR n.kommun = ?) AND ${INTE_DUBBLETT} GROUP BY n.url ORDER BY n.datum DESC LIMIT 30`),
   fastighet: db.prepare(`SELECT ${NYHET_KOLUMNER} FROM nyhet n
-    WHERE n.url IN (SELECT url FROM nyhet_plats WHERE beteckning = ?) ORDER BY n.datum DESC`),
+    WHERE n.url IN (SELECT url FROM nyhet_plats WHERE beteckning = ?) AND ${INTE_DUBBLETT} ORDER BY n.datum DESC`),
 };
 
 const qa = {
