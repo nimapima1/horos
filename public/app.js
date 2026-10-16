@@ -258,16 +258,18 @@ const fastighetPaint = (satellit) => (satellit
     'line-opacity': 1,
   });
 
-// Visar valt bildlager (skapas första gången det väljs) under kartans etiketter.
+// Visar valt bildlager (skapas första gången det väljs) över bakgrundskartans ytor och linjer
+// (byggnader, vägar) men under ortnamnen. Stilen har vattennamnen under byggnaderna, så inte "första etiketten".
 function applyBasemap(value) {
   if (!map.getLayer('fastighet-fill')) return;
   const def = IMAGERY[value];
   const lager = def ? [def.under, value].filter(Boolean) : [];   // det undre först
   for (const id of lager) {
     if (map.getLayer(id)) continue;
-    const firstSymbol = map.getStyle().layers.find((l) => l.type === 'symbol')?.id;
+    const stil = map.getStyle().layers;
+    const fore = stil[stil.findLastIndex((l) => l.source === 'openmaptiles' && l.type !== 'symbol') + 1]?.id;
     map.addSource(id, { type: 'raster', tileSize: 256, ...IMAGERY[id].source });
-    map.addLayer({ id, type: 'raster', source: id, paint: IMAGERY[id].paint ?? {} }, firstSymbol);
+    map.addLayer({ id, type: 'raster', source: id, paint: IMAGERY[id].paint ?? {} }, fore);
   }
   if (def?.under) map.moveLayer(def.under, value);   // under även om det skapades senare
   for (const id of Object.keys(IMAGERY)) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', lager.includes(id) ? 'visible' : 'none');
