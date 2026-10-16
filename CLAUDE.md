@@ -50,10 +50,12 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 - Flygfoto (Lantmäteriets ortofoto, CC BY 4.0, hela landet; Ortofoto Nedladdning beviljad 2026-10-16): STAC-katalogen
   https://api.lantmateriet.se/stac-bild/v1 (COG, bildfilerna kräver Geotorget-inloggningen). `import-ortofoto` bygger registret
   `ortofoto.sqlite` (bredvid databasen; senaste färgbilden per 2,5 km-ruta, R-träd) ur katalogens metadata. Servern ritar
-  kartrutorna vid behov (`/tiles/ortofoto/z/x/y.webp`, zoom 14–18) med `lib/ortofoto.py` (python3 + rasterio, `ORTOFOTO_ARBETARE`
-  processer, en ruta i taget, kö med tak `ORTOFOTO_KO` → 503, arbetare som fastnat dödas efter 30 s) och sparar dem i
+  kartrutorna vid behov (`/tiles/ortofoto/z/x/y.webp`, zoom 14–18) med `lib/ortofoto.py` (python3 + rasterio, `ORTOFOTO_ARBETARE`,
+  standard 6, processer, en ruta i taget, kö med tak `ORTOFOTO_KO` → 503, arbetare som fastnat dödas efter 30 s) och sparar dem i
   `CACHE_DIR/ortofoto`; översikten väljs ur filens egna översikter, aldrig finare än 0,3 m (`valj_niva`, `python3 lib/ortofoto.py --test`),
-  och inloggningen skickas bara till `*.lantmateriet.se`. Kartan: "Flygfoto" med satellitbilden under. På servern som root (en gång, och när nya
+  och inloggningen skickas bara till `*.lantmateriet.se`. `forrita-ortofoto` hämtar rutor från den egna servern så att de sparas
+  (standard Stockholm zoom 14–17, ~36 000 rutor, 3 åt gången); körs i slutet av `ortofoto.sh`, eller ensamt som deploy:
+  `nohup node scripts/forrita-ortofoto.mjs > /var/lib/fastighetskarta/forrita.log 2>&1 &`. Kartan: "Flygfoto" med satellitbilden under. På servern som root (en gång, och när nya
   flygningar publicerats): `bash /opt/fastighetskarta/current/deploy/ortofoto.sh`. Ortofoto Visning kostar 207 625 kr/år: används inte.
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.

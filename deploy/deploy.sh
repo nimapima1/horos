@@ -21,7 +21,7 @@ SSH=ssh
 [[ -x /c/Windows/System32/OpenSSH/ssh.exe ]] && SSH=/c/Windows/System32/OpenSSH/ssh.exe
 
 REL="$(date +%Y%m%d-%H%M%S)"
-FILES=(server.mjs package.json lib public scripts/import-nyheter.mjs scripts/import-ortofoto.mjs deploy/ortofoto.sh deploy/nyheter.sh deploy/scenarion.conf deploy/trafiktak.sh)
+FILES=(server.mjs package.json lib public scripts/import-nyheter.mjs scripts/import-ortofoto.mjs scripts/forrita-ortofoto.mjs deploy/ortofoto.sh deploy/nyheter.sh deploy/scenarion.conf deploy/trafiktak.sh)
 if [[ "$WITH_DATA" == "--data" ]]; then
   [[ -f data/public.sqlite ]] || { echo "data/public.sqlite saknas. Kör: npm run build:public"; exit 1; }
   FILES+=(data/public.sqlite)

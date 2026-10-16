@@ -264,7 +264,7 @@ const ORTO_BOUNDS = ORTO ? Object.values(ORTO.prepare('SELECT min(minx), min(min
 // Python-arbetarna lever lika länge som servern (GDAL cachar filhuvuden och block mellan rutorna). En ruta i
 // taget per arbetare; övriga väntar i en kö med tak, så att många okända rutor inte kan dränka servern eller
 // Lantmäteriet. Den som väntat för länge får 503. En ruta som fastnar dödar sin arbetare, som ersätts.
-const ORTO_ARBETARE = Number(process.env.ORTOFOTO_ARBETARE ?? 2);
+const ORTO_ARBETARE = Number(process.env.ORTOFOTO_ARBETARE ?? 6);   // väntar mest på nätet; ~200 MB var
 const ORTO_KO_MAX = Number(process.env.ORTOFOTO_KO ?? 40);
 const ORTO_KO_TID = 20_000, ORTO_RIT_TID = 30_000;
 const arbetare = [];

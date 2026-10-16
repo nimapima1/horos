@@ -85,7 +85,7 @@ def rita(req):
 with rasterio.Env(GDAL_HTTP_AUTH='BASIC', GDAL_DISABLE_READDIR_ON_OPEN='EMPTY_DIR',
                   CPL_VSIL_CURL_ALLOWED_EXTENSIONS='.tif', GDAL_HTTP_MAX_RETRY='2', GDAL_HTTP_RETRY_DELAY='1',
                   GDAL_HTTP_CONNECTTIMEOUT='10', GDAL_HTTP_TIMEOUT='20',
-                  VSI_CACHE=True, VSI_CACHE_SIZE=50_000_000, GDAL_CACHEMAX=128 * 1024 * 1024):
+                  VSI_CACHE=True, VSI_CACHE_SIZE=50_000_000, GDAL_CACHEMAX=64 * 1024 * 1024):
     for rad in sys.stdin:
         req = json.loads(rad)
         try:
