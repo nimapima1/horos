@@ -513,7 +513,7 @@ label.copy { display: inline-flex; align-items: center; }
 .page li + li { margin-top: 6px; }
 .page .lead { font-size: 18px; color: var(--muted); margin-top: 0; }
 .page table { width: 100%; border-collapse: collapse; font-size: 15px; margin: 8px 0; }
-.page th, .page td { text-align: left; padding: 10px 10px 10px 0; border-top: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+.page th, .page td { text-align: left; padding: 10px 10px 10px 0; border-top: 1px solid var(--border); vertical-align: top; overflow-wrap: break-word; }   /* anywhere klämde kolumnerna så att orden bröts mitt i */
 .page th { color: var(--subtle); font-weight: 600; font-size: 14px; border-top: 0; }
 .page .downloads { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
 .page .btn {
