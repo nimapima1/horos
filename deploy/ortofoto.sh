@@ -4,7 +4,8 @@
 # (Om en tidigare körning misslyckats: systemctl reset-failed horos-ortofoto först.)
 # Installerar rasterio (Python), bygger registret över bilderna (~10–20 min, bara metadata från
 # Lantmäteriets katalog) och startar om appen. Kör om när Lantmäteriet publicerat nya flygningar.
-# Rutorna ritas sedan vid behov av appen och sparas i /var/cache/fastighetskarta/ortofoto.
+# Rutorna ritas sedan vid behov av appen och sparas i /var/cache/fastighetskarta/ortofoto; Stockholm
+# (zoom 14–17) ritas i förväg i slutet (1–2 timmar, appen fungerar under tiden).
 set -euo pipefail
 python3 -c 'import rasterio' 2>/dev/null \
   || { apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-rasterio; }
@@ -17,4 +18,6 @@ if [[ -d /var/cache/fastighetskarta/ortofoto ]]; then
   echo "Gamla rutor flyttade till /var/cache/fastighetskarta/ortofoto_GAMMAL_*; ta bort dem när du vill."
 fi
 systemctl start fastighetskarta
-echo "Klart. Välj Flygfoto i kartans bakgrundsväljare."
+echo "Registret är klart. Välj Flygfoto i kartans bakgrundsväljare. Ritar Stockholm i förväg…"
+sleep 5
+sudo -u deploy node --disable-warning=ExperimentalWarning scripts/forrita-ortofoto.mjs
