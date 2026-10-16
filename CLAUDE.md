@@ -51,8 +51,9 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   https://api.lantmateriet.se/stac-bild/v1 (COG, bildfilerna kräver Geotorget-inloggningen). `import-ortofoto` bygger registret
   `ortofoto.sqlite` (bredvid databasen; senaste färgbilden per 2,5 km-ruta, R-träd) ur katalogens metadata. Servern ritar
   kartrutorna vid behov (`/tiles/ortofoto/z/x/y.webp`, zoom 14–18) med `lib/ortofoto.py` (python3 + rasterio, `ORTOFOTO_ARBETARE`
-  processer) och sparar dem i `CACHE_DIR/ortofoto`; bilderna läses i översikten närmast rutan, aldrig finare än 0,3 m
-  (`ovrNiva` i `lib/ortofoto.mjs`). Kartan: "Flygfoto" med satellitbilden under. På servern som root (en gång, och när nya
+  processer, en ruta i taget, kö med tak `ORTOFOTO_KO` → 503, arbetare som fastnat dödas efter 30 s) och sparar dem i
+  `CACHE_DIR/ortofoto`; översikten väljs ur filens egna översikter, aldrig finare än 0,3 m (`valj_niva`, `python3 lib/ortofoto.py --test`),
+  och inloggningen skickas bara till `*.lantmateriet.se`. Kartan: "Flygfoto" med satellitbilden under. På servern som root (en gång, och när nya
   flygningar publicerats): `bash /opt/fastighetskarta/current/deploy/ortofoto.sh`. Ortofoto Visning kostar 207 625 kr/år: används inte.
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
