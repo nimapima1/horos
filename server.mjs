@@ -1,18 +1,20 @@
 // Liten server utan beroenden: statiska filer från public/ + JSON-API.
 import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { csvCell } from './lib/csv.mjs';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import { readFile, writeFile, mkdir, statfs } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, statfs, unlink } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, extname, join, normalize, sep } from 'node:path';
-import { openDb, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree, rebuildFastighetFts, fastighetsBet } from './lib/db.mjs';
+import { openDb, DB_PATH, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree, rebuildFastighetFts, fastighetsBet } from './lib/db.mjs';
 import { avstandM, innerPoints, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN, kommunAv, kommunForst } from './lib/kommuner.mjs';
 import { MAX_SCENARIO, MAX_SCENARIO_BYTE, giltigtScenario, oppnaScenarier } from './lib/scenarier.mjs';
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
+import { ZOOM as ORTO_ZOOM, oppnaRegister, ovrNiva, valjBilder } from './lib/ortofoto.mjs';
 import { arFastighetsbolag, tolkaMfn, nyhetsRubrik } from './lib/nyheter.mjs';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -142,7 +144,7 @@ async function lasJson(req, max) {
 // Kartrutor har en egen, högre gräns eftersom en kartvy hämtar många på en gång. Historiska rutor och
 // hela databasen som fil har lägre gränser: de hämtas från Lantmäteriet respektive är de största svaren.
 const RATE = { windowMs: 10_000, api: Number(process.env.RATE_MAX ?? 200), tiles: Number(process.env.RATE_TILES ?? 800),
-  historisk: Number(process.env.RATE_HISTORISK ?? 300), export: Number(process.env.RATE_EXPORT ?? 2),
+  historisk: Number(process.env.RATE_HISTORISK ?? 300), ortofoto: Number(process.env.RATE_ORTOFOTO ?? 300), export: Number(process.env.RATE_EXPORT ?? 2),
   spara: Number(process.env.RATE_SPARA ?? 5), mfn: Number(process.env.RATE_MFN ?? 30), sok: Number(process.env.RATE_SOK ?? 20) };
 const hits = new Map();
 function rateLimited(req, bucket) {
@@ -243,6 +245,94 @@ async function historiskTile(res, ar, z, x, y) {
       .catch((err) => console.error('cache:', err.message));
   }
   res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=2592000' });
+  res.end(buf);
+}
+
+// --- Ortofoto (Lantmäteriet, CC BY 4.0) ---------------------------------------
+// Hela landet. Rutorna ritas vid behov ur Lantmäteriets bildfiler (COG, Geotorget-inloggningen) av
+// lib/ortofoto.py (python3 med rasterio), med bilderna ur registret som scripts/import-ortofoto.mjs bygger,
+// och sparas på disk som de historiska. Utan register eller inloggning finns inget ortofoto.
+// Ett nytt register (deploy/ortofoto.sh) flyttar undan cachen, så att nya flygningar syns.
+const ORTO = (() => {
+  if (!HIST_AUTH) return null;
+  try { return oppnaRegister(process.env.ORTOFOTO_DB ?? join(dirname(DB_PATH), 'ortofoto.sqlite')); } catch { return null; }
+})();
+const ortoBilder = ORTO?.prepare(`SELECT b.href, b.datum, b.upplosning, b.geometri FROM bild_rtree r JOIN bild b ON b.id = r.id
+  WHERE r.maxx >= ? AND r.minx <= ? AND r.maxy >= ? AND r.miny <= ?`);
+const ORTO_BOUNDS = ORTO ? Object.values(ORTO.prepare('SELECT min(minx), min(miny), max(maxx), max(maxy) FROM bild').get()) : null;
+
+// Python-arbetarna lever lika länge som servern (GDAL cachar filhuvuden och block mellan rutorna).
+const ORTO_ARBETARE = Number(process.env.ORTOFOTO_ARBETARE ?? 2);
+const arbetare = [];
+let ortoId = 0;
+function startaArbetare() {
+  const p = spawn(process.env.ORTOFOTO_PYTHON ?? 'python3', [join(ROOT, 'lib', 'ortofoto.py')], {
+    env: { ...process.env, GDAL_HTTP_USERPWD: `${process.env.GEOTORGET_USER}:${process.env.GEOTORGET_PASS}` },
+    stdio: ['pipe', 'pipe', 'inherit'],
+  });
+  const a = { p, vantar: new Map() };
+  let rest = '';
+  p.stdout.on('data', (d) => {
+    rest += d;
+    for (let i; (i = rest.indexOf('\n')) >= 0; rest = rest.slice(i + 1)) {
+      const svar = JSON.parse(rest.slice(0, i));
+      a.vantar.get(svar.id)?.(svar);
+      a.vantar.delete(svar.id);
+    }
+  });
+  const slut = (fel) => {
+    const i = arbetare.indexOf(a);
+    if (i >= 0) arbetare.splice(i, 1);
+    for (const klar of a.vantar.values()) klar({ fel });
+    a.vantar.clear();
+  };
+  p.on('error', (err) => slut(err.message));
+  p.on('exit', (kod) => slut(`arbetaren avslutades (${kod})`));
+  p.stdin.on('error', () => {});   // skrivning till en död process; exit tar hand om resten
+  arbetare.push(a);
+  return a;
+}
+function ritaOrto(uppdrag) {
+  const a = arbetare.length < ORTO_ARBETARE ? startaArbetare() : arbetare.reduce((m, x) => (x.vantar.size < m.vantar.size ? x : m));
+  const id = ++ortoId;
+  return new Promise((klar) => {
+    const timer = setTimeout(() => { a.vantar.delete(id); klar({ fel: 'tidsgräns' }); }, 30_000);
+    a.vantar.set(id, (svar) => { clearTimeout(timer); klar(svar); });
+    a.p.stdin.write(`${JSON.stringify({ id, ...uppdrag })}\n`);
+  });
+}
+
+const ortoPagaende = new Map();   // samma ruta begärd flera gånger samtidigt ritas en gång
+async function ortofotoTile(res, z, x, y) {
+  if (!ORTO || z < ORTO_ZOOM[0] || z > ORTO_ZOOM[1] || x >= 2 ** z || y >= 2 ** z) return [404, { error: 'ingen ruta' }];
+  const file = join(CACHE_DIR, 'ortofoto', String(z), String(x), `${y}.webp`);
+  let buf = await readFile(file).catch(() => null);
+  if (!buf) {
+    if (!ortoPagaende.has(file)) {
+      ortoPagaende.set(file, (async () => {
+        const [w, n] = tileLonLat(z, x, y), [e, s] = tileLonLat(z, x + 1, y + 1);
+        const bilder = ortoBilder.all(w, e, s, n);
+        if (!bilder.length) return { fel: 'tom ruta' };
+        const size = (2 * WORLD) / 2 ** z;
+        const mal = (size / 256) * Math.cos((((n + s) / 2) * Math.PI) / 180);   // rutans m/pixel på marken
+        await mkdir(dirname(file), { recursive: true });
+        return ritaOrto({
+          ut: file,
+          bounds: [-WORLD + x * size, WORLD - (y + 1) * size, -WORLD + (x + 1) * size, WORLD - y * size],
+          bilder: valjBilder(bilder, [[w, n], [e, n], [e, s], [w, s]]).map((b) => ({ href: b.href, niva: ovrNiva(b.upplosning, mal) })),
+        });
+      })().finally(() => ortoPagaende.delete(file)));
+    }
+    const svar = await ortoPagaende.get(file);
+    if (svar.fel === 'tom ruta') return [404, { error: 'inget ortofoto här' }];
+    if (svar.fel) {
+      console.error(`ortofoto ${z}/${x}/${y}:`, svar.fel);
+      return [502, { error: 'flygfotot är inte tillgängligt just nu' }];
+    }
+    buf = await readFile(file);
+    if (!(await diskRymmer())) await unlink(file).catch(() => {});   // full disk: visa men spara inte
+  }
+  res.writeHead(200, { 'content-type': 'image/webp', 'cache-control': 'public, max-age=2592000' });
   res.end(buf);
 }
 
@@ -896,6 +986,7 @@ const routes = [
     agarkategorier: AGARKATEGORIER,
     upplatelseformer: UPPLATELSEFORMER,
     historiska: HIST_AUTH ? Object.keys(HIST_LAYERS).map(Number) : [],
+    ortofoto: ORTO_BOUNDS,   // [minLon, minLat, maxLon, maxLat] eller null
     // Nyckel till Googles Maps Embed API. Den syns ändå i iframens adress; skyddet är hänvisarlåset hos Google.
     streetview: process.env.GOOGLE_EMBED_KEY || null,
     kortlankar: !!scenarier,   // scenarier kan sparas som korta länkar
@@ -1034,6 +1125,9 @@ const routes = [
 
   [/^\/tiles\/satellit\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'tiles',
     (m, _url, res) => satellitTile(res, ...m.slice(1).map(Number))],
+
+  [/^\/tiles\/ortofoto\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.webp$/, 'ortofoto',
+    (m, _url, res) => ortofotoTile(res, ...m.slice(1).map(Number))],
 
   [/^\/tiles\/historisk\/(\d{4})\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'historisk',
     (m, _url, res) => historiskTile(res, ...m.slice(1).map(Number))],

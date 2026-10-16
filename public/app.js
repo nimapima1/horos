@@ -65,6 +65,17 @@ class BasemapSelect {
     return this.el;
   }
   onRemove() { this.el.remove(); }
+  // Lantmäteriets ortofoto för hela landet (ritas av servern från zoom 14), med satellitbilden under.
+  addOrtofoto(bounds) {
+    if (!bounds) return;
+    IMAGERY.flygfoto = {
+      label: 'Flygfoto',
+      under: 'satellit',
+      source: { tiles: [`${BASE}tiles/ortofoto/{z}/{x}/{y}.webp`], minzoom: 14, maxzoom: 18, bounds,
+        attribution: 'Flygfoto: <a href="https://www.lantmateriet.se" target="_blank" rel="noopener">© Lantmäteriet</a> (CC BY 4.0)' },
+    };
+    this.select.add(new Option('Flygfoto', 'flygfoto'), 1);
+  }
   addHistoriska(years) {
     for (const ar of Object.keys(HISTORISKA).sort((a, b) => b - a)) {
       if (!years.includes(Number(ar))) continue;
@@ -251,12 +262,15 @@ const fastighetPaint = (satellit) => (satellit
 function applyBasemap(value) {
   if (!map.getLayer('fastighet-fill')) return;
   const def = IMAGERY[value];
-  if (def && !map.getLayer(value)) {
+  const lager = def ? [def.under, value].filter(Boolean) : [];   // det undre först
+  for (const id of lager) {
+    if (map.getLayer(id)) continue;
     const firstSymbol = map.getStyle().layers.find((l) => l.type === 'symbol')?.id;
-    map.addSource(value, { type: 'raster', tileSize: 256, ...def.source });
-    map.addLayer({ id: value, type: 'raster', source: value, paint: def.paint ?? {} }, firstSymbol);
+    map.addSource(id, { type: 'raster', tileSize: 256, ...IMAGERY[id].source });
+    map.addLayer({ id, type: 'raster', source: id, paint: IMAGERY[id].paint ?? {} }, firstSymbol);
   }
-  for (const id of Object.keys(IMAGERY)) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', id === value ? 'visible' : 'none');
+  if (def?.under) map.moveLayer(def.under, value);   // under även om det skapades senare
+  for (const id of Object.keys(IMAGERY)) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', lager.includes(id) ? 'visible' : 'none');
   for (const [prop, v] of Object.entries(fastighetPaint(Boolean(def)))) {
     map.setPaintProperty(prop.startsWith('fill') ? 'fastighet-fill' : 'fastighet-line', prop, v);
   }
@@ -602,6 +616,7 @@ statusP.then((s) => {
   $('#counts').textContent = s.demo
     ? `${n(s.demo)} exempelfastigheter · ${n(s.bolag)} bolag`
     : `${n(s.fastigheter)} fastigheter · ${n(s.bolag)} bolag · ${n(s.transaktioner)} överlåtelser`;
+  basemap.addOrtofoto(s.ortofoto);
   basemap.addHistoriska(s.historiska ?? []);
   for (const t of s.typer ?? []) filterForm.anv.add(new Option(t, t));
   for (const t of s.agartyper ?? []) filterForm.jur.add(new Option(t, t));

@@ -9,18 +9,20 @@ import { request } from 'node:http';
 import { createHmac } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ROOT, openDb, rebuildFastighetFts } from '../lib/db.mjs';
+import { oppnaRegister } from '../lib/ortofoto.mjs';
 
 const DB = join(ROOT, 'data', '_test', 'server-test.sqlite');
 const SCENARIO_DB = join(ROOT, 'data', '_test', 'scenario-test.sqlite');
 const MFN_DB = join(ROOT, 'data', '_test', 'mfn-test.sqlite');
 const MFN_SECRET = 'testhemlighet';
+const ORTOFOTO_DB = join(ROOT, 'data', '_test', 'ortofoto-test.sqlite');
 const PORT = 3005;
 let server;
 
 const rect = (x0, y0, x1, y1) => JSON.stringify({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
 
 before(async () => {
-  for (const ext of ['', '-wal', '-shm']) for (const fil of [DB, SCENARIO_DB, MFN_DB]) rmSync(fil + ext, { force: true });
+  for (const ext of ['', '-wal', '-shm']) for (const fil of [DB, SCENARIO_DB, MFN_DB, ORTOFOTO_DB]) rmSync(fil + ext, { force: true });
   const db = openDb({ path: DB });
   db.exec(`INSERT INTO bolag (orgnr, namn, jurform, sni, agarkontroll) VALUES
     ('5560000001', 'Alfa AB', 'Aktiebolag', '68201', 'kommun'), ('7690000002', 'Brf Beta', 'Bostadsrättsförening', NULL, 'privat')`);
@@ -52,9 +54,16 @@ before(async () => {
   db.prepare("INSERT INTO utsatt_omrade (id, namn, kategori, ort, datum, geojson) VALUES (1, 'Testområdet', 'Utsatt område', 'Testort', '2025-12-01', ?)")
     .run(rect(18.020, 59.000, 18.030, 59.001));
   db.close();
+  // Ortofotoregistret: en bild över 18,00–18,05 / 59,00–59,03.
+  const reg = oppnaRegister(ORTOFOTO_DB, { skriv: true });
+  reg.prepare(`INSERT INTO bild (id, namn, samling, href, datum, upplosning, ruta, geometri, minx, miny, maxx, maxy)
+    VALUES (1, 'test', 'orto-test', 'https://example.invalid/test.tif', '2025-05-01', 0.16, '0,0,1,1', ?, 18, 59, 18.05, 59.03)`)
+    .run(rect(18, 59, 18.05, 59.03));
+  reg.exec('INSERT INTO bild_rtree VALUES (1, 18, 18.05, 59, 59.03)');
+  reg.close();
 
   server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(ROOT, 'server.mjs')], {
-    env: { ...process.env, PORT: String(PORT), FASTIGHETSKARTA_DB: DB, SCENARIO_DB, MFN_DB, MFN_SECRET, PUBLIC_MODE: '', RATE_SPARA: '50', RATE_EXPORT: '50' },
+    env: { ...process.env, PORT: String(PORT), FASTIGHETSKARTA_DB: DB, SCENARIO_DB, MFN_DB, MFN_SECRET, ORTOFOTO_DB, GEOTORGET_USER: 'test', GEOTORGET_PASS: 'test', PUBLIC_MODE: '', RATE_SPARA: '50', RATE_EXPORT: '50' },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   await new Promise((resolve, reject) => {
@@ -103,6 +112,13 @@ test('kartfiltren', async () => {
   assert.equal(await antal('&vmin=abc&kar=20x'), 3);    // ogiltiga värden ignoreras
   assert.equal(await antal('&kar=2021&vmin=100'), 1);
   assert.equal((await get('/api/fastigheter')).status, 400);
+});
+
+test('ortofoto: täckning och zoomgränser', async () => {
+  assert.deepEqual((await json('/api/status')).ortofoto, [18, 59, 18.05, 59.03]);
+  assert.equal((await get('/tiles/ortofoto/13/4600/2400.webp')).status, 404);    // under zoom 14
+  assert.equal((await get('/tiles/ortofoto/19/1/1.webp')).status, 404);          // över zoom 18 (~0,3 m)
+  assert.equal((await get('/tiles/ortofoto/16/0/0.webp')).status, 404);          // utanför registret
 });
 
 test('senaste köp räknar bara överlåtelser med pris', async () => {
