@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { csvCell } from './lib/csv.mjs';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { readFile, writeFile, mkdir, statfs } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, extname, join, normalize, sep } from 'node:path';
@@ -243,6 +243,30 @@ async function historiskTile(res, ar, z, x, y) {
       .catch((err) => console.error('cache:', err.message));
   }
   res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=2592000' });
+  res.end(buf);
+}
+
+// --- Ortofoto (Lantmäteriet, CC BY 4.0) -----------------------------------------
+// Färdiga rutor från scripts/bygg-ortofoto.mjs: TILES_DIR/ortofoto/<år>/<z>/<x>/<y>.webp och bounds.json.
+// Läses vid start; ett nytt år kräver omstart (det gör deploy/ortofoto.sh).
+const TILES_DIR = process.env.TILES_DIR ?? join(ROOT, 'data', 'tiles');
+const ORTOFOTO = (() => {
+  try {
+    return readdirSync(join(TILES_DIR, 'ortofoto')).filter((d) => /^\d{4}$/.test(d)).flatMap((d) => {
+      try {
+        const { bounds, maxzoom } = JSON.parse(readFileSync(join(TILES_DIR, 'ortofoto', d, 'bounds.json'), 'utf8'));
+        return [{ ar: Number(d), bounds, maxzoom }];
+      } catch { return []; }
+    }).sort((a, b) => b.ar - a.ar);
+  } catch { return []; }
+})();
+
+async function ortofotoTile(res, ar, z, x, y) {
+  const o = ORTOFOTO.find((o) => o.ar === ar);
+  if (!o || z > o.maxzoom) return [404, { error: 'ingen ruta' }];
+  const buf = await readFile(join(TILES_DIR, 'ortofoto', String(ar), String(z), String(x), `${y}.webp`)).catch(() => null);
+  if (!buf) return [404, { error: 'ingen ruta' }];
+  res.writeHead(200, { 'content-type': 'image/webp', 'cache-control': 'public, max-age=2592000' });
   res.end(buf);
 }
 
@@ -896,6 +920,7 @@ const routes = [
     agarkategorier: AGARKATEGORIER,
     upplatelseformer: UPPLATELSEFORMER,
     historiska: HIST_AUTH ? Object.keys(HIST_LAYERS).map(Number) : [],
+    ortofoto: ORTOFOTO,   // [{ar, bounds, maxzoom}], nyast först
     // Nyckel till Googles Maps Embed API. Den syns ändå i iframens adress; skyddet är hänvisarlåset hos Google.
     streetview: process.env.GOOGLE_EMBED_KEY || null,
     kortlankar: !!scenarier,   // scenarier kan sparas som korta länkar
@@ -1034,6 +1059,9 @@ const routes = [
 
   [/^\/tiles\/satellit\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'tiles',
     (m, _url, res) => satellitTile(res, ...m.slice(1).map(Number))],
+
+  [/^\/tiles\/ortofoto\/(\d{4})\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.webp$/, 'tiles',
+    (m, _url, res) => ortofotoTile(res, ...m.slice(1).map(Number))],
 
   [/^\/tiles\/historisk\/(\d{4})\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.jpg$/, 'historisk',
     (m, _url, res) => historiskTile(res, ...m.slice(1).map(Number))],

@@ -47,6 +47,12 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   Fastighetsbeteckning + Kommun eller Adress + Kommun (mall att ladda ner) blir ett nytt scenario; filen laddas inte upp, raderna
   matchas med `POST /api/matcha`. Kommunen krävs (samma beteckning finns i flera kommuner): kolumn, först i beteckningen
   eller efter komma i adressen; alla 290 kommunnamn känns igen (`LAN_FOR_KOMMUN`), fastighetens kommun måste stämma.
+- Ortofoto (Lantmäteriet, CC BY 4.0, beviljat 2026-10-16): STAC-katalogen https://api.lantmateriet.se/stac-bild/v1
+  (en samling per område och år, t.ex. `orto-o2-2025` för Stockholm, 0,16 m, COG; bildfilerna kräver Geotorget-inloggningen).
+  `scripts/bygg-ortofoto.mjs` hämtar översikten närmast 0,3 m och bygger WebP-rutor zoom 10–18 (z18 ≈ 0,3 m) i
+  `TILES_DIR/ortofoto/<år>/` med `bounds.json`; servern läser dem vid start (`/tiles/ortofoto/`, `ortofoto` i status),
+  bakgrundsväljaren visar "Foto <år>". På servern som root: `bash /opt/fastighetskarta/current/deploy/ortofoto.sh orto-o2-2025`
+  (startar systemd-enheten `horos-ortofoto`, installerar GDAL, startar om appen; källfilerna sparas i `tiles/ortofoto-kalla/`).
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
 - Tester: `npm test` (node:test, `test/`).
@@ -154,7 +160,7 @@ Väntar på:
   filen kommer om tomträtt/upplåtelseform finns med; annars begär det separat (se `OVERLAMNING.md`).
 - Geotorget (Mitt konto > Ärenden, sidan laddar långsamt):
   - Fastighetsindelning Nedladdning, vektor – LM2026/153912, behandlas
-  - Ortofoto Nedladdning – LM2026/153967, behandlas
+  - Ortofoto Nedladdning – LM2026/153967, **beviljad** 2026-10-16 (STAC-API, se Teknik)
   - Ortofoto historiska Visning – LM2026/153973, **beviljad** (används)
   - Belägenhetsadress Nedladdning, vektor – inskickad 2026-10-09
   - Byggnad Nedladdning, vektor – ifylld 2026-10-09; kontrollera att den skickades

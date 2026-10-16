@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { request } from 'node:http';
 import { createHmac } from 'node:crypto';
@@ -14,6 +14,7 @@ const DB = join(ROOT, 'data', '_test', 'server-test.sqlite');
 const SCENARIO_DB = join(ROOT, 'data', '_test', 'scenario-test.sqlite');
 const MFN_DB = join(ROOT, 'data', '_test', 'mfn-test.sqlite');
 const MFN_SECRET = 'testhemlighet';
+const TILES_DIR = join(ROOT, 'data', '_test', 'tiles');
 const PORT = 3005;
 let server;
 
@@ -52,9 +53,14 @@ before(async () => {
   db.prepare("INSERT INTO utsatt_omrade (id, namn, kategori, ort, datum, geojson) VALUES (1, 'Testområdet', 'Utsatt område', 'Testort', '2025-12-01', ?)")
     .run(rect(18.020, 59.000, 18.030, 59.001));
   db.close();
+  // En ortofotoruta (scripts/bygg-ortofoto.mjs skapar dem på servern).
+  rmSync(TILES_DIR, { recursive: true, force: true });
+  mkdirSync(join(TILES_DIR, 'ortofoto', '2025', '18', '1'), { recursive: true });
+  writeFileSync(join(TILES_DIR, 'ortofoto', '2025', '18', '1', '2.webp'), 'RIFF');
+  writeFileSync(join(TILES_DIR, 'ortofoto', '2025', 'bounds.json'), JSON.stringify({ ar: 2025, maxzoom: 18, bounds: [17.7, 59.2, 18.2, 59.5] }));
 
   server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(ROOT, 'server.mjs')], {
-    env: { ...process.env, PORT: String(PORT), FASTIGHETSKARTA_DB: DB, SCENARIO_DB, MFN_DB, MFN_SECRET, PUBLIC_MODE: '', RATE_SPARA: '50', RATE_EXPORT: '50' },
+    env: { ...process.env, PORT: String(PORT), FASTIGHETSKARTA_DB: DB, SCENARIO_DB, MFN_DB, MFN_SECRET, TILES_DIR, PUBLIC_MODE: '', RATE_SPARA: '50', RATE_EXPORT: '50' },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   await new Promise((resolve, reject) => {
@@ -103,6 +109,16 @@ test('kartfiltren', async () => {
   assert.equal(await antal('&vmin=abc&kar=20x'), 3);    // ogiltiga värden ignoreras
   assert.equal(await antal('&kar=2021&vmin=100'), 1);
   assert.equal((await get('/api/fastigheter')).status, 400);
+});
+
+test('ortofoto', async () => {
+  assert.deepEqual((await json('/api/status')).ortofoto, [{ ar: 2025, maxzoom: 18, bounds: [17.7, 59.2, 18.2, 59.5] }]);
+  const r = await get('/tiles/ortofoto/2025/18/1/2.webp');
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/webp');
+  assert.equal((await get('/tiles/ortofoto/2025/18/1/3.webp')).status, 404);
+  assert.equal((await get('/tiles/ortofoto/2025/19/1/2.webp')).status, 404);   // högst zoom 18 (~0,3 m)
+  assert.equal((await get('/tiles/ortofoto/2024/18/1/2.webp')).status, 404);
 });
 
 test('senaste köp räknar bara överlåtelser med pris', async () => {

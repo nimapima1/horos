@@ -65,6 +65,18 @@ class BasemapSelect {
     return this.el;
   }
   onRemove() { this.el.remove(); }
+  // Lantmäteriets ortofoto (färdiga rutor på servern), nyast först direkt efter Karta.
+  addOrtofoto(lista) {
+    for (const { ar, bounds, maxzoom } of [...lista].reverse()) {
+      IMAGERY[`o${ar}`] = {
+        label: `Foto ${ar}`,
+        source: { tiles: [`${BASE}tiles/ortofoto/${ar}/{z}/{x}/{y}.webp`], minzoom: 10, maxzoom, bounds,
+          attribution: 'Flygfoto: <a href="https://www.lantmateriet.se" target="_blank" rel="noopener">© Lantmäteriet</a> (CC BY 4.0)' },
+      };
+      this.select.add(new Option(`Foto ${ar}`, `o${ar}`), 1);
+    }
+    if (IMAGERY[this.value] && this.select.value !== this.value) { this.select.value = this.value; applyBasemap(this.value); }
+  }
   addHistoriska(years) {
     for (const ar of Object.keys(HISTORISKA).sort((a, b) => b - a)) {
       if (!years.includes(Number(ar))) continue;
@@ -602,6 +614,7 @@ statusP.then((s) => {
   $('#counts').textContent = s.demo
     ? `${n(s.demo)} exempelfastigheter · ${n(s.bolag)} bolag`
     : `${n(s.fastigheter)} fastigheter · ${n(s.bolag)} bolag · ${n(s.transaktioner)} överlåtelser`;
+  basemap.addOrtofoto(s.ortofoto ?? []);
   basemap.addHistoriska(s.historiska ?? []);
   for (const t of s.typer ?? []) filterForm.anv.add(new Option(t, t));
   for (const t of s.agartyper ?? []) filterForm.jur.add(new Option(t, t));
