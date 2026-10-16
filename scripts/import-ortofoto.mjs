@@ -5,7 +5,7 @@
 //   node scripts/import-ortofoto.mjs [--db data/ortofoto.sqlite] [--samling orto-o2-2025]
 //
 // Skriver till <db>.ny och byter fil när allt är klart; starta sedan om servern.
-import { existsSync, renameSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DB_PATH } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
@@ -67,6 +67,7 @@ db.exec(`INSERT INTO bild_rtree SELECT id, minx, maxx, miny, maxy FROM bild;
 const rutor = db.prepare('SELECT count(*) AS n FROM bild').get().n;
 db.close();
 if (!rutor) { console.error('Inga bilder hittades; behåller det gamla registret.'); process.exit(1); }
-if (existsSync(ut)) renameSync(ut, `${ut}_GAMMAL`);
+// Kopian först; sedan ersätter rename filen i ett steg, så att registret aldrig saknas.
+if (existsSync(ut)) copyFileSync(ut, `${ut}_GAMMAL`);
 renameSync(ny, ut);
 console.log(`Klart: ${antal} bilder, ${rutor} rutor i ${ut}. Starta om servern.`);

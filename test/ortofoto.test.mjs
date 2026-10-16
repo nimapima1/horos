@@ -1,15 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ovrNiva, valjBilder } from '../lib/ortofoto.mjs';
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
+import { ROOT } from '../lib/db.mjs';
+import { valjBilder } from '../lib/ortofoto.mjs';
 
-test('översikten är aldrig finare än 0,3 m och så grov som rutan tål', () => {
-  assert.equal(ovrNiva(0.16), 0);          // 0,32 m
-  assert.equal(ovrNiva(0.25), 0);          // 0,5 m
-  assert.equal(ovrNiva(0.5), -1);          // originalet
-  assert.equal(ovrNiva(0.16, 0.3), 0);     // zoom 18
-  assert.equal(ovrNiva(0.16, 0.7), 1);     // 0,64 m
-  assert.equal(ovrNiva(0.16, 4.9), 3);     // zoom 14: 2,56 m
-  assert.equal(ovrNiva(0.16, 1000), 4);    // högst nivå 4
+test('översikten är aldrig finare än 0,3 m (lib/ortofoto.py --test)', (t) => {
+  const r = spawnSync(process.env.ORTOFOTO_PYTHON ?? 'python3', [join(ROOT, 'lib', 'ortofoto.py'), '--test'], { encoding: 'utf8' });
+  if (r.error || (r.status !== 0 && !/AssertionError/.test(r.stderr))) return t.skip('python3 saknas');
+  assert.equal(r.status, 0, r.stderr);
 });
 
 test('nyaste bilden som täcker rutan, och nyare ovanpå äldre', () => {

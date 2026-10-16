@@ -6,7 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import { csvCell } from './lib/csv.mjs';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import { readFile, writeFile, mkdir, statfs, unlink } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, statfs, unlink, rename } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { openDb, DB_PATH, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree, rebuildFastighetFts, fastighetsBet } from './lib/db.mjs';
@@ -14,7 +14,7 @@ import { avstandM, innerPoints, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN, kommunAv, kommunForst } from './lib/kommuner.mjs';
 import { MAX_SCENARIO, MAX_SCENARIO_BYTE, giltigtScenario, oppnaScenarier } from './lib/scenarier.mjs';
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
-import { ZOOM as ORTO_ZOOM, oppnaRegister, ovrNiva, valjBilder } from './lib/ortofoto.mjs';
+import { ZOOM as ORTO_ZOOM, oppnaRegister, valjBilder } from './lib/ortofoto.mjs';
 import { arFastighetsbolag, tolkaMfn, nyhetsRubrik } from './lib/nyheter.mjs';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -261,30 +261,35 @@ const ortoBilder = ORTO?.prepare(`SELECT b.href, b.datum, b.upplosning, b.geomet
   WHERE r.maxx >= ? AND r.minx <= ? AND r.maxy >= ? AND r.miny <= ?`);
 const ORTO_BOUNDS = ORTO ? Object.values(ORTO.prepare('SELECT min(minx), min(miny), max(maxx), max(maxy) FROM bild').get()) : null;
 
-// Python-arbetarna lever lika länge som servern (GDAL cachar filhuvuden och block mellan rutorna).
+// Python-arbetarna lever lika länge som servern (GDAL cachar filhuvuden och block mellan rutorna). En ruta i
+// taget per arbetare; övriga väntar i en kö med tak, så att många okända rutor inte kan dränka servern eller
+// Lantmäteriet. Den som väntat för länge får 503. En ruta som fastnar dödar sin arbetare, som ersätts.
 const ORTO_ARBETARE = Number(process.env.ORTOFOTO_ARBETARE ?? 2);
+const ORTO_KO_MAX = Number(process.env.ORTOFOTO_KO ?? 40);
+const ORTO_KO_TID = 20_000, ORTO_RIT_TID = 30_000;
 const arbetare = [];
-let ortoId = 0;
+const ortoKo = [];
+let ortoId = 0, ortoTmp = 0;
 function startaArbetare() {
   const p = spawn(process.env.ORTOFOTO_PYTHON ?? 'python3', [join(ROOT, 'lib', 'ortofoto.py')], {
     env: { ...process.env, GDAL_HTTP_USERPWD: `${process.env.GEOTORGET_USER}:${process.env.GEOTORGET_PASS}` },
     stdio: ['pipe', 'pipe', 'inherit'],
   });
-  const a = { p, vantar: new Map() };
+  const a = { p, jobb: null, dodad: null };
   let rest = '';
   p.stdout.on('data', (d) => {
     rest += d;
     for (let i; (i = rest.indexOf('\n')) >= 0; rest = rest.slice(i + 1)) {
       const svar = JSON.parse(rest.slice(0, i));
-      a.vantar.get(svar.id)?.(svar);
-      a.vantar.delete(svar.id);
+      if (a.jobb?.id === svar.id) avslutaJobb(a, svar);
     }
   });
   const slut = (fel) => {
     const i = arbetare.indexOf(a);
-    if (i >= 0) arbetare.splice(i, 1);
-    for (const klar of a.vantar.values()) klar({ fel });
-    a.vantar.clear();
+    if (i < 0) return;   // både error och exit kan komma
+    arbetare.splice(i, 1);
+    if (a.jobb) avslutaJobb(a, { fel: a.dodad ?? fel });
+    else fordelaOrto();
   };
   p.on('error', (err) => slut(err.message));
   p.on('exit', (kod) => slut(`arbetaren avslutades (${kod})`));
@@ -292,14 +297,56 @@ function startaArbetare() {
   arbetare.push(a);
   return a;
 }
+function avslutaJobb(a, svar) {
+  const jobb = a.jobb;
+  a.jobb = null;
+  clearTimeout(jobb.timer);
+  jobb.klar(svar);
+  fordelaOrto();
+}
+function fordelaOrto() {
+  while (ortoKo.length) {
+    const a = arbetare.find((x) => !x.jobb) ?? (arbetare.length < ORTO_ARBETARE ? startaArbetare() : null);
+    if (!a) return;
+    const jobb = ortoKo.shift();
+    clearTimeout(jobb.timer);
+    a.jobb = jobb;
+    jobb.timer = setTimeout(() => { a.dodad = 'tidsgräns'; a.p.kill('SIGKILL'); }, ORTO_RIT_TID);
+    a.p.stdin.write(`${JSON.stringify({ id: jobb.id, ...jobb.uppdrag })}\n`);
+  }
+}
 function ritaOrto(uppdrag) {
-  const a = arbetare.length < ORTO_ARBETARE ? startaArbetare() : arbetare.reduce((m, x) => (x.vantar.size < m.vantar.size ? x : m));
-  const id = ++ortoId;
+  if (ortoKo.length >= ORTO_KO_MAX) return Promise.resolve({ fel: 'upptaget' });
   return new Promise((klar) => {
-    const timer = setTimeout(() => { a.vantar.delete(id); klar({ fel: 'tidsgräns' }); }, 30_000);
-    a.vantar.set(id, (svar) => { clearTimeout(timer); klar(svar); });
-    a.p.stdin.write(`${JSON.stringify({ id, ...uppdrag })}\n`);
+    const jobb = { id: ++ortoId, uppdrag, klar };
+    jobb.timer = setTimeout(() => { ortoKo.splice(ortoKo.indexOf(jobb), 1); klar({ fel: 'upptaget' }); }, ORTO_KO_TID);
+    ortoKo.push(jobb);
+    fordelaOrto();
   });
+}
+
+// Ritar rutan till en egen tillfällig fil; bara här bestäms om den sparas i cachen.
+async function ritaOrtoRuta(file, z, x, y) {
+  const [w, n] = tileLonLat(z, x, y), [e, s] = tileLonLat(z, x + 1, y + 1);
+  const bilder = ortoBilder.all(w, e, s, n);
+  if (!bilder.length) return { fel: 'tom ruta' };
+  const size = (2 * WORLD) / 2 ** z;
+  await mkdir(dirname(file), { recursive: true });
+  const tmp = `${file}.${++ortoTmp}.tmp`;
+  try {
+    const svar = await ritaOrto({
+      ut: tmp,
+      bounds: [-WORLD + x * size, WORLD - (y + 1) * size, -WORLD + (x + 1) * size, WORLD - y * size],
+      mal: (size / 256) * Math.cos((((n + s) / 2) * Math.PI) / 180),   // rutans m/pixel på marken
+      bilder: valjBilder(bilder, [[w, n], [e, n], [e, s], [w, s]]).map((b) => b.href),
+    });
+    if (svar.fel) return svar;
+    const buf = await readFile(tmp);
+    if (await diskRymmer()) await rename(tmp, file);   // annars visas rutan men sparas inte
+    return { buf };
+  } finally {
+    await unlink(tmp).catch(() => {});
+  }
 }
 
 const ortoPagaende = new Map();   // samma ruta begärd flera gånger samtidigt ritas en gång
@@ -308,29 +355,15 @@ async function ortofotoTile(res, z, x, y) {
   const file = join(CACHE_DIR, 'ortofoto', String(z), String(x), `${y}.webp`);
   let buf = await readFile(file).catch(() => null);
   if (!buf) {
-    if (!ortoPagaende.has(file)) {
-      ortoPagaende.set(file, (async () => {
-        const [w, n] = tileLonLat(z, x, y), [e, s] = tileLonLat(z, x + 1, y + 1);
-        const bilder = ortoBilder.all(w, e, s, n);
-        if (!bilder.length) return { fel: 'tom ruta' };
-        const size = (2 * WORLD) / 2 ** z;
-        const mal = (size / 256) * Math.cos((((n + s) / 2) * Math.PI) / 180);   // rutans m/pixel på marken
-        await mkdir(dirname(file), { recursive: true });
-        return ritaOrto({
-          ut: file,
-          bounds: [-WORLD + x * size, WORLD - (y + 1) * size, -WORLD + (x + 1) * size, WORLD - y * size],
-          bilder: valjBilder(bilder, [[w, n], [e, n], [e, s], [w, s]]).map((b) => ({ href: b.href, niva: ovrNiva(b.upplosning, mal) })),
-        });
-      })().finally(() => ortoPagaende.delete(file)));
-    }
+    if (!ortoPagaende.has(file)) ortoPagaende.set(file, ritaOrtoRuta(file, z, x, y).finally(() => ortoPagaende.delete(file)));
     const svar = await ortoPagaende.get(file);
     if (svar.fel === 'tom ruta') return [404, { error: 'inget ortofoto här' }];
+    if (svar.fel === 'upptaget') return [503, { error: 'flygfotot är upptaget, försök igen om en stund' }];
     if (svar.fel) {
       console.error(`ortofoto ${z}/${x}/${y}:`, svar.fel);
       return [502, { error: 'flygfotot är inte tillgängligt just nu' }];
     }
-    buf = await readFile(file);
-    if (!(await diskRymmer())) await unlink(file).catch(() => {});   // full disk: visa men spara inte
+    buf = svar.buf;
   }
   res.writeHead(200, { 'content-type': 'image/webp', 'cache-control': 'public, max-age=2592000' });
   res.end(buf);
