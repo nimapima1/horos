@@ -76,6 +76,13 @@ button { font: inherit; color: inherit; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass { background: var(--surface-solid); }
 }
+/* Den som bett om mindre genomskinlighet eller mer kontrast får heldragna ytor, med tydlig kant vid mer kontrast. */
+@media (prefers-reduced-transparency: reduce) {
+  .glass { background: var(--surface-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  .glass { background: var(--surface-solid); -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--muted); }
+}
 
 #map { position: fixed; inset: 0; }
 
@@ -196,7 +203,7 @@ button { font: inherit; color: inherit; }
 
 /* --- Informationspanel ------------------------------------------------------ */
 /* overflow-wrap: långa bolagsnamn och beteckningar bryts i stället för att trycka ut tabellerna. */
-.panel { position: relative; flex: 0 1 auto; min-height: 0; overflow: auto; padding: 18px 18px 20px; overflow-wrap: anywhere; }
+.panel { --ut: 6px; position: relative; flex: 0 1 auto; min-height: 0; overflow: auto; padding: 18px 18px 20px; overflow-wrap: anywhere; }
 .results { overflow-wrap: anywhere; }
 .close {
   float: right;
@@ -434,11 +441,18 @@ label.copy { display: inline-flex; align-items: center; }
 .counts:empty { display: none; }
 
 /* --- Rörelse: bara för den som inte bett om minskad rörelse ------------------- */
+/* Panelen stängs samma väg som den öppnas (--ut: 6 px, på mobilen hela bladet nedåt), med spegelvänd kurva.
+   Knappar svarar redan när de trycks ned, inte först när de släpps. */
 @media (prefers-reduced-motion: no-preference) {
   .panel:not([hidden]), .notice:not([hidden]) { animation: rise .22s cubic-bezier(.2, .8, .2, 1); }
-  .links a, .results li, .close, .search input { transition: background-color .15s, color .15s, box-shadow .15s, border-color .15s; }
-  @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+  .panel.stanger { animation: fall .18s cubic-bezier(.8, 0, .8, .2) forwards; }
+  .links a, .results li, .close, .search input, .verktyg > *, #filter button, .lagg-till, .copy {
+    transition: background-color .15s, color .15s, box-shadow .15s, border-color .15s, transform .1s ease-out; }
+  :is(.links a, .results li, .close, .verktyg > *, #filter button, .lagg-till, .copy):active { transform: scale(.97); }
+  @keyframes rise { from { opacity: 0; transform: translateY(var(--ut)); } }
+  @keyframes fall { to { opacity: 0; transform: translateY(var(--ut)); } }
 }
+.greppa { display: none; }
 
 /* --- Mobil: sökfält överst, panelen som blad nedtill -------------------------- */
 @media (max-width: 640px) {
@@ -463,9 +477,19 @@ label.copy { display: inline-flex; align-items: center; }
   .basemap-select select, .plan-toggle button, .streetview button { height: 44px; }
   /* Bladet nedtill. --tangentbord (app.js) lyfter det över skärmtangentbordet när ett fält i panelen har fokus. */
   .panel {
+    --ut: calc(100% + 10px); padding-top: 30px;
     position: fixed; left: 10px; right: 10px; bottom: calc(10px + var(--tangentbord, 0px));
     max-height: min(58vh, calc(100vh - 20px - var(--tangentbord, 0px)));
   }
+  .panel:not([hidden]) { animation-duration: .3s; }
+  .panel.stanger { animation-duration: .24s; }
+  /* Uppfällt bladet (dras i greppet, se ark.js): ända upp till sökfältet (--topp sätts av app.js). */
+  .panel.hel { max-height: calc(100dvh - var(--topp, 0px) - 20px - var(--tangentbord, 0px)); }
+  .greppa {
+    display: grid; place-items: center; position: absolute; top: 0; left: 50%; width: 120px; height: 30px; margin-left: -60px;
+    padding: 0; border: 0; background: none; cursor: grab; touch-action: none;
+  }
+  .greppa::before { content: ''; width: 36px; height: 5px; border-radius: 3px; background: var(--muted); opacity: .6; }
   .notice { padding: 9px 12px; font-size: 13px; line-height: 1.4; }
   /* Kontrollerna nedtill till höger: överst skulle sökrutan och notisen täcka dem. */
   .maplibregl-ctrl-top-right { top: auto; bottom: 34px; right: 0; }
@@ -501,7 +525,8 @@ label.copy { display: inline-flex; align-items: center; }
 }
 @media (max-width: 640px) and (max-height: 500px) {
   .sidebar { bottom: 10px; }
-  .panel { position: relative; inset: auto; max-height: none; }
+  .panel { --ut: 6px; position: relative; inset: auto; max-height: none; padding-top: 18px; }
+  .greppa { display: none; }
 }
 
 /* --- Textsidor (metod.html) ---------------------------------------------------- */

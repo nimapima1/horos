@@ -25,7 +25,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 - Kartfiltren: `FILTER` i `server.mjs`, `[parameter, omvandling, SQL-villkor]`; WHERE-delen byggs ur listan.
 - `public/`: `index.html` + `kalkyl.js` (kassaflödeskalkylen, utan DOM, testas i `test/kalkyl.test.mjs`) + `panel.js`
   (panelvyerna, bara deklarationer) + `inlasning.js` (inläsning från Excel/CSV, från filval till rapport, bara deklarationer; tolkningen testas i
-  `test/inlasning.test.mjs`) + `scenario.js` (scenarierna, bara deklarationer) + `app.js` (karta,
+  `test/inlasning.test.mjs`) + `scenario.js` (scenarierna, bara deklarationer) + `ark.js` (bladet nedtill på mobilen: fjäder, rörelsemängd, gummiband; testas i `test/ark.test.mjs`) + `app.js` (karta,
   filter, sök, status och all inkoppling), `metod.html`, `style.css`
   (ui-ux-pro-max: Swiss/minimalism + glas, Lexend/Source Sans 3, slate/#0369A1). CSP tillåter
   inga inline-skript.
