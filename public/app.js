@@ -488,6 +488,8 @@ function showPanel(html) {
   streetView.visa(null);   // openFastighet visar den igen för sin fastighet
   markeraFlik();
   $('#panel-body').innerHTML = html;
+  // Ett svep eller en stängning som pågår får inte flytta eller gömma den nya vyn.
+  if (ark || $('#panel').hidden || $('#panel').classList.contains('stanger')) aterstallArk();
   $('#panel').hidden = false;
   $('#panel').scrollTop = 0;
 }
@@ -497,15 +499,104 @@ const tangentbord = () => document.body.style.setProperty('--tangentbord', `${$(
 window.visualViewport?.addEventListener('resize', tangentbord);
 window.visualViewport?.addEventListener('scroll', tangentbord);
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#panel').hidden && !e.target.closest?.('input, select')) $('#close').click(); });
-$('#close').addEventListener('click', () => {
-  $('#panel').hidden = true;
+$('#close').addEventListener('click', () => stangPanel());
+const minskadRorelse = matchMedia('(prefers-reduced-motion: reduce)');
+// Panelen glider ut samma väg som den kom (.stanger i style.css) och göms när animationen är klar.
+function stangPanel(animera = true) {
+  cancelAnimationFrame(ark?.raf);
+  ark = null;
   streetView.visa(null);
   select(null);
   markera([]);
   adressMarker?.remove();
   rensaVy();
   markeraFlik(false);
+  if (!animera || minskadRorelse.matches || $('#panel').hidden) return gomPanel();
+  $('#panel').classList.add('stanger');
+  setTimeout(() => $('#panel').classList.contains('stanger') && gomPanel(), 500);   // om animationend aldrig kommer (fliken ritas inte)
+}
+function aterstallArk() {
+  cancelAnimationFrame(ark?.raf);
+  ark = null;
+  $('#panel').classList.remove('stanger', 'hel');
+  $('#panel').style.transform = '';
+  $('#greppa').setAttribute('aria-expanded', 'false');
+}
+function gomPanel() {
+  aterstallArk();
+  $('#panel').hidden = true;
+}
+$('#panel').addEventListener('animationend', (e) => { if (e.target === $('#panel') && e.animationName === 'fall') gomPanel(); });
+
+// Bladet nedtill på mobilen (ark.js): greppet dras 1:1 med fingret och släpps med farten; bladet landar där rörelsen
+// pekar (uppfällt, normalt eller stängt) och kan gripas igen mitt i rörelsen. Ett tryck växlar uppfällt/normalt.
+let ark = null;   // { y: förskjutning nedåt i px, lagen: [uppfällt, normalt, stängt], raf, ... }
+const flyttaArk = (y) => { $('#panel').style.transform = Math.abs(y) > 0.1 ? `translateY(${y}px)` : ''; };
+// Bladet fälls upp direkt (.hel) och flyttas ned lika mycket, så att det ser oförändrat ut.
+function gripArk() {
+  const panel = $('#panel');
+  panel.classList.remove('stanger');
+  for (const a of panel.getAnimations()) a.cancel();
+  if (ark) return cancelAnimationFrame(ark.raf);
+  panel.style.setProperty('--topp', `${$('.topbar').getBoundingClientRect().bottom}px`);
+  const uppe = panel.classList.contains('hel');
+  panel.classList.add('hel');
+  const hel = panel.offsetHeight;
+  panel.classList.remove('hel');
+  const normal = panel.offsetHeight;
+  panel.classList.add('hel');
+  ark = { y: uppe ? 0 : hel - normal, lagen: [0, hel - normal, hel + 20] };
+  flyttaArk(ark.y);
+}
+function landaArk(mal, v) {
+  const studs = Math.abs(v) > 300 && mal !== ark.lagen[2] ? 0.8 : 1;   // studs bara efter ett svep, aldrig ut ur bild
+  let s = { x: ark.y, v }, t = performance.now();
+  const steg = (nu) => {
+    s = minskadRorelse.matches ? { x: mal, v: 0 } : fjaderSteg(s, mal, Math.min(Math.max(nu - t, 0), 33) / 1000, studs);
+    t = nu;
+    flyttaArk(ark.y = s.x);
+    if (Math.abs(s.x - mal) > 0.5 || Math.abs(s.v) > 10) return (ark.raf = requestAnimationFrame(steg));
+    if (mal === ark.lagen[2]) return stangPanel(false);
+    $('#panel').classList.toggle('hel', mal === 0);
+    $('#greppa').setAttribute('aria-expanded', String(mal === 0));
+    ark = null;
+    flyttaArk(0);
+  };
+  ark.raf = requestAnimationFrame(steg);
+}
+const vaxlaArk = () => landaArk(ark.y > 0.5 ? 0 : ark.lagen[1], 0);
+$('#greppa').addEventListener('pointerdown', (e) => {
+  if (!e.isPrimary) return;
+  $('#greppa').setPointerCapture(e.pointerId);
+  gripArk();
+  Object.assign(ark, { fran: e.clientY, grepp: e.clientY - ark.y, drar: false, historik: [[e.timeStamp, ark.y]] });
 });
+$('#greppa').addEventListener('pointermove', (e) => {
+  if (!ark?.historik) return;
+  if (!ark.drar && Math.abs(e.clientY - ark.fran) < 10) return;   // ett tryck är inte ett drag
+  if (!ark.drar) Object.assign(ark, { drar: true, grepp: ark.grepp + Math.sign(e.clientY - ark.fran) * 10 });   // börjar följa från tröskeln, utan hopp
+  const y = e.clientY - ark.grepp;
+  flyttaArk(ark.y = y < 0 ? gummiband(y, ark.lagen[2]) : y);
+  ark.historik = [...ark.historik.filter(([t]) => e.timeStamp - t < 100), [e.timeStamp, ark.y]];
+});
+const slappArk = (e) => {
+  if (!ark?.historik) return;
+  const [t0, y0] = ark.historik.find(([t]) => e.timeStamp - t < 100) ?? [];   // stilla innan släppet: ingen fart
+  const v = e.timeStamp > t0 ? (ark.y - y0) / (e.timeStamp - t0) * 1000 : 0;
+  const drog = ark.drar;
+  ark.historik = null;
+  if (drog) landaArk(narmastLage(ark.lagen, ark.y, v), v); else vaxlaArk();
+};
+$('#greppa').addEventListener('pointerup', slappArk);
+$('#greppa').addEventListener('pointercancel', slappArk);
+// Liggande telefon eller dator: inget blad, så ett pågående drag eller uppfällt läge släpps.
+for (const q of ['(max-width: 640px)', '(max-width: 640px) and (max-height: 500px)']) {   // samma som i style.css
+  matchMedia(q).addEventListener('change', () => { if (!$('#panel').classList.contains('stanger')) aterstallArk(); });
+}
+// Tangentbordet (Enter/mellanslag ger ett klick utan pekare, detail 0) växlar som ett tryck.
+$('#greppa').addEventListener('click', (e) => { if (!e.detail) { gripArk(); vaxlaArk(); } });
+// shortcut: iOS Safari visar :active bara när någon lyssnar på touchstart; ta bort när det inte längre behövs.
+document.addEventListener('touchstart', () => {}, { passive: true });
 // Tar bort vyn (#transaktioner m.fl.) ur adressen, så att den inte öppnas igen när sidan laddas om.
 function rensaVy() {
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
