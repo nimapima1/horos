@@ -488,7 +488,8 @@ function showPanel(html) {
   streetView.visa(null);   // openFastighet visar den igen för sin fastighet
   markeraFlik();
   $('#panel-body').innerHTML = html;
-  $('#panel').classList.remove('stanger');
+  // Ett svep eller en stängning som pågår får inte flytta eller gömma den nya vyn.
+  if (ark || $('#panel').hidden || $('#panel').classList.contains('stanger')) aterstallArk();
   $('#panel').hidden = false;
   $('#panel').scrollTop = 0;
 }
@@ -514,13 +515,16 @@ function stangPanel(animera = true) {
   $('#panel').classList.add('stanger');
   setTimeout(() => $('#panel').classList.contains('stanger') && gomPanel(), 500);   // om animationend aldrig kommer (fliken ritas inte)
 }
-function gomPanel() {
+function aterstallArk() {
   cancelAnimationFrame(ark?.raf);
   ark = null;
   $('#panel').classList.remove('stanger', 'hel');
   $('#panel').style.transform = '';
-  $('#panel').hidden = true;
   $('#greppa').setAttribute('aria-expanded', 'false');
+}
+function gomPanel() {
+  aterstallArk();
+  $('#panel').hidden = true;
 }
 $('#panel').addEventListener('animationend', (e) => { if (e.target === $('#panel') && e.animationName === 'fall') gomPanel(); });
 
@@ -585,6 +589,10 @@ const slappArk = (e) => {
 };
 $('#greppa').addEventListener('pointerup', slappArk);
 $('#greppa').addEventListener('pointercancel', slappArk);
+// Liggande telefon eller dator: inget blad, så ett pågående drag eller uppfällt läge släpps.
+for (const q of ['(max-width: 640px)', '(max-width: 640px) and (max-height: 500px)']) {   // samma som i style.css
+  matchMedia(q).addEventListener('change', () => { if (!$('#panel').classList.contains('stanger')) aterstallArk(); });
+}
 // Tangentbordet (Enter/mellanslag ger ett klick utan pekare, detail 0) växlar som ett tryck.
 $('#greppa').addEventListener('click', (e) => { if (!e.detail) { gripArk(); vaxlaArk(); } });
 // shortcut: iOS Safari visar :active bara när någon lyssnar på touchstart; ta bort när det inte längre behövs.
