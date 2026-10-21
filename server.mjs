@@ -16,7 +16,7 @@ import { MAX_SCENARIO, MAX_SCENARIO_BYTE, giltigtScenario, oppnaScenarier } from
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
 import { ZOOM as ORTO_ZOOM, oppnaRegister, valjBilder } from './lib/ortofoto.mjs';
 import { arFastighetsbolag, tolkaMfn, nyhetsRubrik } from './lib/nyheter.mjs';
-import { hamtaDokument } from './lib/ngp.mjs';
+import { begransare, hamtaDokument } from './lib/ngp.mjs';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -253,20 +253,35 @@ async function historiskTile(res, ar, z, x, y) {
 // --- Plandokument från NGP (öppen licens) -------------------------------------
 // NGP:s dokumentlänkar kräver Geotorget-inloggningen. Servern hämtar en PDF första gången någon öppnar den och
 // sparar den i CACHE_DIR, så att bara lästa dokument lagras. Bara dokument som en plan i databasen pekar på.
+// Varje hämtning håller PDF:en i minnet (högst 50 MB), så antalet samtidiga hämtningar har ett tak för hela servern.
 const dokumentPagar = new Map();
+const dokumentPlats = begransare(Number(process.env.DOKUMENT_SAMTIDIGT ?? 3), Number(process.env.DOKUMENT_KO ?? 20));
 async function ngpPlanDokument(res, id) {
   if (!HIST_AUTH) return [503, { error: 'Plandokument är inte konfigurerade på servern.' }];
   if (!q.planDokument?.get(`%/plandokument/ngp/${id}.pdf%`)) return [404, { error: 'okänt dokument' }];
   const file = join(CACHE_DIR, 'plandokument', `${id}.pdf`);
   let buf = await readFile(file).catch(() => null);
+  if (buf?.subarray(0, 5).toString() !== '%PDF-') buf = null;
   if (!buf) {
     if (!dokumentPagar.has(id)) {
-      dokumentPagar.set(id, hamtaDokument(`https://api.lantmateriet.se/distribution/geodatakatalog/nedladdning/v1/asset/${id}`,
-        process.env.GEOTORGET_USER, process.env.GEOTORGET_PASS).finally(() => dokumentPagar.delete(id)));
+      // Cachen skrivs till en tillfällig fil och byter namn när den är klar, innan hämtningen räknas som avslutad.
+      dokumentPagar.set(id, dokumentPlats(async () => {
+        const svar = await hamtaDokument(`https://api.lantmateriet.se/distribution/geodatakatalog/nedladdning/v1/asset/${id}`,
+          process.env.GEOTORGET_USER, process.env.GEOTORGET_PASS);
+        if (svar.bytes) {
+          const tmp = `${file}.${process.pid}.tmp`;
+          try {
+            await mkdir(dirname(file), { recursive: true });
+            if (await diskRymmer()) { await writeFile(tmp, svar.bytes); await rename(tmp, file); }
+          } catch (err) { console.error('cache:', err.message); await unlink(tmp).catch(() => {}); }
+        }
+        return svar;
+      }).finally(() => dokumentPagar.delete(id)));
     }
     let svar;
     try { svar = await dokumentPagar.get(id); }
     catch (err) {
+      if (err.full) return [503, { error: 'många hämtar dokument just nu, försök igen om en stund' }];
       console.error('plandokument:', err.message);
       return [502, { error: 'dokumentet är inte tillgängligt just nu' }];
     }
@@ -275,8 +290,6 @@ async function ngpPlanDokument(res, id) {
       return res.end();
     }
     buf = svar.bytes;
-    mkdir(dirname(file), { recursive: true }).then(diskRymmer).then((ok) => ok && writeFile(file, buf))
-      .catch((err) => console.error('cache:', err.message));
   }
   res.writeHead(200, { 'content-type': 'application/pdf', 'cache-control': 'public, max-age=86400' });
   res.end(buf);
