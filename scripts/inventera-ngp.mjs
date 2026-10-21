@@ -7,7 +7,7 @@ import { parseArgs } from '../lib/csv.mjs';
 import { ROOT } from '../lib/db.mjs';
 import { promptHidden } from '../lib/prompt.mjs';
 import { KOMMUNER } from '../lib/kommuner.mjs';
-import { NGP_URL, hamtaNgp } from '../lib/ngp.mjs';
+import { hamtaNgp, ngpKommuner } from '../lib/ngp.mjs';
 
 const BARA_PLANER = { 'feature.typ': { eq: 'detaljplan' } };
 
@@ -28,13 +28,7 @@ export function rakna(features) {
 }
 
 export async function inventeraNgp(user, password, request = fetch, bara) {
-  const response = await request(new URL('collections', NGP_URL).href, {
-    headers: { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`, Accept: 'application/json' },
-    redirect: 'error', signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw new Error(`NGP svarade med HTTP ${response.status} på samlingslistan.`);
-  const ids = (await response.json()).collections?.map((c) => c.id);
-  if (!Array.isArray(ids)) throw new Error('NGP gav ett oväntat svar utan samlingar.');
+  const ids = await ngpKommuner(user, password, request);
   const koder = ids.filter((id) => /^\d{4}$/.test(id) && (!bara || id === bara));
   const rader = [];
   for (const kod of koder) {
