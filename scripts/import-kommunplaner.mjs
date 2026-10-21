@@ -19,8 +19,9 @@ try {
     for (const kod of koder) {
       try {
         const { rader, utanGeometri } = await hamtaKommunplaner(kod);
+        if (!rader.length) throw new Error('inga planer i svaret, behåller det som finns');
+        // Tom efter dubblettkontrollen = NGP har alla; då arkiveras kommunens tidigare rader.
         const nya = utanNgpDubbletter(db, rader, kod);
-        if (!nya.length) throw new Error('inga planer i svaret, behåller det som finns');
         console.log(`${kod} ${namn.get(kod) ?? ''}: ${nya.length} planer (${rader.length - nya.length} finns redan i NGP${utanGeometri ? `, ${utanGeometri} utan giltig geometri` : ''}).`);
         if (!args.dry) sparaKommunplaner(db, nya, kod);
         antal += nya.length;

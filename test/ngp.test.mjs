@@ -182,3 +182,22 @@ test('NGP-dokument som inte hämtats i förväg får en länk som servern hämta
     { titel: 'Planbeskrivning', url: 'https://kommun.example/b.pdf' },
   ]);
 });
+
+test('begränsaren: högst två samtidigt, en i kö, fler avvisas och kön går vidare', async () => {
+  const { begransare } = await import('../lib/ngp.mjs');
+  const plats = begransare(2, 1);
+  let aktiva = 0, max = 0;
+  const slapp = [];
+  const jobb = () => plats(() => new Promise((resolve) => { max = Math.max(max, ++aktiva); slapp.push(() => { aktiva--; resolve(); }); }));
+  const a = jobb(), b = jobb(), c = jobb();
+  await assert.rejects(jobb(), (e) => e.full === true);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(slapp.length, 2);
+  slapp.shift()();
+  await a;
+  await new Promise((r) => setImmediate(r));
+  assert.equal(slapp.length, 2);
+  slapp.forEach((f) => f());
+  await Promise.all([b, c]);
+  assert.equal(max, 2);
+});

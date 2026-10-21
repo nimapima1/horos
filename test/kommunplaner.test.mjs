@@ -82,12 +82,21 @@ test('dubbletter mot NGP och arkivering vid ny import', () => {
     db.prepare(`INSERT INTO plan (id, typ, kommun, geojson, minx, miny, maxx, maxy, kalla, status) VALUES ('ngp:1', 'DP', '1280', ?, 18, 59, 18.01, 59.01, 'ngp', 'laga kraft')`).run(geo);
     const rad = (id, dx) => ({ id, typ: 'DP', planid: null, namn: null, datum: null, kommun: '1280', geojson: geo,
       minx: 18 + dx, miny: 59, maxx: 18.01 + dx, maxy: 59.01, dokument: null });
-    const nya = utanNgpDubbletter(db, [rad('kommun:1280:1:1', 0.0001), rad('kommun:1280:1:2', 0.01)], '1280');
-    assert.deepEqual(nya.map((r) => r.id), ['kommun:1280:1:2']);
+    db.prepare(`INSERT INTO plan (id, typ, kommun, geojson, minx, miny, maxx, maxy, kalla, status) VALUES ('ngp:2', 'DP', '1280', ?, 18.05, 59, 18.06, 59.01, 'ngp', 'samråd')`).run(geo);
+    const nya = utanNgpDubbletter(db, [rad('kommun:1280:1:1', 0.0001), rad('kommun:1280:1:2', 0.01), rad('kommun:1280:1:5', 0.05)], '1280');
+    // Samma yta som en gällande NGP-plan tas bort; samma yta som ett NGP-förslag behålls.
+    assert.deepEqual(nya.map((r) => r.id), ['kommun:1280:1:2', 'kommun:1280:1:5']);
     sparaKommunplaner(db, [rad('kommun:1280:1:2', 0.01), rad('kommun:1280:1:3', 0.02)], '1280');
     sparaKommunplaner(db, [rad('kommun:1280:1:3', 0.02)], '1280');
     assert.deepEqual(db.prepare("SELECT id, status FROM plan WHERE kalla = 'kommun' ORDER BY id").all().map((r) => [r.id, r.status]),
       [['kommun:1280:1:2', 'arkiverad'], ['kommun:1280:1:3', 'laga kraft']]);
     assert.throws(() => sparaKommunplaner(db, [rad('kommun:1280:1:4', 0)], '0126'), /kommun stämmer inte/);
   } finally { db.close(); }
+});
+
+test('hämtning från ArcGIS: avkortat svar stoppar importen', async () => {
+  const ring = [[13, 55.6], [13, 55.61], [13.01, 55.61], [13.01, 55.6], [13, 55.6]];
+  await assert.rejects(hamtaKommunplaner('1280', async (url) => url.includes('returnIdsOnly')
+    ? Response.json({ objectIds: [1, 2] })
+    : Response.json({ exceededTransferLimit: true, features: [{ attributes: { OBJECTID: 1 }, geometry: { rings: [ring] } }] })), /ofullständigt svar/);
 });
