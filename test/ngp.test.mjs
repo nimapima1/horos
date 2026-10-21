@@ -152,3 +152,18 @@ test('NGP-kontrollen förklarar nekad behörighet och felaktiga svar', async () 
   }
   await assert.rejects(testaNgp('konto', 'lösen', async () => Response.json({})), /utan samlingar/);
 });
+
+test('NGP-inventeringen räknar planer per kommun och fortsätter efter fel', async () => {
+  const { inventeraNgp } = await import('../scripts/inventera-ngp.mjs');
+  const { rader, andra } = await inventeraNgp('konto', 'lösen', async (url, options) => {
+    if (new URL(url).pathname.endsWith('/collections')) return Response.json({ collections: [{ id: '0180' }, { id: '0114' }, { id: 'test' }] });
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body.query, { 'feature.typ': { eq: 'detaljplan' } });
+    if (body.collections[0] === '0114') return new Response('fel', { status: 500 });
+    const gammal = feature(); gammal.properties.detaljplan.datumLagakraft = '1990-05-01';
+    return Response.json({ type: 'FeatureCollection', features: [feature(), feature('samråd'), gammal, feature('upphävd')] });
+  });
+  assert.deepEqual(andra, ['test']);
+  assert.deepEqual(rader[0], { kod: '0180', planer: 4, laga_kraft: 2, pagaende: 1, ovriga: 1, aldsta: '1990-05-01', senaste: '2025-01-01' });
+  assert.match(rader[1].fel, /HTTP 500/);
+});
