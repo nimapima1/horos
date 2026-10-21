@@ -3,4 +3,5 @@ data/
 *.sqlite
 *.sqlite-*
 public/vendor/
+public/plandokument/
 PRIVAT.md

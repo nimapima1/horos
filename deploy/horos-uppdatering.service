@@ -1,0 +1,19 @@
+[Unit]
+Description=Daglig uppdatering av Horos data
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/fastighetskarta/current
+EnvironmentFile=-/etc/fastighetskarta/secrets.env
+Environment=HOROS_SCB_VILLKOR=0
+ExecStart=/bin/bash /opt/fastighetskarta/current/deploy/uppdatera.sh
+TimeoutStartSec=3h
+UMask=0077
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/fastighetskarta

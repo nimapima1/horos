@@ -112,6 +112,30 @@ Filen säkerhetskopieras inte; kopiera den vid byte av server.
 
 ## Hemligheter (inloggning till Lantmäteriets tjänster m.m.)
 
+Vid `deploy --data` jämförs NGP-data per kommun. Andra kommuner försvinner alltså inte när enbart en kommun importerats lokalt. Äldre SCB-underlag stoppas före databasbytet: om servern har nyare ägarkontroll eller arbetsställen måste motsvarande lokala import och build-public köras först. En kodpublicering utan `--data` påverkas inte. SCB-hämtningstider skrivs bara för fullständiga importer, inte för provuttag med `--sidor`.
+
+### Daglig datauppdatering
+
+Efter publicering installeras den dagliga körningen en gång som root i serverkonsolen:
+
+```sh
+bash /opt/fastighetskarta/current/deploy/installera-uppdatering.sh
+```
+
+`horos-uppdatering.timer` kör varje dag klockan 06:15 svensk tid, med högst tio minuters spridning. En missad körning tas igen när servern startar. Installationen aktiverar schemat och startar om appen, men gör ingen omedelbar datahämtning. Provkör som root med `systemctl start horos-uppdatering.service`. Se resultatet med `journalctl -u horos-uppdatering.service -n 100 --no-pager`.
+
+Körningen hämtar planer, bestämmelser och dokument för de kommuner som redan importerats från NGP. `NGP_KOMMUNER` i secrets.env kan ange en annan lista med fyrsiffriga kommunkoder, separerade med komma. Geotorget-uppgifterna läses från befintliga secrets.env av systemd och skrivs aldrig i loggen.
+
+Nyheter från Cision/Fastighetsvärlden och mottagna MFN-meddelanden behandlas också. Den befintliga nyhetskörningen två gånger per dag finns kvar; körningarna delar lås och kan inte skriva samtidigt.
+
+SCB:s ägarkontroll uppdateras när `SCB_API_KEY` finns i secrets.env. Arbetsställen kräver dessutom riktiga fastigheter och `HOROS_SCB_VILLKOR=1`, som markerar att publiceringsvillkoren är uppfyllda. Nycklar anges av användaren i terminalen via den befintliga hemlighetshanteringen, aldrig i chatten. Saknade inställningar visas som väntande källor, inte som lyckade hämtningar.
+
+Fastighetsgränser, ägare, köpeskillingar, taxering, fullständigt bolagsregister, adresser, förorenade och utsatta områden samt flygfoton har ännu ingen automatisk hämtning i detta jobb. De befintliga importerarna för dessa källor ändras inte. Nya myndighetsuttag/filer och en särskild koppling till respektive källa behövs fortfarande. SCB:s ägarkontroll är inte samma sak som uppdatering av lagfarna fastighetsägare.
+
+Uppdateringen arbetar på en kopia. Ett fel före databasbytet lämnar livefilen orörd. Om hälsokontrollen efter bytet misslyckas återställs föregående databas. Gamla databaser komprimeras i `/var/lib/fastighetskarta/arkiv` och raderas inte automatiskt. Kontrollera lagringsutrymmet regelbundet och flytta äldre arkiv vid behov. Jobbet avbryts innan ledigt utrymme blir för litet; det gör inte plats genom att radera historik.
+
+Dokumenten lagras i `/var/lib/fastighetskarta/plandokument`, utanför kodversionerna. Appens drop-in pekar dit; om en fil bara finns i det senast publicerade paketet används den som reserv. En lokal `deploy --data` behåller serverns nyare NGP-planer utifrån källans hämtningstid. `/api/status` anger senaste lyckade uppdatering och status per källa. En redan öppen karta hämtar aktuella kartdata var femte minut när fliken är synlig och när användaren återvänder till fliken.
+
 Hemligheter skickas direkt från din terminal till servern och sparas i
 `/etc/fastighetskarta/secrets.env` (läsbar bara för root och Horos-tjänsten). Skriv dem aldrig
 i chatten, i koden eller i ett kommando.

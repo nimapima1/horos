@@ -61,6 +61,12 @@ before(async () => {
   db.prepare(`INSERT INTO plan (id, typ, geojson, minx, miny, maxx, maxy, kalla, status)
     VALUES ('ngp:liten', 'DP', ?, 18.0002, 59.0001, 18.00021, 59.00011, 'ngp', 'laga kraft')`)
     .run(rect(18.0002, 59.0001, 18.00021, 59.00011));
+  db.prepare('UPDATE plan SET bestammelser = ? WHERE id = ?').run(JSON.stringify([
+    { etikett: 'B', text: 'Bostäder', typ: 'användningsbestämmelse', varde: null, geometry: JSON.parse(rect(18, 59, 18.001, 59.001)) },
+    { etikett: 'C', text: 'Centrum', typ: 'användningsbestämmelse', varde: null, geometry: JSON.parse(rect(18.001, 59, 18.002, 59.001)) },
+    { etikett: '', text: 'Utfartsförbud', geometry: { type: 'LineString', coordinates: [[18, 59], [18.001, 59]] } },
+    { etikett: '', text: 'Markhöjd 9 meter', geometry: { type: 'Point', coordinates: [18, 59, 9] } },
+  ]), 'ngp:laga kraft');
   db.close();
   // Ortofotoregistret: en bild över 18,00–18,05 / 59,00–59,03.
   const reg = oppnaRegister(ORTOFOTO_DB, { skriv: true });
@@ -93,6 +99,19 @@ test('NGP: kartans planlager och fastighetspanelen visar pågående och gälland
   assert.deepEqual(f.planer.map((p) => p.id).sort(), ['ngp:laga kraft', 'ngp:liten', 'ngp:samråd']);
   assert.equal(f.planer.find((p) => p.id === 'ngp:samråd').status, 'samråd');
   assert.equal(f.planer[0].kalla, 'ngp');
+});
+
+test('NGP: bestämmelser gäller klickpunkten och saknad import skiljs från tom träff', async () => {
+  const path = '/api/planbestammelser/' + encodeURIComponent('ngp:laga kraft');
+  const data = await json(path + '?punkt=18.0005,59.0005');
+  assert.deepEqual(data.bestammelser, [{ etikett: 'B', text: 'Bostäder', typ: 'användningsbestämmelse', varde: null }]);
+  assert.deepEqual(data.ovrigaBestammelser, [
+    { etikett: '', text: 'Utfartsförbud', geometrityp: 'LineString' },
+    { etikett: '', text: 'Markhöjd 9 meter', geometrityp: 'Point' },
+  ]);
+  assert.deepEqual((await json(path + '?punkt=19,60')).bestammelser, []);
+  assert.equal((await json('/api/planbestammelser/ngp%3Asamr%C3%A5d?punkt=18,59')).bestammelser, null);
+  assert.equal((await get(path + '?punkt=,59')).status, 400);
 });
 
 test('kartfiltren', async () => {

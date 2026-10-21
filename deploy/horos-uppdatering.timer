@@ -1,0 +1,11 @@
+[Unit]
+Description=Uppdatera Horos varje dag
+
+[Timer]
+OnCalendar=*-*-* 06:15:00 Europe/Stockholm
+Persistent=true
+RandomizedDelaySec=10m
+Unit=horos-uppdatering.service
+
+[Install]
+WantedBy=timers.target

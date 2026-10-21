@@ -120,7 +120,8 @@ class PlanToggle {
       this.button.setAttribute('aria-pressed', String(this.on));
       store.set('horos.planer', this.on ? '1' : '0');
       if (!map.getLayer('plan-line')) return;   // kartan laddas fortfarande; lagret skapas med rätt läge
-      map.setLayoutProperty('plan-line', 'visibility', this.on ? 'visible' : 'none');
+      for (const layer of ['plan-line', 'plan-fill']) map.setLayoutProperty(layer, 'visibility', this.on ? 'visible' : 'none');
+      if (!this.on) planPopup?.remove();
       loadVisible();
     });
     this.el.append(this.button);
@@ -129,6 +130,7 @@ class PlanToggle {
   onRemove() { this.el.remove(); }
 }
 const planToggle = new PlanToggle();
+let planPopup;
 map.addControl(planToggle, 'top-right');
 
 // Street View för den öppna fastigheten, under Detaljplaner. Två klick: inget laddas från Google förrän
@@ -336,11 +338,35 @@ map.on('load', () => {
     paint: { 'line-color': css('--c2'), 'line-width': 3 } });
   // Plangränser ovanpå fastigheterna, streckade så att de inte förväxlas med fastighetsgränser.
   map.addSource('planer', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'plan-fill', type: 'fill', source: 'planer',
+    layout: { visibility: planToggle.on ? 'visible' : 'none' },
+    paint: { 'fill-color': css('--plan'), 'fill-opacity': 0.06 } });
   map.addLayer({ id: 'plan-line', type: 'line', source: 'planer',
     layout: { visibility: planToggle.on ? 'visible' : 'none', 'line-join': 'round' },
     paint: { 'line-color': css('--plan'), 'line-width': 2.5, 'line-dasharray': [2, 1.5] } });
 
-  map.on('click', 'fastighet-fill', (e) => { adressMarker?.remove(); openFastighet(e.features[0].properties.beteckning); });
+  map.on('click', 'plan-fill', async (e) => {
+    const plans = [...new Map(e.features.map((f) => [f.properties.id, f.properties])).values()];
+    planPopup?.remove();
+    planPopup = new maplibregl.Popup({ className: 'plan-popup', maxWidth: '340px', offset: 12 })
+      .setLngLat(e.lngLat).setHTML(planInfo(plans)).addTo(map);
+    const popup = planPopup;
+    await Promise.all(plans.map(async (p) => {
+      try {
+        const data = await api(`/api/planbestammelser/${encodeURIComponent(p.id)}?punkt=${e.lngLat.lng},${e.lngLat.lat}`);
+        p.bestammelser = data.bestammelser;
+        p.ovrigaBestammelser = data.ovrigaBestammelser;
+        p.dokument = data.dokument;
+      } catch { p.bestammelseFel = true; }
+    }));
+    if (planPopup === popup && popup.isOpen()) popup.setHTML(planInfo(plans));
+  });
+  map.on('mouseenter', 'plan-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'plan-fill', () => { map.getCanvas().style.cursor = ''; });
+  map.on('click', 'fastighet-fill', (e) => {
+    if (planToggle.on && map.queryRenderedFeatures(e.point, { layers: ['plan-fill'] }).length) return;
+    adressMarker?.remove(); openFastighet(e.features[0].properties.beteckning);
+  });
   let hovered = null;
   const setHover = (id) => {
     if (hovered) map.setFeatureState({ source: 'fastigheter', id: hovered }, { hover: false });
@@ -364,6 +390,9 @@ map.on('load', () => {
   });
   map.on('mouseleave', 'fastighet-fill', () => { map.getCanvas().style.cursor = ''; setHover(null); tip?.remove(); });
   map.on('moveend', loadVisible);
+  // Öppna kartor hämtar också uppdaterade data efter serverns dagliga databasbyte.
+  setInterval(() => { if (document.visibilityState === 'visible') loadVisible(); }, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') loadVisible(); });
   applyBasemap(basemap.select.value);
   loadVisible();
   if (START.get('f') && !VIEWS[location.hash] && !arScenarioLank(location.hash)) openFastighet(START.get('f'));
