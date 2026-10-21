@@ -13,6 +13,7 @@ function planInfo(plans) {
     <div class="muted">${esc(p.planid || 'Planbeteckning saknas')}</div>
     <p><strong>${esc(p.status || 'Status saknas')}</strong>${p.status && p.status !== 'laga kraft' ? '<br>Har inte fått laga kraft' : ''}</p>
     ${p.datum ? `<div>Laga kraft: ${esc(p.datum)}</div>` : ''}
+    ${p.fastighetsmitt ? '<p class="small muted">Bestämmelserna nedan hämtas vid fastighetens kartmitt. Planen kan gälla bara en del av fastigheten. Klicka i planområdet på kartan för att kontrollera en annan punkt.</p>' : ''}
     <h4>${p.status === 'laga kraft' ? 'Planbestämmelser här' : 'Föreslagna planbestämmelser här'}</h4>
     ${p.bestammelseFel ? '<p>Kunde inte hämta bestämmelserna. Klicka på området för att försöka igen.</p>'
       : p.bestammelser === undefined ? '<p>Hämtar bestämmelser…</p>'
@@ -177,7 +178,7 @@ async function openFastighet(bet, adress) {
     <h3>Detaljplan</h3>
     ${table('<th>Plan</th><th>Status</th><th class="num">Laga kraft</th>', f.planer.map((p) =>
       `<tr><td><strong>${esc(PLANTYP[p.typ] ?? p.typ)}</strong>${p.namn ? ` · ${esc(p.namn)}` : ''}${demoTag(p.demo)}
-        <div class="muted small">${esc(p.planid ?? '')}</div></td><td>${p.status === 'laga kraft' ? 'Laga kraft' : p.status ? `<strong>${esc(p.status)}</strong><div class="muted small">Har inte fått laga kraft</div>` : 'Status saknas'}</td><td class="num">${esc(p.datum ?? '')}</td></tr>`),
+        <div class="muted small">${esc(p.planid ?? '')}</div><button type="button" data-visa-plan data-plan="${esc(JSON.stringify([p]))}" data-punkt="${esc(JSON.stringify({ lng: (f.minx + f.maxx) / 2, lat: (f.miny + f.maxy) / 2 }))}">Visa detaljplan</button></td><td>${p.status === 'laga kraft' ? 'Laga kraft' : p.status ? `<strong>${esc(p.status)}</strong><div class="muted small">Har inte fått laga kraft</div>` : 'Status saknas'}</td><td class="num">${esc(p.datum ?? '')}</td></tr>`),
       'Inga planuppgifter i Horos för fastigheten.')}
     ${f.planer.some((p) => p.kalla === 'ngp') ? '<div class="meta small">Källa: kommunerna via Nationella geodataplattformen. Äldre planer kan saknas. Pågående planer visar planprocessens status och kan ändras.</div>' : ''}
     <h3>${f.agare.some((a) => a.tomtratt) ? 'Ägare och tomträttshavare' : 'Lagfarna ägare'}</h3>
