@@ -112,9 +112,31 @@ test('återställningen gör databasen läsbar före omstart även med umask 007
   const result = spawnSync(bash, ['-c', `set -eu
     D=/dummy; arkiv=/dummy; stamp=test; gammal=/dummy/backup; mode=600
     mv() { :; }
+    gzip() { :; }
+    rensa() { :; }
     cp() { mode=600; }
     chmod() { mode="$1"; }
     systemctl() { [[ "$mode" == 644 ]] && echo readable; }
     ${recovery}`], { encoding: 'utf8' });
   assert.equal(result.stdout.includes('readable'), true, result.stderr || result.stdout);
+});
+
+test('arkivet: de 14 senaste behålls, misslyckade de 5 senaste, tom katalog stoppar inte', () => {
+  const script = readFileSync(join(ROOT, 'deploy/uppdatera.sh'), 'utf8');
+  const rensa = script.slice(script.indexOf('rensa() {'), script.indexOf('\n}\n', script.indexOf('rensa() {')) + 2);
+  const dir = mkdtempSync(join(ROOT, 'data/_test/arkiv-')).replaceAll('\\', '/');
+  const bash = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : 'bash';
+  const kor = (skapa) => spawnSync(bash, ['-c', `set -euo pipefail
+    arkiv='${dir}'
+    ${rensa}
+    ${skapa}
+    rensa
+    ls "$arkiv" | wc -l`], { encoding: 'utf8' });
+  assert.equal(kor('').status, 0);
+  const r = kor(`for i in $(seq -w 1 20); do touch -d "2026-01-$i" "$arkiv/public-$i.sqlite_GAMMAL.gz"; done
+    for i in $(seq -w 1 8); do touch -d "2026-01-$i" "$arkiv/u-$i.sqlite_MISSLYCKAD.gz"; done`);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), '19');
+  const kvar = spawnSync(bash, ['-c', `ls '${dir}' | sort | head -1`], { encoding: 'utf8' }).stdout.trim();
+  assert.equal(kvar, 'public-07.sqlite_GAMMAL.gz');
 });
