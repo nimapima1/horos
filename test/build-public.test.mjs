@@ -29,11 +29,17 @@ test('nyhet_plats: bara tillåtna fastigheter blir publika', () => {
       ('https://news.cision.com/se/a/r/1', 'FINNS INTE 1', NULL, NULL, NULL),
       ('https://news.cision.com/se/a/r/1', NULL, 'Testgatan 1', 18.5, 59.5),
       ('https://news.cision.com/se/a/r/1', NULL, NULL, NULL, NULL)`);
+  const plan = src.prepare(`INSERT INTO plan (id, typ, geojson, kalla, status) VALUES (?, 'DP', '{}', ?, ?)`);
+  plan.run('ngp-gallande', 'ngp', 'laga kraft');
+  plan.run('ngp-forslag', 'ngp', 'samråd');
+  plan.run('ngp-arkiv', 'ngp', 'arkiverad');
+  plan.run('licensplan', 'lantmateriet', null);
   src.close();
   execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', join(ROOT, 'scripts', 'build-public.mjs'),
     '--lm-beslut', 'TEST', '--out', OUT], { env: { ...process.env, FASTIGHETSKARTA_DB: SRC }, stdio: 'pipe' });
   const pub = openDb({ path: OUT, readOnly: true });
   try {
+    assert.deepEqual(pub.prepare('SELECT id FROM plan ORDER BY id').all().map((p) => p.id), ['ngp-forslag', 'ngp-gallande']);
     assert.deepEqual({ ...pub.prepare('SELECT inskrivningsdag, kopeskilling_kr, art, andel FROM transaktion WHERE forvarvare_orgnr IS NULL').get() },
       { inskrivningsdag: '2020-01-01', kopeskilling_kr: null, art: null, andel: null });
     assert.equal(pub.prepare('SELECT kopeskilling_kr FROM transaktion WHERE forvarvare_orgnr IS NOT NULL').get().kopeskilling_kr, 1000000);
