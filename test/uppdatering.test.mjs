@@ -25,7 +25,7 @@ test('daglig körning uppdaterar planer och nyheter men anger vilka källor som 
   const dir = mkdtempSync(join(ROOT, 'data/_test/daglig-')), path = join(dir, 'arbete.sqlite');
   publik(path);
   const commands = [];
-  const result = await uppdateraData(path, { env: { GEOTORGET_USER: 'test', GEOTORGET_PASS: 'test' },
+  const result = await uppdateraData(path, { env: { GEOTORGET_USER: 'test', GEOTORGET_PASS: 'test', KOMMUNPLANER: '0' },
     hamta: async (kommun) => { assert.equal(kommun, '0180'); return [feature]; },
     run: (script) => commands.push(script) });
   assert.equal(result.planer.status, 'uppdaterad');
@@ -144,7 +144,7 @@ test('arkivet: de 14 senaste behålls, misslyckade de 5 senaste, tom katalog sto
 test('daglig körning: en kommun som misslyckas stoppar inte de andra', async () => {
   const dir = mkdtempSync(join(ROOT, 'data/_test/daglig-delvis-')), path = join(dir, 'arbete.sqlite');
   publik(path);
-  const result = await uppdateraData(path, { env: { GEOTORGET_USER: 'test', GEOTORGET_PASS: 'test', NGP_KOMMUNER: '0181,0180' },
+  const result = await uppdateraData(path, { env: { GEOTORGET_USER: 'test', GEOTORGET_PASS: 'test', NGP_KOMMUNER: '0181,0180', KOMMUNPLANER: '0' },
     hamta: async (kommun) => { if (kommun === '0181') throw new Error('Källan nere'); return [feature]; },
     run: () => {} });
   assert.equal(result.planer.status, 'uppdaterad');
@@ -152,4 +152,28 @@ test('daglig körning: en kommun som misslyckas stoppar inte de andra', async ()
   const db = new DatabaseSync(path, { readOnly: true });
   assert.equal(db.prepare('SELECT status FROM plan').get().status, 'laga kraft');
   db.close();
+});
+
+test('daglig körning: kommunernas karttjänster hämtas en gång i veckan, en kommun som misslyckas stoppar inte', async () => {
+  const dir = mkdtempSync(join(ROOT, 'data/_test/daglig-kommun-')), path = join(dir, 'arbete.sqlite');
+  publik(path);
+  const ring = [[13, 55.6], [13, 55.61], [13.01, 55.61], [13, 55.6]];
+  let anrop = 0;
+  const kommunHamta = async (kod) => {
+    anrop++;
+    if (kod !== '1280') throw new Error('nere');
+    return { rader: [{ id: 'kommun:1280:1:1', typ: 'DP', planid: 'P1', namn: null, datum: null, kommun: '1280',
+      geojson: JSON.stringify({ type: 'Polygon', coordinates: [ring] }), minx: 13, miny: 55.6, maxx: 13.01, maxy: 55.61, dokument: null }] };
+  };
+  const opts = { env: { GEOTORGET_USER: 'test', GEOTORGET_PASS: 'test' }, hamta: async () => [feature], kommunHamta, run: () => {} };
+  const forsta = await uppdateraData(path, opts);
+  assert.equal(forsta.kommunplaner.status, 'uppdaterad');
+  assert.match(forsta.kommunplaner.orsak, /kommuner behöll tidigare planer/);
+  const db = new DatabaseSync(path, { readOnly: true });
+  assert.equal(db.prepare("SELECT planid FROM plan WHERE kalla = 'kommun'").get().planid, 'P1');
+  db.close();
+  const antal = anrop;
+  const andra = await uppdateraData(path, opts);
+  assert.equal(anrop, antal);
+  assert.equal(andra.kommunplaner.orsak, 'Hämtas en gång i veckan.');
 });

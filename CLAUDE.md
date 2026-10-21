@@ -32,7 +32,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 - Importskript i `scripts/`: `import-bolag`, `import-fastigheter` (GPKG), `import-taxering`,
   `import-lagfarter`, `import-adresser` (OSM via Overpass, eller `--fil`), `import-planer`
   (Markreglerande bestämmelse, GPKG per kommun), `import-ngp` (detaljplaner ur NGP, `--kommun alla`, PDF:er hämtas av
-  servern vid första klicket), `import-kommunplaner` (äldre planer ur 60 kommuners karttjänster där NGP har få äldre planer, efter NGP), `import-nyheter` (pressmeddelanden från Cision → `nyhet`/`nyhet_plats`, bara fakta och länk), `import-agarkontroll` (SCB:s ägarkontroll → `bolag.agarkontroll`; statligt/kommunalt/regionägt i ägarkategorin), `import-fororenade` (länsstyrelsernas EBH, .dbf, CC BY 4.0) och `import-utsatta` (Polisens utsatta områden, GeoJSON) för panelens rutor Förorenade områden (150 m) och Utsatta områden (5 km), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
+  servern vid första klicket), `import-kommunplaner` (äldre planer ur 62 kommuners karttjänster där NGP har få äldre planer, efter NGP; dygnsjobbet hämtar om dem en gång i veckan, `KOMMUNPLANER=0` stänger av), `import-nyheter` (pressmeddelanden från Cision → `nyhet`/`nyhet_plats`, bara fakta och länk), `import-agarkontroll` (SCB:s ägarkontroll → `bolag.agarkontroll`; statligt/kommunalt/regionägt i ägarkategorin), `import-fororenade` (länsstyrelsernas EBH, .dbf, CC BY 4.0) och `import-utsatta` (Polisens utsatta områden, GeoJSON) för panelens rutor Förorenade områden (150 m) och Utsatta områden (5 km), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
   `SCB_API_KEY`, kopplas till fastighet med punkt-i-polygon), `demo-data` (även påhittade planer och arbetsställen).
 - Scenarier (`#scenario`, som Datschas "Scenarion"): egen kassaflödeskalkyl för upp till 1 000 fastigheter, utan
   inloggning. `POST /api/underlag` ger fastigheterna, `POST /api/scenario` sparar (id = hash av innehållet, så en
@@ -174,6 +174,13 @@ Väntar på:
   - Byggnad Nedladdning, vektor – ifylld 2026-10-09; kontrollera att den skickades
 - Lantmäteriet geodatasupport: förfrågan om rikstäckning skickad 2026-10-09 (frågor och kostnadsuppskattning
   i `PRIVAT.md`). Svaret avgör vägen till rikstäckning. Skrapning är uteslutet (risk att förlora licenserna).
+- Detaljplaner (live 2026-10-21): NGP för alla kommuner (`import-ngp --kommun alla`, ~18 600 planer, dygnsjobbet
+  hämtar om) och äldre planer ur 62 kommuners öppna karttjänster (`import-kommunplaner`, ~29 500, varje vecka). 171 kommuner har
+  färre än 30 äldre planer; 164 av dem fick 2026-10-21 ett mejl från kontakt@horos.se (en kopia, alla som dold kopia,
+  svaren i samma Gmail-kedja) med frågan om plangränserna eller inlämning till NGP. Lista med adresser:
+  `data/planer-kommuner/mejla-kommuner.csv` (lokal). När en kommun svarar med en källa: lägg in den i
+  `lib/kommunplaner.mjs` och kör importen för kommunen. Användaren valde gratisvägar, inte Lantmäteriets
+  Markreglerande bestämmelse. Stockholm har bara 20 planer (NGP från 2023).
 
 När filer kommer: lägg i `data/raw/`, kör importskriptet med `--dry` först, påminn om åtagandena,
 bygg med `build-public` och publicera.
