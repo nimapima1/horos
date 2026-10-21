@@ -69,6 +69,11 @@ before(async () => {
     { etikett: '', text: 'Utfartsförbud', geometry: { type: 'LineString', coordinates: [[18, 59], [18.001, 59]] } },
     { etikett: '', text: 'Markhöjd 9 meter', geometry: { type: 'Point', coordinates: [18, 59, 9] } },
   ]), 'ngp:laga kraft');
+  // Plan ur en kommuns karttjänst över T 1:3, och en arkiverad som inte ska synas.
+  const insKommun = db.prepare(`INSERT INTO plan (id, typ, planid, geojson, minx, miny, maxx, maxy, kommun, kalla, status, dokument)
+    VALUES (?, 'SPL', '1280K-1', ?, 18.0102, 59.0001, 18.0108, 59.0004, '1280', 'kommun', ?, ?)`);
+  insKommun.run('kommun:1280:1:1', rect(18.0102, 59.0001, 18.0108, 59.0004), 'laga kraft', JSON.stringify([{ titel: 'Plankarta', url: 'https://kommun.example/p.pdf' }]));
+  insKommun.run('kommun:1280:1:2', rect(18.0102, 59.0001, 18.0108, 59.0004), 'arkiverad', null);
   db.prepare("UPDATE plan SET dokument = ? WHERE id = 'ngp:laga kraft'").run(JSON.stringify([{ titel: 'Plankarta', url: `/plandokument/ngp/${DOK}.pdf` }]));
   db.close();
   mkdirSync(join(CACHE_DIR, 'plandokument'), { recursive: true });
@@ -99,7 +104,7 @@ const antal = async (filter) => (await json(`/api/fastigheter?${BBOX}${filter}`)
 
 test('NGP: kartans planlager och fastighetspanelen visar pågående och gällande planer med status', async () => {
   const plans = await json(`/api/planer?${BBOX}`);
-  assert.deepEqual(plans.features.map((f) => f.properties.id).sort(), ['ngp:laga kraft', 'ngp:liten', 'ngp:samråd']);
+  assert.deepEqual(plans.features.map((f) => f.properties.id).sort(), ['kommun:1280:1:1', 'ngp:laga kraft', 'ngp:liten', 'ngp:samråd']);
   const f = await json('/api/fastighet/' + encodeURIComponent('T 1:1'));
   assert.deepEqual(f.planer.map((p) => p.id).sort(), ['ngp:laga kraft', 'ngp:liten', 'ngp:samråd']);
   assert.equal(f.planer.find((p) => p.id === 'ngp:samråd').status, 'samråd');
@@ -531,4 +536,12 @@ test('plandokument från NGP: sparad PDF visas, okända dokument hämtas inte', 
   assert.equal(r.headers.get('content-type'), 'application/pdf');
   assert.equal(await r.text(), '%PDF-1.7 test');
   assert.equal((await get('/plandokument/ngp/00000000-0000-4000-8000-000000000002.pdf')).status, 404);
+});
+
+test('kommunplaner: gällande visas med källa och dokument, arkiverade visas inte', async () => {
+  const f = await json('/api/fastighet/' + encodeURIComponent('T 1:3'));
+  assert.deepEqual(f.planer.map((p) => [p.id, p.kalla]), [['kommun:1280:1:1', 'kommun']]);
+  const data = await json('/api/planbestammelser/' + encodeURIComponent('kommun:1280:1:1') + '?punkt=18.0105,59.0002');
+  assert.equal(data.bestammelser, null);
+  assert.deepEqual(data.dokument, [{ titel: 'Plankarta', url: 'https://kommun.example/p.pdf' }]);
 });

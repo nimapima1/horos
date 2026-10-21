@@ -536,14 +536,14 @@ const q = {
   kommuner: db.prepare('SELECT DISTINCT kommun FROM fastighet WHERE kommun IS NOT NULL ORDER BY kommun'),
   planBestammelser: HAS_PLAN && hasColumn(db, 'plan', 'bestammelser') && db.prepare(`SELECT bestammelser,
     ${hasColumn(db, 'plan', 'dokument') ? 'dokument' : 'NULL AS dokument'} FROM plan
-    WHERE id = ? AND kalla = 'ngp' AND status IN ('påbörjad', 'samråd', 'granskning', 'antagen', 'överklagad', 'tillsyn', 'laga kraft')`),
+    WHERE id = ? AND kalla IN ('ngp', 'kommun') AND status IN ('påbörjad', 'samråd', 'granskning', 'antagen', 'överklagad', 'tillsyn', 'laga kraft')`),
   planDokument: HAS_PLAN && hasColumn(db, 'plan', 'dokument') && db.prepare(`SELECT 1 FROM plan WHERE kalla = 'ngp'
     AND status IN ('påbörjad', 'samråd', 'granskning', 'antagen', 'överklagad', 'tillsyn', 'laga kraft') AND dokument LIKE ? LIMIT 1`),
   planerIBbox: HAS_PLAN && db.prepare(`SELECT p.id, p.typ, p.planid, p.namn, p.datum, p.geojson, p.demo,
     ${hasColumn(db, 'plan', 'kalla') ? 'p.kalla' : "'lantmateriet' AS kalla"},
     ${hasColumn(db, 'plan', 'status') ? 'p.status' : 'NULL AS status'} FROM plan p
     WHERE ${overlapar('plan', 'p')}
-    ${hasColumn(db, 'plan', 'status') ? "AND (p.kalla != 'ngp' OR p.status IN ('påbörjad', 'samråd', 'granskning', 'antagen', 'överklagad', 'tillsyn', 'laga kraft'))" : ''}
+    ${hasColumn(db, 'plan', 'status') ? "AND (p.kalla NOT IN ('ngp', 'kommun') OR p.status IN ('påbörjad', 'samråd', 'granskning', 'antagen', 'överklagad', 'tillsyn', 'laga kraft'))" : ''}
     ORDER BY p.datum DESC NULLS LAST LIMIT ${MAX_FEATURES + 1}`),
   fastighet: db.prepare('SELECT beteckning, kommun, areal_m2, kalla, demo, minx, miny, maxx, maxy FROM fastighet WHERE beteckning = ?'),
   taxering: db.prepare(`SELECT t.beteckning, t.taxeringsenhet, t.typ, t.ar, t.agare_orgnr, t.andel, t.demo,

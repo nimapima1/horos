@@ -37,7 +37,7 @@ if (lmRader && !args['lm-beslut']) {
     + 'med --lm-beslut <nr> när ansökan har beviljats (och läs villkoren i beslutet).');
   process.exit(1);
 }
-const planRader = src.prepare("SELECT count(*) AS n FROM plan WHERE demo = 0 AND kalla != 'ngp'").get().n;
+const planRader = src.prepare("SELECT count(*) AS n FROM plan WHERE demo = 0 AND kalla NOT IN ('ngp', 'kommun')").get().n;
 const aeRader = src.prepare('SELECT count(*) AS n FROM arbetsstalle WHERE demo = 0').get().n;
 if (aeRader && !args['scb-villkor']) console.log(`Hoppar över ${aeRader} arbetsställen: ange --scb-villkor när SCB:s villkor är lästa.`);
 if (planRader && !args['lm-planer']) console.log(`Hoppar över ${planRader} planer: ange --lm-planer <ärendenr> när licensen finns.`);
@@ -79,7 +79,7 @@ withTransaction(db, () => {
     INSERT INTO nyhet SELECT * FROM src.nyhet;
     INSERT INTO nyhet_plats SELECT * FROM src.nyhet_plats WHERE NOT ${NYHET_PLATS_UTANFOR};   -- fastighet = de tillåtna
     INSERT INTO plan SELECT * FROM src.plan WHERE demo = 0 AND (
-      (kalla = 'ngp' AND status IN ('påbörjad', 'samråd', 'granskning', 'antagen', 'överklagad', 'tillsyn', 'laga kraft')) ${args['lm-planer'] ? "OR kalla != 'ngp'" : ''});
+      (kalla IN ('ngp', 'kommun') AND status IN ('påbörjad', 'samråd', 'granskning', 'antagen', 'överklagad', 'tillsyn', 'laga kraft')) ${args['lm-planer'] ? "OR kalla NOT IN ('ngp', 'kommun')" : ''});
     -- Öppna data utan personuppgifter, för hela landet (avståndet räknas från de tillåtna fastigheterna).
     INSERT INTO fororenat SELECT * FROM src.fororenat;
     INSERT INTO utsatt_omrade SELECT * FROM src.utsatt_omrade;
