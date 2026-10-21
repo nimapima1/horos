@@ -7,10 +7,11 @@ import { pathToFileURL } from 'node:url';
 import { openDb, ROOT, rebuildRtree, harJuridiskAgare, normOrgnr } from '../lib/db.mjs';
 import { hamtaNgp, ngpPlaner, sparaNgp } from '../lib/ngp.mjs';
 import { markeraPlanHamtning } from '../lib/uppdateringsmeta.mjs';
+import { KALLOR, hamtaKommunplaner, sparaKommunplaner, utanNgpDubbletter } from '../lib/kommunplaner.mjs';
 
 const STATUSAR = "'påbörjad','samråd','granskning','antagen','överklagad','tillsyn','laga kraft'";
 
-export async function uppdateraData(path, { env = process.env, hamta = hamtaNgp,
+export async function uppdateraData(path, { env = process.env, hamta = hamtaNgp, kommunHamta = hamtaKommunplaner,
   run = (script, args = [], accepted = [0]) => {
     try {
       execFileSync(process.execPath, [join(ROOT, 'scripts', script), ...args], {
@@ -54,6 +55,28 @@ export async function uppdateraData(path, { env = process.env, hamta = hamtaNgp,
       rebuildRtree(db, 'plan');
       stamp('planer', 'uppdaterad', fel.length ? `${fel.length} kommuner behöll tidigare planer: ${fel.slice(0, 5).join('; ')}` : '');
     } else stamp('planer', 'vantar', 'Inga kommuner har importerats eller konfigurerats.');
+
+    // Kommunernas egna karttjänster en gång i veckan: de ändras sällan och hela omgången tar några minuter.
+    const kommunTid = db.prepare("SELECT varde FROM meta WHERE nyckel='kommunplaner_hamtade'").get()?.varde;
+    if (env.KOMMUNPLANER === '0') stamp('kommunplaner', 'vantar', 'Avstängt med KOMMUNPLANER=0.');
+    else if (kommunTid && Date.now() - Date.parse(kommunTid) < 6.5 * 864e5) {
+      tillstand.kommunplaner = { status: 'uppdaterad', tid: kommunTid, orsak: 'Hämtas en gång i veckan.' };
+    } else {
+      const fel = [];
+      for (const kod of Object.keys(KALLOR)) {
+        try {
+          const { rader } = await kommunHamta(kod);
+          if (!rader.length) throw new Error('inga planer i svaret');
+          sparaKommunplaner(db, utanNgpDubbletter(db, rader, kod), kod);
+        } catch (error) { fel.push(`${kod}: ${error.message.split('\n')[0]}`); }
+      }
+      if (fel.length === Object.keys(KALLOR).length) throw new Error(`Kommunernas karttjänster misslyckades alla (${fel[0]}). Behåller den tidigare databasen.`);
+      db.prepare('INSERT OR REPLACE INTO meta VALUES (?, ?)').run('kommunplaner_hamtade', new Date().toISOString());
+      // Som för NGP: historiken finns i arkivet; publicera bara gällande.
+      db.exec("DELETE FROM plan WHERE kalla='kommun' AND status != 'laga kraft'");
+      rebuildRtree(db, 'plan');
+      stamp('kommunplaner', 'uppdaterad', fel.length ? `${fel.length} kommuner behöll tidigare planer: ${fel.slice(0, 5).join('; ')}` : '');
+    }
     db.close(); db = null;
 
     run('import-nyheter.mjs', ['--publik', path], [0, 3]);
