@@ -10,7 +10,7 @@ import { readFile, writeFile, mkdir, statfs, unlink, rename } from 'node:fs/prom
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { openDb, DB_PATH, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree, rebuildFastighetFts, fastighetsBet } from './lib/db.mjs';
-import { avstandM, innerPoints, pointInGeom } from './lib/geo.mjs';
+import { avstandM, geomOverlap, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN, kommunAv, kommunForst } from './lib/kommuner.mjs';
 import { MAX_SCENARIO, MAX_SCENARIO_BYTE, giltigtScenario, oppnaScenarier } from './lib/scenarier.mjs';
 import { LOKALTYPER } from './lib/lokaltyp.mjs';
@@ -878,9 +878,9 @@ function omgivning(bet) {
 function planerPa(bet) {
   const f = q.planerIBbox && q.fastighetGeom.get(bet);
   if (!f) return [];
-  const pts = innerPoints(JSON.parse(f.geojson));
+  const geom = JSON.parse(f.geojson);
   return q.planerIBbox.all(f.minx, f.maxx, f.miny, f.maxy)
-    .filter((p) => { const g = JSON.parse(p.geojson); return pts.some((pt) => pointInGeom(pt, g)); })
+    .filter((p) => geomOverlap(geom, JSON.parse(p.geojson)))
     .map(({ geojson, ...p }) => p);
 }
 
