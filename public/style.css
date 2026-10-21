@@ -325,6 +325,7 @@ label.copy { display: inline-flex; align-items: center; }
 
 .panel .notice { border-radius: var(--radius-sm); }
 @media (max-width: 640px) {
+  body:has(.plan-popup) :is(.sidebar, .legend, .demo-banner, .maplibregl-ctrl-top-right) { visibility: hidden; }
   .scenario .stats, .sc-grid { grid-template-columns: repeat(2, 1fr); }
   /* 16 px hindrar iOS från att zooma in vid fokus; 44 px är lätt att träffa med tummen. */
   .scenario input { height: 44px; font-size: 16px; }
@@ -565,12 +566,22 @@ label.copy { display: inline-flex; align-items: center; }
   background: var(--surface-solid); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow);
 }
 .tip .maplibregl-popup-tip { display: none; }
-.plan-popup .maplibregl-popup-content { background: var(--surface-solid); color: var(--text); border-radius: 12px; padding: 20px; max-height: 55vh; overflow: auto; }
-.plan-popup .maplibregl-popup-close-button { color: inherit; font-size: 24px; width: 36px; height: 36px; }
+.plan-popup .maplibregl-popup-content { background: var(--surface-solid); color: var(--text); border-radius: 12px; padding: 44px 0 0; overflow: hidden; font: 16px/1.5 var(--font-body); box-shadow: var(--shadow); }
+.plan-popup-body { padding: 0 20px 20px; max-height: 55vh; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.plan-popup .maplibregl-popup-close-button { color: inherit; font-size: 28px; width: 44px; height: 44px; }
 .plan-info h3 { margin: 0 20px 6px 0; font-size: 16px; }
 .plan-info h4 { margin: 16px 0 6px; font-size: 14px; }
 .plan-info ul { padding-left: 18px; }
 .plan-info li + li { margin-top: 10px; }
 .plan-info + .plan-info { border-top: 1px solid currentColor; margin-top: 16px; padding-top: 16px; }
+@media (max-width: 640px) {
+  .plan-popup { top: auto; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); max-width: none !important; transform: none !important; z-index: 3; }
+  .plan-popup .maplibregl-popup-tip { display: none; }
+  .plan-popup-body { max-height: calc(75dvh - 60px - env(safe-area-inset-bottom)); touch-action: pan-y; }
+  .plan-info h3 { font-size: 20px; }
+  .plan-info h4 { font-size: 18px; }
+  .plan-info a { display: inline-flex; align-items: center; min-height: 44px; }
+  .plan-info summary { padding-block: 12px; }
+}
 .tip .muted { font-size: 12px; }
 .tip .tag { margin-left: 6px; }

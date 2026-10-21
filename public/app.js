@@ -359,7 +359,7 @@ map.on('load', () => {
         p.dokument = data.dokument;
       } catch { p.bestammelseFel = true; }
     }));
-    if (planPopup === popup && popup.isOpen()) popup.setHTML(planInfo(plans));
+    if (planPopup === popup && popup.isOpen()) popup.setHTML(planInfo(plans)).setLngLat(e.lngLat);
   });
   map.on('mouseenter', 'plan-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'plan-fill', () => { map.getCanvas().style.cursor = ''; });
