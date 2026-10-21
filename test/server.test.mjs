@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { request } from 'node:http';
 import { createHmac } from 'node:crypto';
@@ -16,6 +16,8 @@ const SCENARIO_DB = join(ROOT, 'data', '_test', 'scenario-test.sqlite');
 const MFN_DB = join(ROOT, 'data', '_test', 'mfn-test.sqlite');
 const MFN_SECRET = 'testhemlighet';
 const ORTOFOTO_DB = join(ROOT, 'data', '_test', 'ortofoto-test.sqlite');
+const CACHE_DIR = join(ROOT, 'data', '_test', 'cache');
+const DOK = '00000000-0000-4000-8000-000000000001';
 const PORT = 3005;
 let server;
 
@@ -67,7 +69,10 @@ before(async () => {
     { etikett: '', text: 'Utfartsförbud', geometry: { type: 'LineString', coordinates: [[18, 59], [18.001, 59]] } },
     { etikett: '', text: 'Markhöjd 9 meter', geometry: { type: 'Point', coordinates: [18, 59, 9] } },
   ]), 'ngp:laga kraft');
+  db.prepare("UPDATE plan SET dokument = ? WHERE id = 'ngp:laga kraft'").run(JSON.stringify([{ titel: 'Plankarta', url: `/plandokument/ngp/${DOK}.pdf` }]));
   db.close();
+  mkdirSync(join(CACHE_DIR, 'plandokument'), { recursive: true });
+  writeFileSync(join(CACHE_DIR, 'plandokument', `${DOK}.pdf`), '%PDF-1.7 test');
   // Ortofotoregistret: en bild över 18,00–18,05 / 59,00–59,03.
   const reg = oppnaRegister(ORTOFOTO_DB, { skriv: true });
   reg.prepare(`INSERT INTO bild (id, namn, samling, href, datum, upplosning, ruta, geometri, minx, miny, maxx, maxy)
@@ -77,7 +82,7 @@ before(async () => {
   reg.close();
 
   server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(ROOT, 'server.mjs')], {
-    env: { ...process.env, PORT: String(PORT), FASTIGHETSKARTA_DB: DB, SCENARIO_DB, MFN_DB, MFN_SECRET, ORTOFOTO_DB, GEOTORGET_USER: 'test', GEOTORGET_PASS: 'test', PUBLIC_MODE: '', RATE_SPARA: '50', RATE_EXPORT: '50' },
+    env: { ...process.env, PORT: String(PORT), FASTIGHETSKARTA_DB: DB, CACHE_DIR, SCENARIO_DB, MFN_DB, MFN_SECRET, ORTOFOTO_DB, GEOTORGET_USER: 'test', GEOTORGET_PASS: 'test', PUBLIC_MODE: '', RATE_SPARA: '50', RATE_EXPORT: '50' },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   await new Promise((resolve, reject) => {
@@ -518,4 +523,12 @@ test('fastighetssökning hittar pilen 1 utan kommunprefix via FTS', async () => 
     assert.deepEqual((await json('/api/sok?q=stockholm%20pilen%201')).fastigheter.map((f) => f.beteckning), ['STOCKHOLM PILEN 1']);
     assert.deepEqual((await json('/api/sok?q=5560000001')).fastigheter, []);
   } finally { db.exec("DELETE FROM fastighet WHERE beteckning LIKE '% PILEN %'"); rebuildFastighetFts(db); db.close(); }
+});
+
+test('plandokument från NGP: sparad PDF visas, okända dokument hämtas inte', async () => {
+  const r = await get(`/plandokument/ngp/${DOK}.pdf`);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'application/pdf');
+  assert.equal(await r.text(), '%PDF-1.7 test');
+  assert.equal((await get('/plandokument/ngp/00000000-0000-4000-8000-000000000002.pdf')).status, 404);
 });

@@ -25,7 +25,7 @@ function planInfo(plans) {
       <p class="small muted">Gäller särskilda linjer eller punkter, inte hela planområdet. Kontrollera läget i plankartan.</p>${lista(p.ovrigaBestammelser)}</details>` : ''}
     <p class="small muted">${p.kalla === 'ngp' ? 'Kommunen via Nationella geodataplattformen. Äldre planer kan saknas.' : 'Källa: Lantmäteriet.'}${p.demo ? ' Exempeldata.' : ''}</p>
     ${p.dokument?.length ? `<p>${p.dokument.filter((d) => {
-      if (/^\/plandokument\/[a-f0-9]{64}\.pdf$/.test(d.url)) return true;
+      if (/^\/plandokument\/([a-f0-9]{64}|ngp\/[0-9a-f-]{36})\.pdf$/.test(d.url)) return true;
       try { const u = new URL(d.url); return u.protocol === 'https:' && !u.username && !u.password; } catch { return false; }
     }).map((d) => `<a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">${esc(d.titel)} ↗</a>`).join(' · ')}</p>`
       : '<div class="small muted">Dokumentlänkar har inte hämtats för planen ännu.</div>'}

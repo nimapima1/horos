@@ -167,3 +167,18 @@ test('NGP-inventeringen räknar planer per kommun och fortsätter efter fel', as
   assert.deepEqual(rader[0], { kod: '0180', planer: 4, laga_kraft: 2, pagaende: 1, ovriga: 1, aldsta: '1990-05-01', senaste: '2025-01-01' });
   assert.match(rader[1].fel, /HTTP 500/);
 });
+
+test('NGP-dokument som inte hämtats i förväg får en länk som servern hämtar vid behov', () => {
+  const plan = feature();
+  const base = 'https://api.lantmateriet.se/distribution/geodatakatalog/nedladdning/v1/asset/';
+  plan.assets = {
+    plan: { href: base + '10ca8fdb-b4c6-44ff-ada6-138726d096db', roles: ['detaljplan'] },
+    karta: { href: base + '464197d0-22c9-4b2f-a2cf-9b304c1f0707', roles: ['beslutshandling'] },
+    beskrivning: { href: base + 'db7d0082-26e4-4d6a-8bdd-1eba5fcc217e', roles: ['planbeskrivning'], publikUrl: 'https://kommun.example/b.pdf' },
+    annan: { href: 'https://example.com/asset/464197d0-22c9-4b2f-a2cf-9b304c1f0707', roles: ['beslutshandling'] },
+  };
+  assert.deepEqual(JSON.parse(ngpPlan(plan, '0180').dokument), [
+    { titel: 'Plankarta', url: '/plandokument/ngp/464197d0-22c9-4b2f-a2cf-9b304c1f0707.pdf' },
+    { titel: 'Planbeskrivning', url: 'https://kommun.example/b.pdf' },
+  ]);
+});

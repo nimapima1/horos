@@ -65,3 +65,10 @@ test('planrutan hämtar regler och dokument för vald plan utan kartlager', asyn
   assert.match(rendered.at(-1), /Plankarta/);
   assert.match(rendered.at(-1), /fastighetens kartmitt/);
 });
+
+test('planrutan länkar till NGP-dokument som hämtas vid behov', () => {
+  const html = planInfo([{ dokument: [{ titel: 'Plankarta', url: '/plandokument/ngp/464197d0-22c9-4b2f-a2cf-9b304c1f0707.pdf' },
+    { titel: 'Fel', url: '/plandokument/ngp/../../etc.pdf' }] }]);
+  assert.ok(html.includes('href="/plandokument/ngp/464197d0-22c9-4b2f-a2cf-9b304c1f0707.pdf"'));
+  assert.ok(!html.includes('etc.pdf'));
+});
