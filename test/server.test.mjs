@@ -58,6 +58,9 @@ before(async () => {
   for (const status of ['laga kraft', 'samråd', 'upphävd', 'arkiverad']) {
     insPlan.run(`ngp:${status}`, rect(18, 59, 18.002, 59.001), status);
   }
+  db.prepare(`INSERT INTO plan (id, typ, geojson, minx, miny, maxx, maxy, kalla, status)
+    VALUES ('ngp:liten', 'DP', ?, 18.0002, 59.0001, 18.00021, 59.00011, 'ngp', 'laga kraft')`)
+    .run(rect(18.0002, 59.0001, 18.00021, 59.00011));
   db.close();
   // Ortofotoregistret: en bild över 18,00–18,05 / 59,00–59,03.
   const reg = oppnaRegister(ORTOFOTO_DB, { skriv: true });
@@ -85,9 +88,9 @@ const antal = async (filter) => (await json(`/api/fastigheter?${BBOX}${filter}`)
 
 test('NGP: kartans planlager och fastighetspanelen visar pågående och gällande planer med status', async () => {
   const plans = await json(`/api/planer?${BBOX}`);
-  assert.deepEqual(plans.features.map((f) => f.properties.id).sort(), ['ngp:laga kraft', 'ngp:samråd']);
+  assert.deepEqual(plans.features.map((f) => f.properties.id).sort(), ['ngp:laga kraft', 'ngp:liten', 'ngp:samråd']);
   const f = await json('/api/fastighet/' + encodeURIComponent('T 1:1'));
-  assert.deepEqual(f.planer.map((p) => p.id).sort(), ['ngp:laga kraft', 'ngp:samråd']);
+  assert.deepEqual(f.planer.map((p) => p.id).sort(), ['ngp:laga kraft', 'ngp:liten', 'ngp:samråd']);
   assert.equal(f.planer.find((p) => p.id === 'ngp:samråd').status, 'samråd');
   assert.equal(f.planer[0].kalla, 'ngp');
 });

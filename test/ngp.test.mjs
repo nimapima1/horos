@@ -33,6 +33,23 @@ test('NGP hämtar alla sidor och skickar inte lösenord till främmande sidlänk
   assert.equal(calls, 1);
 });
 
+test('NGP följer POST-sidor med både sammanfogad och ersatt sökkropp', async () => {
+  const original = { collections: ['0180'], limit: 100, query: { 'feature.typ': { eq: 'detaljplan' } } };
+  const expected = [original, { ...original, afterId: 'ett' }, { ...original, afterId: 'två' }];
+  let calls = 0;
+  const rows = await hamtaNgp('0180', 'konto', 'lösen', async (_url, options) => {
+    assert.equal(options.method, 'POST');
+    assert.deepEqual(JSON.parse(options.body), expected[calls]);
+    const id = ['ett', 'två', 'tre'][calls++];
+    return Response.json({ type: 'FeatureCollection', features: [{ id }], links: calls === 3 ? [] : [{
+      rel: 'next', href: 'search', method: 'POST', merge: calls === 1,
+      body: calls === 1 ? { afterId: 'ett' } : { ...original, afterId: 'två' },
+    }] });
+  });
+  assert.equal(calls, 3);
+  assert.deepEqual(rows.map((r) => r.id), ['ett', 'två', 'tre']);
+});
+
 test('NGP sparar om samma plan, arkiverar borttagna planer och validerar geometri', () => {
   const db = openDb({ path: ':memory:' });
   try {
