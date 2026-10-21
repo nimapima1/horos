@@ -17,13 +17,13 @@ function planInfo(plans) {
     <h4>${p.status === 'laga kraft' ? 'Planbestämmelser här' : 'Föreslagna planbestämmelser här'}</h4>
     ${p.bestammelseFel ? '<p>Kunde inte hämta bestämmelserna. Klicka på området för att försöka igen.</p>'
       : p.bestammelser === undefined ? '<p>Hämtar bestämmelser…</p>'
-      : p.bestammelser === null ? '<p>Bestämmelser har inte hämtats för den här planen ännu.</p>'
+      : p.bestammelser === null ? `<p>${p.kalla === 'kommun' ? 'Kommunens karttjänst har bara planens gräns. Bestämmelserna står i plankartan.' : 'Bestämmelser har inte hämtats för den här planen ännu.'}</p>`
       : !p.bestammelser.length ? '<p>Inga bestämmelser i underlaget vid klickpunkten. Klicka längre in i området.</p>'
       : `${lista(p.bestammelser)}
         <p class="small muted">Gäller klickpunkten. Andra delar av planen kan ha andra regler. Bestämmelserna behöver läsas tillsammans med plankartan och avgör inte i sig om bygglov kan ges.</p>`}
     ${p.ovrigaBestammelser?.length ? `<details><summary>Linje- och punktbestämmelser i planen (${p.ovrigaBestammelser.length})</summary>
       <p class="small muted">Gäller särskilda linjer eller punkter, inte hela planområdet. Kontrollera läget i plankartan.</p>${lista(p.ovrigaBestammelser)}</details>` : ''}
-    <p class="small muted">${p.kalla === 'ngp' ? 'Kommunen via Nationella geodataplattformen. Äldre planer kan saknas.' : 'Källa: Lantmäteriet.'}${p.demo ? ' Exempeldata.' : ''}</p>
+    <p class="small muted">${p.kalla === 'ngp' ? 'Kommunen via Nationella geodataplattformen. Äldre planer kan saknas.' : p.kalla === 'kommun' ? 'Källa: kommunens karttjänst.' : 'Källa: Lantmäteriet.'}${p.demo ? ' Exempeldata.' : ''}</p>
     ${p.dokument?.length ? `<p>${p.dokument.filter((d) => {
       if (/^\/plandokument\/([a-f0-9]{64}|ngp\/[0-9a-f-]{36})\.pdf$/.test(d.url)) return true;
       try { const u = new URL(d.url); return u.protocol === 'https:' && !u.username && !u.password; } catch { return false; }
@@ -181,6 +181,7 @@ async function openFastighet(bet, adress) {
         <div class="muted small">${esc(p.planid ?? '')}</div><button type="button" data-visa-plan data-plan="${esc(JSON.stringify([p]))}" data-punkt="${esc(JSON.stringify({ lng: (f.minx + f.maxx) / 2, lat: (f.miny + f.maxy) / 2 }))}">Visa detaljplan</button></td><td>${p.status === 'laga kraft' ? 'Laga kraft' : p.status ? `<strong>${esc(p.status)}</strong><div class="muted small">Har inte fått laga kraft</div>` : 'Status saknas'}</td><td class="num">${esc(p.datum ?? '')}</td></tr>`),
       'Inga planuppgifter i Horos för fastigheten.')}
     ${f.planer.some((p) => p.kalla === 'ngp') ? '<div class="meta small">Källa: kommunerna via Nationella geodataplattformen. Äldre planer kan saknas. Pågående planer visar planprocessens status och kan ändras.</div>' : ''}
+    ${f.planer.some((p) => p.kalla === 'kommun') ? '<div class="meta small">Äldre planer: kommunens egen karttjänst.</div>' : ''}
     <h3>${f.agare.some((a) => a.tomtratt) ? 'Ägare och tomträttshavare' : 'Lagfarna ägare'}</h3>
     ${table('<th>Ägare</th><th>Andel</th><th class="num">Sedan</th>', f.agare.map((a) =>
       `<tr><td>${bolagLink(a.orgnr, a.namn, a.demo)}<div class="muted small">${fmtOrgnr(a.orgnr)}${a.tomtratt ? ' · tomträttshavare' : ''}</div></td>

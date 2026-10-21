@@ -31,7 +31,8 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   inga inline-skript.
 - Importskript i `scripts/`: `import-bolag`, `import-fastigheter` (GPKG), `import-taxering`,
   `import-lagfarter`, `import-adresser` (OSM via Overpass, eller `--fil`), `import-planer`
-  (Markreglerande bestämmelse, GPKG per kommun), `import-nyheter` (pressmeddelanden från Cision → `nyhet`/`nyhet_plats`, bara fakta och länk), `import-agarkontroll` (SCB:s ägarkontroll → `bolag.agarkontroll`; statligt/kommunalt/regionägt i ägarkategorin), `import-fororenade` (länsstyrelsernas EBH, .dbf, CC BY 4.0) och `import-utsatta` (Polisens utsatta områden, GeoJSON) för panelens rutor Förorenade områden (150 m) och Utsatta områden (5 km), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
+  (Markreglerande bestämmelse, GPKG per kommun), `import-ngp` (detaljplaner ur NGP, `--kommun alla`, PDF:er hämtas av
+  servern vid första klicket), `import-kommunplaner` (äldre planer ur 29 kommuners karttjänster, efter NGP), `import-nyheter` (pressmeddelanden från Cision → `nyhet`/`nyhet_plats`, bara fakta och länk), `import-agarkontroll` (SCB:s ägarkontroll → `bolag.agarkontroll`; statligt/kommunalt/regionägt i ägarkategorin), `import-fororenade` (länsstyrelsernas EBH, .dbf, CC BY 4.0) och `import-utsatta` (Polisens utsatta områden, GeoJSON) för panelens rutor Förorenade områden (150 m) och Utsatta områden (5 km), `import-arbetsstallen` (SCB:s företagsregister, API-nyckel i
   `SCB_API_KEY`, kopplas till fastighet med punkt-i-polygon), `demo-data` (även påhittade planer och arbetsställen).
 - Scenarier (`#scenario`, som Datschas "Scenarion"): egen kassaflödeskalkyl för upp till 1 000 fastigheter, utan
   inloggning. `POST /api/underlag` ger fastigheterna, `POST /api/scenario` sparar (id = hash av innehållet, så en
@@ -97,6 +98,9 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 - Visa publikt bara fastigheter som ägs av juridiska personer; inga uppgifter om privatpersoner.
 - Ingen skrapning av Datscha/Hemnet/Booli, ingen bulkhämtning från myndigheters e-tjänster för
   publicering, ingen dold trafik.
+  Undantag (användarens beslut 2026-10-21): plangränser från kommunernas öppna karttjänster (ArcGIS REST/WFS,
+  `lib/kommunplaner.mjs`, `import-kommunplaner`) används utan tillstånd där NGP saknar äldre planer, med kommunen som
+  källa; en kommun som invänder tas bort direkt. Inte tjänster vars plandata är kopierad från Lantmäteriet.
 - Ortofoto: högst ~0,3 m/pixel, ingen nedladdning av bilder.
 - Byggnad (om beviljad): ändamål och byggnadsytor visas bara för byggnader på fastigheter med
   juridisk ägare, ingen nedladdningsfil.
