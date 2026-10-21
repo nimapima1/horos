@@ -101,3 +101,15 @@ test('hämtning från ArcGIS: avkortat svar stoppar importen', async () => {
     ? Response.json({ objectIds: [1, 2] })
     : Response.json({ exceededTransferLimit: true, features: [{ attributes: { OBJECTID: 1 }, geometry: { rings: [ring] } }] })), /ofullständigt svar/);
 });
+
+test('hämtning: filter på kommunkod i ett gemensamt planarkiv, och öppen GeoJSON-fil', async () => {
+  const ring = [[17.1, 60.6], [17.1, 60.61], [17.11, 60.61], [17.11, 60.6], [17.1, 60.6]];
+  const gavle = await hamtaKommunplaner('2180', async (url) => {
+    if (url.includes('returnIdsOnly')) { assert.match(url, /where=KOMMUNKOD%3D'2180'/); return Response.json({ objectIdFieldName: 'OBJECTID', objectIds: [1] }); }
+    return Response.json({ features: [{ attributes: { OBJECTID: 1, LMVAKT: '2180K-P1', OBJEKTTYP: 'Stadsplan' }, geometry: { rings: [ring] } }] });
+  });
+  assert.deepEqual(gavle.rader.map((r) => [r.planid, r.typ]), [['2180K-P1', 'SPL']]);
+  const umea = await hamtaKommunplaner('2480', async () => Response.json({ type: 'FeatureCollection', features: [
+    { properties: { aktbet: '2480K-P1', popularnam: 'Sofiehem', kategori: 'Detaljplan' }, geometry: { type: 'Polygon', coordinates: [ring] } }] }));
+  assert.deepEqual(umea.rader.map((r) => [r.id, r.planid, r.namn]), [['kommun:2480:fil:0', '2480K-P1', 'Sofiehem']]);
+});
