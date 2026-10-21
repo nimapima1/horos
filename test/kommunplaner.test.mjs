@@ -43,12 +43,13 @@ test('hämtning från ArcGIS: alla objekt i omgångar, fält och dokumentlänkar
   const ring = [[13, 55.6], [13, 55.61], [13.01, 55.61], [13.01, 55.6], [13, 55.6]];
   const { rader } = await hamtaKommunplaner('1280', async (url) => {
     anrop.push(url);
-    if (url.includes('returnIdsOnly')) return Response.json({ objectIdFieldName: 'OBJECTID', objectIds: [1, 2] });
+    if (url.includes('returnIdsOnly')) return Response.json({ objectIdFieldName: 'OBJECTID_1', objectIds: [1, 2] });
     assert.match(url, /objectIds=1,2&outFields=\*&outSR=4326/);
-    return Response.json({ objectIdFieldName: 'OBJECTID', features: [
-      { attributes: { OBJECTID: 1, LMAKT: '1280K-DP4000', PLANNAMN: 'ROSENHOLMS HANDELSTRÄDGÅRD', FIX_LAGAKR: '19890525', PLAN_: 'DP4000',
+    // Som Malmö: id-fältet anges bara i id-svaret, och ett annat OBJECTID har samma värde i alla objekt.
+    return Response.json({ features: [
+      { attributes: { OBJECTID_1: 1, OBJECTID: 7, LMAKT: '1280K-DP4000', PLANNAMN: 'ROSENHOLMS HANDELSTRÄDGÅRD', FIX_LAGAKR: '19890525', PLAN_: 'DP4000',
         url_1: 'https://kartor.malmo.se/Planvisaren?plan=dp4000_1.pdf', url_dok: ' ' }, geometry: { rings: [ring] } },
-      { attributes: { OBJECTID: 2, LMAKT: 'x' }, geometry: { rings: [[[0, 0], [0, 1], [1, 1], [0, 0]]] } },
+      { attributes: { OBJECTID_1: 2, OBJECTID: 7, LMAKT: 'x' }, geometry: { rings: [[[0, 0], [0, 1], [1, 1], [0, 0]]] } },
     ] });
   });
   assert.equal(anrop.length, 2);
