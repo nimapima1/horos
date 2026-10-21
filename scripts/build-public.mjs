@@ -90,6 +90,11 @@ withTransaction(db, () => {
   meta.run('lm_beslut', args['lm-beslut'] ? String(args['lm-beslut']) : null);
   meta.run('lm_planer', args['lm-planer'] ? String(args['lm-planer']) : null);
   meta.run('export_geometri', args['export-geometri'] ? '1' : '0');
+  if (db.prepare("SELECT 1 FROM src.sqlite_master WHERE name='meta'").get()) {
+    db.exec(`INSERT OR REPLACE INTO meta SELECT nyckel, varde FROM src.meta
+      WHERE nyckel IN ('planer_hamtade', 'ngp_kommuner', 'scb_agarkontroll_hamtad'${args['scb-villkor'] ? ", 'scb_arbetsstallen_hamtad'" : ''})
+      OR nyckel LIKE 'planer_hamtade:%'`);
+  }
 });
 db.exec('DETACH DATABASE src');
 

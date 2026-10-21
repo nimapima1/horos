@@ -565,5 +565,12 @@ label.copy { display: inline-flex; align-items: center; }
   background: var(--surface-solid); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow);
 }
 .tip .maplibregl-popup-tip { display: none; }
+.plan-popup .maplibregl-popup-content { background: var(--surface-solid); color: var(--text); border-radius: 12px; padding: 20px; max-height: 55vh; overflow: auto; }
+.plan-popup .maplibregl-popup-close-button { color: inherit; font-size: 24px; width: 36px; height: 36px; }
+.plan-info h3 { margin: 0 20px 6px 0; font-size: 16px; }
+.plan-info h4 { margin: 16px 0 6px; font-size: 14px; }
+.plan-info ul { padding-left: 18px; }
+.plan-info li + li { margin-top: 10px; }
+.plan-info + .plan-info { border-top: 1px solid currentColor; margin-top: 16px; padding-top: 16px; }
 .tip .muted { font-size: 12px; }
 .tip .tag { margin-left: 6px; }

@@ -5,6 +5,31 @@ const demoTag = (d) => (d ? '<span class="tag">exempel</span>' : '');
 const SPARR_TEXT = 'har frånsagt sig reklam via post, e-post och telefon';
 const sparrTag = (x) => (x ? `<span class="tag" title="Företaget ${SPARR_TEXT} (SCB)">reklamspärr</span>` : '');
 const SCB_KALLA = 'SCB, företagsregistret (egen bearbetning)';
+
+function planInfo(plans) {
+  const lista = (rules) => `<ul>${rules.map((b) => `<li>${b.etikett && b.etikett !== b.text ? `<strong>${esc(b.etikett)}</strong> · ` : ''}${esc(b.text)}${b.varde ? `<div class="small">Värde: ${esc(b.varde.typ)} ${esc(b.varde.tal)} ${esc(b.varde.enhet)}</div>` : ''}</li>`).join('')}</ul>`;
+  return plans.map((p) => `<section class="plan-info">
+    <h3>${esc(p.namn || PLANTYP[p.typ] || 'Detaljplan')}</h3>
+    <div class="muted">${esc(p.planid || 'Planbeteckning saknas')}</div>
+    <p><strong>${esc(p.status || 'Status saknas')}</strong>${p.status && p.status !== 'laga kraft' ? '<br>Har inte fått laga kraft' : ''}</p>
+    ${p.datum ? `<div>Laga kraft: ${esc(p.datum)}</div>` : ''}
+    <h4>${p.status === 'laga kraft' ? 'Planbestämmelser här' : 'Föreslagna planbestämmelser här'}</h4>
+    ${p.bestammelseFel ? '<p>Kunde inte hämta bestämmelserna. Klicka på området för att försöka igen.</p>'
+      : p.bestammelser === undefined ? '<p>Hämtar bestämmelser…</p>'
+      : p.bestammelser === null ? '<p>Bestämmelser har inte hämtats för den här planen ännu.</p>'
+      : !p.bestammelser.length ? '<p>Inga bestämmelser i underlaget vid klickpunkten. Klicka längre in i området.</p>'
+      : `${lista(p.bestammelser)}
+        <p class="small muted">Gäller klickpunkten. Andra delar av planen kan ha andra regler. Bestämmelserna behöver läsas tillsammans med plankartan och avgör inte i sig om bygglov kan ges.</p>`}
+    ${p.ovrigaBestammelser?.length ? `<details><summary>Linje- och punktbestämmelser i planen (${p.ovrigaBestammelser.length})</summary>
+      <p class="small muted">Gäller särskilda linjer eller punkter, inte hela planområdet. Kontrollera läget i plankartan.</p>${lista(p.ovrigaBestammelser)}</details>` : ''}
+    <p class="small muted">${p.kalla === 'ngp' ? 'Kommunen via Nationella geodataplattformen. Äldre planer kan saknas.' : 'Källa: Lantmäteriet.'}${p.demo ? ' Exempeldata.' : ''}</p>
+    ${p.dokument?.length ? `<p>${p.dokument.filter((d) => {
+      if (/^\/plandokument\/[a-f0-9]{64}\.pdf$/.test(d.url)) return true;
+      try { const u = new URL(d.url); return u.protocol === 'https:' && !u.username && !u.password; } catch { return false; }
+    }).map((d) => `<a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">${esc(d.titel)} ↗</a>`).join(' · ')}</p>`
+      : '<div class="small muted">Dokumentlänkar har inte hämtats för planen ännu.</div>'}
+  </section>`).join('');
+}
 const bolagLink = (orgnr, namn, demo) =>
   `<a data-bolag="${esc(orgnr)}">${esc(namn ?? fmtOrgnr(orgnr))}</a>${demoTag(demo)}`;
 const bboxAttr = (f) => `data-bbox="${[f.minx, f.miny, f.maxx, f.maxy].join(',')}"`;

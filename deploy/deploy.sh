@@ -21,7 +21,7 @@ SSH=ssh
 [[ -x /c/Windows/System32/OpenSSH/ssh.exe ]] && SSH=/c/Windows/System32/OpenSSH/ssh.exe
 
 REL="$(date +%Y%m%d-%H%M%S)"
-FILES=(server.mjs package.json lib public scripts/import-nyheter.mjs scripts/import-ortofoto.mjs scripts/forrita-ortofoto.mjs deploy/ortofoto.sh deploy/nyheter.sh deploy/scenarion.conf deploy/trafiktak.sh)
+FILES=(server.mjs package.json lib public scripts/import-nyheter.mjs scripts/import-ortofoto.mjs scripts/forrita-ortofoto.mjs scripts/import-agarkontroll.mjs scripts/import-arbetsstallen.mjs scripts/uppdatera-data.mjs scripts/behall-planer.mjs deploy/ortofoto.sh deploy/nyheter.sh deploy/scenarion.conf deploy/trafiktak.sh deploy/uppdatera.sh deploy/installera-uppdatering.sh deploy/horos-uppdatering.service deploy/horos-uppdatering.timer)
 if [[ "$WITH_DATA" == "--data" ]]; then
   [[ -f data/public.sqlite ]] || { echo "data/public.sqlite saknas. Kör: npm run build:public"; exit 1; }
   FILES+=(data/public.sqlite)
@@ -32,14 +32,15 @@ echo "Laddar upp version $REL till $TARGET…"
 tar -czf - "${FILES[@]}" | "$SSH" "$TARGET" "set -e
   # En nyskapad server kan fortfarande installeras; vänta in den.
   cloud-init status --wait >/dev/null 2>&1 || true
+  exec 9>/var/lib/fastighetskarta/databas.lock; flock 9
   d=/opt/fastighetskarta/releases/$REL
   mkdir -p \$d && tar -xzf - -C \$d
   if [ -f \$d/data/public.sqlite ]; then
     # Samma lås som cron-jobbet deploy/nyheter.sh, och pressmeddelanden som det hämtat följer med.
-    exec 9>/var/lib/fastighetskarta/databas.lock; flock 9
     if [ -f /var/lib/fastighetskarta/public.sqlite ]; then
       node --disable-warning=ExperimentalWarning \$d/scripts/import-nyheter.mjs --publik \$d/data/public.sqlite \
         --behall /var/lib/fastighetskarta/public.sqlite
+      node --disable-warning=ExperimentalWarning \$d/scripts/behall-planer.mjs \$d/data/public.sqlite /var/lib/fastighetskarta/public.sqlite
     fi
     # Byt databasen atomärt så att servern aldrig läser en halv fil.
     mv \$d/data/public.sqlite /var/lib/fastighetskarta/public.sqlite.new

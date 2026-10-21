@@ -131,7 +131,10 @@ if (args.mfn) {
     `https://news.cision.com/se/${namn}/ListItems?format=rss&pageSize=100`, 'https://news.cision.com/']), ...TIDNINGAR];
   for (const [kalla, utgivare, flode, lank] of kallor) {
     const res = await fetch(flode, { headers: { 'user-agent': UA } });
-    if (!res.ok) { console.error(`${utgivare}: svarade ${res.status}`); continue; }
+    if (!res.ok) {
+      if (process.env.HOROS_STRIKT === '1') throw new Error(`${utgivare}: svarade ${res.status}`);
+      console.error(`${utgivare}: svarade ${res.status}`); continue;
+    }
     const alla = lasRss(await res.text()).map((n) => ({ ...n, ...tolka(n) }));
     const affarer = alla.filter((n) => n.typ && n.url.startsWith(lank)   // länken visas på sidan
       && (kalla === 'cision' || arBolag(aktorIRubrik(n.rubrik))));

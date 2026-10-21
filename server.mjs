@@ -8,7 +8,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { readFile, writeFile, mkdir, statfs, unlink, rename } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
-import { dirname, extname, join, normalize, sep } from 'node:path';
+import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { openDb, DB_PATH, ROOT, normOrgnr, normBeteckning, DATA_TABLES, harJuridiskAgare, NYHET_PLATS_UTANFOR, hasColumn, rebuildRtree, rebuildFastighetFts, fastighetsBet } from './lib/db.mjs';
 import { avstandM, geomOverlap, pointInGeom } from './lib/geo.mjs';
 import { LAN, LAN_FOR_KOMMUN, kommunAv, kommunForst } from './lib/kommuner.mjs';
@@ -500,6 +500,9 @@ const q = {
   agartyper: db.prepare(`SELECT DISTINCT b.jurform FROM agande a JOIN bolag b ON b.orgnr = a.orgnr
     WHERE b.jurform IS NOT NULL ORDER BY b.jurform`),
   kommuner: db.prepare('SELECT DISTINCT kommun FROM fastighet WHERE kommun IS NOT NULL ORDER BY kommun'),
+  planBestammelser: HAS_PLAN && hasColumn(db, 'plan', 'bestammelser') && db.prepare(`SELECT bestammelser,
+    ${hasColumn(db, 'plan', 'dokument') ? 'dokument' : 'NULL AS dokument'} FROM plan
+    WHERE id = ? AND kalla = 'ngp' AND status IN ('påbörjad', 'samråd', 'granskning', 'antagen', 'överklagad', 'tillsyn', 'laga kraft')`),
   planerIBbox: HAS_PLAN && db.prepare(`SELECT p.id, p.typ, p.planid, p.namn, p.datum, p.geojson, p.demo,
     ${hasColumn(db, 'plan', 'kalla') ? 'p.kalla' : "'lantmateriet' AS kalla"},
     ${hasColumn(db, 'plan', 'status') ? 'p.status' : 'NULL AS status'} FROM plan p
@@ -996,6 +999,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
   '.txt': 'text/plain; charset=utf-8',
   '.woff2': 'font/woff2',
 };
@@ -1011,6 +1015,8 @@ const routes = [
   [/^\/api\/status$/, 'api', () => [200, {
     ...(statusCounts ?? counts.get()),
     byggd: META.byggd ?? null,
+    uppdaterad: META.uppdaterad ?? null,
+    datakallor: META.uppdatering ? JSON.parse(META.uppdatering) : {},
     export: { csv: true, geojson: EXPORT_GEOMETRI },
     typer: TYPER,
     agartyper: AGARTYPER,
@@ -1130,6 +1136,23 @@ const routes = [
       ...omgivning(bet), ...miljoRisk(bet) }];
   }],
 
+  [/^\/api\/planbestammelser\/([^/]+)$/, 'api', (m, url) => {
+    const raw = url.searchParams.get('punkt') ?? '';
+    const point = raw.split(',').map(Number);
+    if (point.length !== 2 || raw.split(',').some((v) => !v.trim()) || point.some((v) => !Number.isFinite(v))
+      || Math.abs(point[0]) > 180 || Math.abs(point[1]) > 90) return [400, { error: 'punkt=lon,lat krävs' }];
+    const row = q.planBestammelser && q.planBestammelser.get(decodeURIComponent(m[1]));
+    const dokument = row?.dokument ? JSON.parse(row.dokument) : [];
+    if (!row?.bestammelser) return [200, { bestammelser: null, dokument }];
+    const rules = JSON.parse(row.bestammelser);
+    const found = rules.filter((b) => pointInGeom(point, b.geometry))
+      .map(({ geometry, ...b }) => b);
+    const other = rules.filter((b) => !['Polygon', 'MultiPolygon'].includes(b.geometry.type))
+      .map(({ geometry, ...b }) => ({ ...b, geometrityp: geometry.type }));
+    const unique = (list) => [...new Map(list.map((b) => [JSON.stringify(b), b])).values()];
+    return [200, { bestammelser: unique(found), ovrigaBestammelser: unique(other), dokument }];
+  }],
+
   [/^\/api\/planer$/, 'api', (_m, url) => {
     const bbox = (url.searchParams.get('bbox') ?? '').split(',').map(Number);
     if (bbox.length !== 4 || bbox.some(Number.isNaN)) return [400, { error: 'bbox=minLon,minLat,maxLon,maxLat krävs' }];
@@ -1198,10 +1221,15 @@ const routes = [
 
 async function serveStatic(res, pathname) {
   const rel = normalize(pathname === '/' ? '/index.html' : pathname).replace(/^([/\\])+/, '');
-  const file = join(PUBLIC, rel);
-  if (!file.startsWith(PUBLIC + sep)) return json(res, 403, { error: 'forbidden' });
+  const dokument = /^plandokument\/[a-f0-9]{64}\.pdf$/.test(rel) && process.env.NGP_DOKUMENT_DIR;
+  const root = dokument ? resolve(process.env.NGP_DOKUMENT_DIR) : PUBLIC;
+  const file = join(root, dokument ? rel.slice('plandokument/'.length) : rel);
+  if (!file.startsWith(root + sep)) return json(res, 403, { error: 'forbidden' });
   try {
-    const body = await readFile(file);
+    const body = await readFile(file).catch((error) => {
+      if (dokument && error.code === 'ENOENT') return readFile(join(PUBLIC, rel));
+      throw error;
+    });
     res.writeHead(200, {
       'content-type': MIME[extname(file)] ?? 'application/octet-stream',
       // Versionsfasta bibliotek kan cachas länge, övriga filer valideras om.

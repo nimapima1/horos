@@ -76,6 +76,11 @@ try {
     sida.forEach(rad);
     if (!args.fil) process.stdout.write(`\r${n.lasta.toLocaleString('sv')} lästa…`);
   }
+  if (!args.dry) {
+    db.exec('CREATE TABLE IF NOT EXISTS meta(nyckel TEXT PRIMARY KEY,varde TEXT)');
+    if (args.sidor) db.exec("DELETE FROM meta WHERE nyckel='scb_arbetsstallen_hamtad'");
+    else db.prepare("INSERT OR REPLACE INTO meta VALUES ('scb_arbetsstallen_hamtad', ?)").run(new Date().toISOString());
+  }
   db.exec(args.dry ? 'ROLLBACK' : 'COMMIT');
 } catch (e) {
   db.exec('ROLLBACK');

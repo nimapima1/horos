@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { testaNgp } from '../scripts/testa-ngp.mjs';
-import { hamtaNgp, ngpPlan, sparaNgp } from '../lib/ngp.mjs';
+import { hamtaNgp, hamtaPlanDokument, ngpPlan, ngpPlaner, sparaNgp } from '../lib/ngp.mjs';
 import { openDb } from '../lib/db.mjs';
 
 const feature = (status = 'laga kraft') => ({ type: 'Feature',
@@ -18,7 +18,7 @@ test('NGP hämtar alla sidor och skickar inte lösenord till främmande sidlänk
     if (calls === 1) {
       assert.equal(options.method, 'POST');
       assert.equal(new URL(url).searchParams.has('query'), false);
-      assert.deepEqual(JSON.parse(options.body), { collections: ['0180'], limit: 100, query: { 'feature.typ': { eq: 'detaljplan' } } });
+      assert.deepEqual(JSON.parse(options.body), { collections: ['0180'], limit: 100 });
       return Response.json({ type: 'FeatureCollection', features: [feature()], links: [{ rel: 'next', href: '?page=2' }] });
     }
     return Response.json({ type: 'FeatureCollection', features: [feature('samråd')] });
@@ -34,7 +34,7 @@ test('NGP hämtar alla sidor och skickar inte lösenord till främmande sidlänk
 });
 
 test('NGP följer POST-sidor med både sammanfogad och ersatt sökkropp', async () => {
-  const original = { collections: ['0180'], limit: 100, query: { 'feature.typ': { eq: 'detaljplan' } } };
+  const original = { collections: ['0180'], limit: 100 };
   const expected = [original, { ...original, afterId: 'ett' }, { ...original, afterId: 'två' }];
   let calls = 0;
   const rows = await hamtaNgp('0180', 'konto', 'lösen', async (_url, options) => {
@@ -48,6 +48,73 @@ test('NGP följer POST-sidor med både sammanfogad och ersatt sökkropp', async 
   });
   assert.equal(calls, 3);
   assert.deepEqual(rows.map((r) => r.id), ['ett', 'två', 'tre']);
+});
+
+test('NGP kopplar bestämmelsetext, värde och delområdets geometri till rätt plan', () => {
+  const rule = feature();
+  rule.properties.feature = { typ: 'egenskapsbestämmelse', etikett: 'h1' };
+  rule.properties.planbestammelse = { bestammelseformulering: 'Högsta nockhöjd är angivet värde.',
+    bestammelsevarde: { variabelvarde: 8, vardetyp: 'max', enhet: 'meter' } };
+  const [plan] = ngpPlaner([rule, feature()], '0180');
+  assert.deepEqual(JSON.parse(plan.bestammelser), [{ typ: 'egenskapsbestämmelse', etikett: 'h1',
+    text: 'Högsta nockhöjd är angivet värde.', varde: { tal: 8, typ: 'max', enhet: 'meter' }, geometry: rule.geometry }]);
+  const db = openDb({ path: ':memory:' });
+  try {
+    sparaNgp(db, [plan], '0180');
+    assert.equal(db.prepare('SELECT bestammelser FROM plan').get().bestammelser, plan.bestammelser);
+  } finally { db.close(); }
+  assert.throws(() => ngpPlaner([rule], '0180'), /saknar plan/);
+});
+
+test('NGP hämtar dokumentadressen utan att skicka inloggning vidare till dokumentet', async () => {
+  const plan = feature();
+  plan.assets = { karta: { href: 'https://api.lantmateriet.se/distribution/geodatakatalog/nedladdning/v1/asset/test',
+    roles: ['beslutshandling'] } };
+  let calls = 0;
+  await hamtaPlanDokument([plan], 'konto', 'lösen', async (url, options) => {
+    calls++;
+    assert.equal(options.redirect, 'manual');
+    assert.equal(url, plan.assets.karta.href);
+    assert.equal(options.headers.Authorization, `Basic ${Buffer.from('konto:lösen').toString('base64')}`);
+    return new Response(null, { status: 303, headers: { Location: 'https://kommun.example/plankarta.pdf' } });
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(JSON.parse(ngpPlan(plan, '0180').dokument), [{ titel: 'Plankarta', url: 'https://kommun.example/plankarta.pdf' }]);
+  await assert.rejects(hamtaPlanDokument([plan], 'konto', 'lösen', async () =>
+    new Response(null, { status: 303, headers: { Location: 'javascript:alert(1)' } })), /publik HTTPS/);
+});
+
+test('NGP hämtar PDF på den skyddade dataadressen och sparar en lokal dokumentlänk', async () => {
+  const plan = feature();
+  const base = 'https://api.lantmateriet.se/distribution/geodatakatalog/nedladdning/v1/';
+  plan.assets = { karta: { href: base + 'asset/test', roles: ['beslutshandling'] } };
+  let calls = 0;
+  await hamtaPlanDokument([plan], 'konto', 'lösen', async (url, options) => {
+    assert.equal(options.redirect, 'manual');
+    calls++;
+    if (calls === 1) return new Response(null, { status: 303, headers: { Location: base + 'data/detaljplan/test?r=1' } });
+    assert.equal(url, base + 'data/detaljplan/test?r=1');
+    return new Response('%PDF-1.7\nTest', { headers: { 'Content-Type': 'application/octet-stream' } });
+  }, async (bytes) => {
+    assert.equal(bytes.toString(), '%PDF-1.7\nTest');
+    return '/plandokument/' + 'a'.repeat(64) + '.pdf';
+  });
+  assert.equal(calls, 2);
+  assert.equal(JSON.parse(ngpPlan(plan, '0180').dokument)[0].url, '/plandokument/' + 'a'.repeat(64) + '.pdf');
+});
+
+test('NGP behåller linjer och punkter som egna geometrier', () => {
+  const geometries = [{ type: 'LineString', coordinates: [[18, 59], [18.01, 59]] },
+    { type: 'Point', coordinates: [18, 59, 9] }];
+  const rules = geometries.map((geometry) => {
+    const f = feature(); f.geometry = geometry;
+    f.properties.feature = { typ: 'egenskapsbestämmelse', etikett: 'Utfart' };
+    f.properties.planbestammelse = { bestammelseformulering: 'Utfartsförbud' };
+    return f;
+  });
+  assert.deepEqual(JSON.parse(ngpPlaner([feature(), ...rules], '0180')[0].bestammelser).map((b) => b.geometry), geometries);
+  rules[0].geometry.coordinates[0][0] = Infinity;
+  assert.throws(() => ngpPlaner([feature(), ...rules], '0180'), /Ogiltig bestämmelsegeometri/);
 });
 
 test('NGP sparar om samma plan, arkiverar borttagna planer och validerar geometri', () => {
