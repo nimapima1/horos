@@ -12,6 +12,7 @@
     "start": "node --disable-warning=ExperimentalWarning server.mjs",
     "test": "node --test",
     "import:planer": "node --disable-warning=ExperimentalWarning scripts/import-planer.mjs",
+    "import:ngp": "node --disable-warning=ExperimentalWarning scripts/import-ngp.mjs",
     "import:bolag": "node --disable-warning=ExperimentalWarning scripts/import-bolag.mjs",
     "import:fastigheter": "node --disable-warning=ExperimentalWarning scripts/import-fastigheter.mjs",
     "import:taxering": "node --disable-warning=ExperimentalWarning scripts/import-taxering.mjs",

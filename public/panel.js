@@ -150,10 +150,11 @@ async function openFastighet(bet, adress) {
       Företag märkta reklamspärr ${SPARR_TEXT}.` : ''}</div>
     ${hyresgastTabell(f.hyresgaster)}` : ''}
     <h3>Detaljplan</h3>
-    ${table('<th>Plan</th><th class="num">Laga kraft</th>', f.planer.map((p) =>
+    ${table('<th>Plan</th><th>Status</th><th class="num">Laga kraft</th>', f.planer.map((p) =>
       `<tr><td><strong>${esc(PLANTYP[p.typ] ?? p.typ)}</strong>${p.namn ? ` · ${esc(p.namn)}` : ''}${demoTag(p.demo)}
-        <div class="muted small">${esc(p.planid ?? '')}</div></td><td class="num">${esc(p.datum ?? '')}</td></tr>`),
-      'Väntar på uppgifter från Lantmäteriet.')}
+        <div class="muted small">${esc(p.planid ?? '')}</div></td><td>${p.status === 'laga kraft' ? 'Laga kraft' : p.status ? `<strong>${esc(p.status)}</strong><div class="muted small">Har inte fått laga kraft</div>` : 'Status saknas'}</td><td class="num">${esc(p.datum ?? '')}</td></tr>`),
+      'Inga planuppgifter i Horos för fastigheten.')}
+    ${f.planer.some((p) => p.kalla === 'ngp') ? '<div class="meta small">Källa: kommunerna via Nationella geodataplattformen. Äldre planer kan saknas. Pågående planer visar planprocessens status och kan ändras.</div>' : ''}
     <h3>${f.agare.some((a) => a.tomtratt) ? 'Ägare och tomträttshavare' : 'Lagfarna ägare'}</h3>
     ${table('<th>Ägare</th><th>Andel</th><th class="num">Sedan</th>', f.agare.map((a) =>
       `<tr><td>${bolagLink(a.orgnr, a.namn, a.demo)}<div class="muted small">${fmtOrgnr(a.orgnr)}${a.tomtratt ? ' · tomträttshavare' : ''}</div></td>
