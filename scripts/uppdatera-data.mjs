@@ -33,17 +33,26 @@ export async function uppdateraData(path, { env = process.env, hamta = hamtaNgp,
     if (kommuner.some((k) => !/^\d{4}$/.test(k))) throw new Error('Ogiltig kommunkod i uppdateringsinställningen.');
     if (kommuner.length) {
       if (!env.GEOTORGET_USER || !env.GEOTORGET_PASS) throw new Error('NGP kräver Geotorget-inloggning i serverns secrets.env.');
+      // En kommun som misslyckas behåller sina tidigare planer; de andra uppdateras. Misslyckas alla stoppas körningen.
+      const ok = [], fel = [];
       for (const kommun of kommuner) {
-        const features = await hamta(kommun, env.GEOTORGET_USER, env.GEOTORGET_PASS);
-        if (!features.some((f) => f.properties?.feature?.typ === 'detaljplan')) throw new Error(`NGP gav inga planer för ${kommun}. Behåller den tidigare databasen.`);
-        // Plandokumenten hämtas inte här: servern hämtar dem vid första klicket (/plandokument/ngp/).
-        sparaNgp(db, ngpPlaner(features, kommun), kommun);
+        try {
+          const features = await hamta(kommun, env.GEOTORGET_USER, env.GEOTORGET_PASS);
+          if (!features.some((f) => f.properties?.feature?.typ === 'detaljplan')) throw new Error('NGP gav inga planer');
+          // Plandokumenten hämtas inte här: servern hämtar dem vid första klicket (/plandokument/ngp/).
+          sparaNgp(db, ngpPlaner(features, kommun), kommun);
+          ok.push(kommun);
+        } catch (error) {
+          fel.push(`${kommun}: ${error.message.split('\n')[0]}`);
+          console.error(`NGP ${kommun}: ${error.message.split('\n')[0]}`);
+        }
       }
-      markeraPlanHamtning(db, kommuner);
+      if (!ok.length) throw new Error(`NGP misslyckades för alla kommuner (${fel[0]}). Behåller den tidigare databasen.`);
+      markeraPlanHamtning(db, ok);
       // Historiken finns i den arkiverade databasversionen; publicera bara aktuella planer.
       db.exec(`DELETE FROM plan WHERE kalla='ngp' AND status NOT IN (${STATUSAR})`);
       rebuildRtree(db, 'plan');
-      stamp('planer', 'uppdaterad');
+      stamp('planer', 'uppdaterad', fel.length ? `${fel.length} kommuner behöll tidigare planer: ${fel.slice(0, 5).join('; ')}` : '');
     } else stamp('planer', 'vantar', 'Inga kommuner har importerats eller konfigurerats.');
     db.close(); db = null;
 
