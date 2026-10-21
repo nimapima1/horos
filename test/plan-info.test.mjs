@@ -43,3 +43,25 @@ test('planrutan länkar till dokument och släpper inte igenom skriptadresser', 
   assert.ok(html.includes('rel="noopener noreferrer"'));
   assert.ok(!html.includes('javascript:'));
 });
+
+
+test('planrutan hämtar regler och dokument för vald plan utan kartlager', async () => {
+  const calls = [];
+  const rendered = [];
+  class Popup {
+    setLngLat(point) { this.point = point; return this; }
+    setHTML(html) { rendered.push(html); return this; }
+    addTo() { return this; }
+    isOpen() { return true; }
+  }
+  const source = app.slice(app.indexOf('let planPopup;'), app.indexOf('map.addControl(planToggle'));
+  const visaPlan = vm.runInNewContext(source + '\nvisaPlan', {
+    maplibregl: { Popup }, map: {}, planInfo,
+    api: async (url) => { calls.push(url); return { bestammelser: [{ text: 'Bostäder' }], dokument: [{ titel: 'Plankarta', url: 'https://example.org/plan.pdf' }] }; },
+  });
+  await visaPlan([{ id: 'plan-1', namn: 'Vald plan', fastighetsmitt: true }], { lng: 18, lat: 59 });
+  assert.deepEqual(calls, ['/api/planbestammelser/plan-1?punkt=18,59']);
+  assert.match(rendered.at(-1), /Bostäder/);
+  assert.match(rendered.at(-1), /Plankarta/);
+  assert.match(rendered.at(-1), /fastighetens kartmitt/);
+});

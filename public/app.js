@@ -131,6 +131,21 @@ class PlanToggle {
 }
 const planToggle = new PlanToggle();
 let planPopup;
+async function visaPlan(plans, lngLat) {
+  planPopup?.remove();
+  planPopup = new maplibregl.Popup({ className: 'plan-popup', maxWidth: '340px', offset: 12 })
+    .setLngLat(lngLat).setHTML(planInfo(plans)).addTo(map);
+  const popup = planPopup;
+  await Promise.all(plans.map(async (p) => {
+    try {
+      const data = await api(`/api/planbestammelser/${encodeURIComponent(p.id)}?punkt=${lngLat.lng},${lngLat.lat}`);
+      p.bestammelser = data.bestammelser;
+      p.ovrigaBestammelser = data.ovrigaBestammelser;
+      p.dokument = data.dokument;
+    } catch { p.bestammelseFel = true; }
+  }));
+  if (planPopup === popup && popup.isOpen()) popup.setHTML(planInfo(plans)).setLngLat(lngLat);
+}
 map.addControl(planToggle, 'top-right');
 
 // Street View för den öppna fastigheten, under Detaljplaner. Två klick: inget laddas från Google förrän
@@ -347,19 +362,7 @@ map.on('load', () => {
 
   map.on('click', 'plan-fill', async (e) => {
     const plans = [...new Map(e.features.map((f) => [f.properties.id, f.properties])).values()];
-    planPopup?.remove();
-    planPopup = new maplibregl.Popup({ className: 'plan-popup', maxWidth: '340px', offset: 12 })
-      .setLngLat(e.lngLat).setHTML(planInfo(plans)).addTo(map);
-    const popup = planPopup;
-    await Promise.all(plans.map(async (p) => {
-      try {
-        const data = await api(`/api/planbestammelser/${encodeURIComponent(p.id)}?punkt=${e.lngLat.lng},${e.lngLat.lat}`);
-        p.bestammelser = data.bestammelser;
-        p.ovrigaBestammelser = data.ovrigaBestammelser;
-        p.dokument = data.dokument;
-      } catch { p.bestammelseFel = true; }
-    }));
-    if (planPopup === popup && popup.isOpen()) popup.setHTML(planInfo(plans)).setLngLat(e.lngLat);
+    visaPlan(plans, e.lngLat);
   });
   map.on('mouseenter', 'plan-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'plan-fill', () => { map.getCanvas().style.cursor = ''; });
@@ -758,6 +761,13 @@ statusP.then((s) => {
 
 // Länkar i panelen.
 $('#panel').addEventListener('click', (e) => {
+  const plan = e.target.closest('[data-visa-plan]');
+  if (plan) {
+    const plans = JSON.parse(plan.dataset.plan);
+    plans[0].fastighetsmitt = true;
+    visaPlan(plans, JSON.parse(plan.dataset.punkt));
+    return;
+  }
   const ram = e.target.closest('[data-ram]');
   if (ram) flyToBbox(ram.dataset.ram);
   if (ram?.dataset.markera) markera(JSON.parse(ram.dataset.markera));   // fastigheterna i ett pressmeddelande
