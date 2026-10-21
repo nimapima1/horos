@@ -8,7 +8,7 @@ const SCB_KALLA = 'SCB, företagsregistret (egen bearbetning)';
 
 function planInfo(plans) {
   const lista = (rules) => `<ul>${rules.map((b) => `<li>${b.etikett && b.etikett !== b.text ? `<strong>${esc(b.etikett)}</strong> · ` : ''}${esc(b.text)}${b.varde ? `<div class="small">Värde: ${esc(b.varde.typ)} ${esc(b.varde.tal)} ${esc(b.varde.enhet)}</div>` : ''}</li>`).join('')}</ul>`;
-  return plans.map((p) => `<section class="plan-info">
+  return `<div class="plan-popup-body" tabindex="0" role="region" aria-label="Detaljplanens information">${plans.map((p) => `<section class="plan-info">
     <h3>${esc(p.namn || PLANTYP[p.typ] || 'Detaljplan')}</h3>
     <div class="muted">${esc(p.planid || 'Planbeteckning saknas')}</div>
     <p><strong>${esc(p.status || 'Status saknas')}</strong>${p.status && p.status !== 'laga kraft' ? '<br>Har inte fått laga kraft' : ''}</p>
@@ -28,7 +28,7 @@ function planInfo(plans) {
       try { const u = new URL(d.url); return u.protocol === 'https:' && !u.username && !u.password; } catch { return false; }
     }).map((d) => `<a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">${esc(d.titel)} ↗</a>`).join(' · ')}</p>`
       : '<div class="small muted">Dokumentlänkar har inte hämtats för planen ännu.</div>'}
-  </section>`).join('');
+  </section>`).join('')}</div>`;
 }
 const bolagLink = (orgnr, namn, demo) =>
   `<a data-bolag="${esc(orgnr)}">${esc(namn ?? fmtOrgnr(orgnr))}</a>${demoTag(demo)}`;
