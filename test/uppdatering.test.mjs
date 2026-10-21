@@ -27,7 +27,7 @@ test('daglig körning uppdaterar planer och nyheter men anger vilka källor som 
   const commands = [];
   const result = await uppdateraData(path, { env: { GEOTORGET_USER: 'test', GEOTORGET_PASS: 'test' },
     hamta: async (kommun) => { assert.equal(kommun, '0180'); return [feature]; },
-    dokument: async (data) => data, run: (script) => commands.push(script) });
+    run: (script) => commands.push(script) });
   assert.equal(result.planer.status, 'uppdaterad');
   assert.equal(result.nyheter.status, 'uppdaterad');
   assert.equal(result.arbetsstallen.status, 'vantar');

@@ -5,12 +5,12 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { openDb, ROOT, rebuildRtree, harJuridiskAgare, normOrgnr } from '../lib/db.mjs';
-import { hamtaNgp, hamtaPlanDokument, ngpPlaner, sparaNgp } from '../lib/ngp.mjs';
+import { hamtaNgp, ngpPlaner, sparaNgp } from '../lib/ngp.mjs';
 import { markeraPlanHamtning } from '../lib/uppdateringsmeta.mjs';
 
 const STATUSAR = "'påbörjad','samråd','granskning','antagen','överklagad','tillsyn','laga kraft'";
 
-export async function uppdateraData(path, { env = process.env, hamta = hamtaNgp, dokument = hamtaPlanDokument,
+export async function uppdateraData(path, { env = process.env, hamta = hamtaNgp,
   run = (script, args = [], accepted = [0]) => {
     try {
       execFileSync(process.execPath, [join(ROOT, 'scripts', script), ...args], {
@@ -36,7 +36,7 @@ export async function uppdateraData(path, { env = process.env, hamta = hamtaNgp,
       for (const kommun of kommuner) {
         const features = await hamta(kommun, env.GEOTORGET_USER, env.GEOTORGET_PASS);
         if (!features.some((f) => f.properties?.feature?.typ === 'detaljplan')) throw new Error(`NGP gav inga planer för ${kommun}. Behåller den tidigare databasen.`);
-        await dokument(features, env.GEOTORGET_USER, env.GEOTORGET_PASS);
+        // Plandokumenten hämtas inte här: servern hämtar dem vid första klicket (/plandokument/ngp/).
         sparaNgp(db, ngpPlaner(features, kommun), kommun);
       }
       markeraPlanHamtning(db, kommuner);
