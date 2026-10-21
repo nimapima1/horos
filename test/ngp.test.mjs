@@ -63,7 +63,10 @@ test('NGP kopplar bestämmelsetext, värde och delområdets geometri till rätt 
     sparaNgp(db, [plan], '0180');
     assert.equal(db.prepare('SELECT bestammelser FROM plan').get().bestammelser, plan.bestammelser);
   } finally { db.close(); }
-  assert.throws(() => ngpPlaner([rule], '0180'), /saknar plan/);
+  // En bestämmelse vars plan saknas i svaret hoppas över; en utan text stoppar importen.
+  assert.deepEqual(ngpPlaner([rule], '0180'), []);
+  rule.properties.planbestammelse.bestammelseformulering = ' ';
+  assert.throws(() => ngpPlaner([rule, feature()], '0180'), /saknar bestämmelsetext/);
 });
 
 test('NGP hämtar dokumentadressen utan att skicka inloggning vidare till dokumentet', async () => {

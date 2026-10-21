@@ -140,3 +140,16 @@ test('arkivet: de 14 senaste behålls, misslyckade de 5 senaste, tom katalog sto
   const kvar = spawnSync(bash, ['-c', `ls '${dir}' | sort | head -1`], { encoding: 'utf8' }).stdout.trim();
   assert.equal(kvar, 'public-07.sqlite_GAMMAL.gz');
 });
+
+test('daglig körning: en kommun som misslyckas stoppar inte de andra', async () => {
+  const dir = mkdtempSync(join(ROOT, 'data/_test/daglig-delvis-')), path = join(dir, 'arbete.sqlite');
+  publik(path);
+  const result = await uppdateraData(path, { env: { GEOTORGET_USER: 'test', GEOTORGET_PASS: 'test', NGP_KOMMUNER: '0181,0180' },
+    hamta: async (kommun) => { if (kommun === '0181') throw new Error('Källan nere'); return [feature]; },
+    run: () => {} });
+  assert.equal(result.planer.status, 'uppdaterad');
+  assert.match(result.planer.orsak, /1 kommuner behöll tidigare planer: 0181: Källan nere/);
+  const db = new DatabaseSync(path, { readOnly: true });
+  assert.equal(db.prepare('SELECT status FROM plan').get().status, 'laga kraft');
+  db.close();
+});
