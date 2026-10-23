@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from '../lib/db.mjs';
 import { lasShape } from '../lib/shp.mjs';
@@ -38,6 +38,15 @@ test('shapefil: ringar, attribut och projektion läses', () => {
   assert.deepEqual(objekt[0].p, { namn: 'Ängen 1', nr: '42' });
   assert.deepEqual(objekt[0].rings.map((r) => r.length), [5, 5]);
   assert.deepEqual(objekt[0].rings[1][1], [4, 2]);
+});
+
+test('shapefil utan .prj: projektionen blir okänd, inte ett fel', () => {
+  const sokvag = join(mkdtempSync(join(ROOT, 'data/_test/shp-')), 'planer');
+  skrivShape(sokvag);
+  rmSync(sokvag + '.prj');
+  const { objekt, projektion } = lasShape(sokvag + '.shp');
+  assert.equal(objekt.length, 1);
+  assert.ok(Number.isNaN(projektion.lon0));
 });
 
 test('shapefil: avklippt dbf-huvud ger fel, inte en oändlig loop', () => {
