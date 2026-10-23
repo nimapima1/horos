@@ -252,9 +252,24 @@ function renderLegend() {
     + esc(colorBy.selectedOptions[0].text);
 }
 renderLegend();
+// Höjden animeras (style.css) från den aktuella, också mitt i en pågående animering, till den nya; därefter
+// tas den inskrivna höjden bort så att rutan följer innehållet igen.
 $('#legend-knapp').addEventListener('click', (e) => {
-  const oppen = e.currentTarget.closest('.legend').classList.toggle('oppen');
+  const legend = e.currentTarget.closest('.legend');
+  const fran = legend.offsetHeight;
+  const oppen = legend.classList.toggle('oppen');
   e.currentTarget.setAttribute('aria-expanded', String(oppen));
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  legend.style.transition = 'none';   // annars mäts starthöjden i stället för den nya
+  legend.style.height = '';
+  const till = legend.offsetHeight;
+  legend.style.height = `${fran}px`;
+  legend.offsetHeight;   // tvingar fram startläget innan målet sätts
+  legend.style.transition = '';
+  legend.style.height = `${till}px`;
+});
+$('.legend').addEventListener('transitionend', (e) => {
+  if (e.target === e.currentTarget && e.propertyName === 'height') e.currentTarget.style.height = '';
 });
 colorBy.addEventListener('change', () => {
   store.set('horos.farg', colorBy.value);
