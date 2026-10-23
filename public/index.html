@@ -98,6 +98,9 @@
   </div>
 
   <div class="legend glass">
+    <!-- Bara på mobilen: teckenförklaringen är hopfälld till den här knappen. -->
+    <button id="legend-knapp" class="legend-knapp" type="button" aria-expanded="false" aria-controls="legend-innehall"></button>
+    <div id="legend-innehall">
     <label class="legend-title">Färga efter
       <select id="color-by">
         <option value="varde">Taxeringsvärde</option>
@@ -111,6 +114,7 @@
     <div id="legend-scenarier" class="legend-scale legend-scenarier" hidden></div>
     <div id="zoom-hint" class="hint" hidden>Zooma in för att se fastigheter</div>
     <div id="counts" class="counts"></div>
+    </div>
   </div>
 
   <script src="vendor/maplibre-gl-csp.js"></script>

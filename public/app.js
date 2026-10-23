@@ -246,10 +246,16 @@ const colorBy = $('#color-by');
 colorBy.value = [START.get('farg'), store.get('horos.farg')].find((v) => COLOR_BY[v]) ?? 'varde';
 const valueColor = () => COLOR_BY[colorBy.value]()[0];
 function renderLegend() {
-  $('#legend-scale').innerHTML = COLOR_BY[colorBy.value]()[1]
-    .map(([v, text]) => `<span><i style="background:var(${v})"></i>${esc(text)}</span>`).join('');
+  const skala = COLOR_BY[colorBy.value]()[1];
+  $('#legend-scale').innerHTML = skala.map(([v, text]) => `<span><i style="background:var(${v})"></i>${esc(text)}</span>`).join('');
+  $('#legend-knapp').innerHTML = `<span class="legend-prov">${skala.slice(0, Math.min(5, skala.length - 1)).map(([v]) => `<i style="background:var(${v})"></i>`).join('')}</span>`
+    + esc(colorBy.selectedOptions[0].text);
 }
 renderLegend();
+$('#legend-knapp').addEventListener('click', (e) => {
+  const oppen = e.currentTarget.closest('.legend').classList.toggle('oppen');
+  e.currentTarget.setAttribute('aria-expanded', String(oppen));
+});
 colorBy.addEventListener('change', () => {
   store.set('horos.farg', colorBy.value);
   updateUrl();
