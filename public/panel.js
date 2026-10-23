@@ -28,7 +28,7 @@ function planInfo(plans) {
       if (/^\/plandokument\/([a-f0-9]{64}|ngp\/[0-9a-f-]{36})\.pdf$/.test(d.url)) return true;
       try { const u = new URL(d.url); return u.protocol === 'https:' && !u.username && !u.password; } catch { return false; }
     }).map((d) => `<a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">${esc(d.titel)} ↗</a>`).join(' · ')}</p>`
-      : '<div class="small muted">Dokumentlänkar har inte hämtats för planen ännu.</div>'}
+      : `<div class="small muted">${p.kalla === 'kommun' ? 'Kommunens karttjänst har inga länkar till planhandlingarna. Fråga kommunen om plankartan.' : 'Dokumentlänkar har inte hämtats för planen ännu.'}</div>`}
   </section>`).join('')}</div>`;
 }
 const bolagLink = (orgnr, namn, demo) =>
