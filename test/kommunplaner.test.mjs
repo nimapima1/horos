@@ -102,6 +102,18 @@ test('hämtning från ArcGIS: avkortat svar stoppar importen', async () => {
     : Response.json({ exceededTransferLimit: true, features: [{ attributes: { OBJECTID: 1 }, geometry: { rings: [ring] } }] })), /ofullständigt svar/);
 });
 
+test('hämtning från ArcGIS-vy med upprepade OBJECTID: en rad per objekt, avkortat svar stoppar', async () => {
+  const ring = [[13.6, 55.8], [13.6, 55.81], [13.61, 55.81], [13.61, 55.8], [13.6, 55.8]];
+  const f = (id, Link) => ({ attributes: { OBJECTID: id, externid: `12-HÖR-${id}`, planfk: 'BPL', Link }, geometry: { rings: [ring] } });
+  const svar = (n) => async (url) => url.includes('returnCountOnly') ? Response.json({ count: 3 })
+    : Response.json({ features: [f(1, 'https://a/1.pdf'), f(1, 'https://a/1b.pdf'), f(2, 'https://a/2.pdf')].slice(0, n) });
+  const { rader } = await hamtaKommunplaner('1266', svar(3));
+  assert.deepEqual(rader.map((r) => [r.id, r.planid, r.dokument]), [
+    ['kommun:1266:12:1', '12-HÖR-1', '[{"titel":"Plankarta","url":"https://a/1.pdf"}]'],
+    ['kommun:1266:12:2', '12-HÖR-2', '[{"titel":"Plankarta","url":"https://a/2.pdf"}]']]);
+  await assert.rejects(hamtaKommunplaner('1266', svar(2)), /ofullständigt svar \(2 av 3\)/);
+});
+
 test('hämtning: filter på kommunkod i ett gemensamt planarkiv, och öppen GeoJSON-fil', async () => {
   const ring = [[17.1, 60.6], [17.1, 60.61], [17.11, 60.61], [17.11, 60.6], [17.1, 60.6]];
   const gavle = await hamtaKommunplaner('2180', async (url) => {
