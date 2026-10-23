@@ -62,15 +62,17 @@ export async function uppdateraData(path, { env = process.env, hamta = hamtaNgp,
     else if (kommunTid && Date.now() - Date.parse(kommunTid) < 6.5 * 864e5) {
       tillstand.kommunplaner = { status: 'uppdaterad', tid: kommunTid, orsak: 'Hämtas en gång i veckan.' };
     } else {
+      // Filer som kommunen skickat finns bara lokalt och byts när en ny fil kommer.
+      const koder = Object.keys(KALLOR).filter((kod) => !KALLOR[kod].fil);
       const fel = [];
-      for (const kod of Object.keys(KALLOR)) {
+      for (const kod of koder) {
         try {
           const { rader } = await kommunHamta(kod);
           if (!rader.length) throw new Error('inga planer i svaret');
           sparaKommunplaner(db, utanNgpDubbletter(db, rader, kod), kod);
         } catch (error) { fel.push(`${kod}: ${error.message.split('\n')[0]}`); }
       }
-      if (fel.length === Object.keys(KALLOR).length) throw new Error(`Kommunernas karttjänster misslyckades alla (${fel[0]}). Behåller den tidigare databasen.`);
+      if (fel.length === koder.length) throw new Error(`Kommunernas karttjänster misslyckades alla (${fel[0]}). Behåller den tidigare databasen.`);
       db.prepare('INSERT OR REPLACE INTO meta VALUES (?, ?)').run('kommunplaner_hamtade', new Date().toISOString());
       // Som för NGP: historiken finns i arkivet; publicera bara gällande.
       db.exec("DELETE FROM plan WHERE kalla='kommun' AND status != 'laga kraft'");
