@@ -13,6 +13,7 @@ maplibregl.setWorkerUrl('vendor/maplibre-gl-csp-worker.js');
 
 const MIN_ZOOM = 14;
 const PUNKT_ZOOM = 10;
+const PLAN_ZOOM = 12;   // under det blir planerna för många MB per kartflytt (Malmö zoom 12: ~3,5 MB komprimerat på datorn)
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
 // Delbar adress: ?l=zoom/lat/lon&f=beteckning&farg=läge och filtren. Vyerna (#om, #transaktioner, #agare, #scenario) ligger i hashen.
@@ -361,6 +362,7 @@ map.on('load', () => {
     paint: { 'line-color': css('--plan'), 'line-width': 2.5, 'line-dasharray': [2, 1.5] } });
 
   map.on('click', 'plan-fill', async (e) => {
+    if (map.queryRenderedFeatures(e.point, { layers: ['punkt', 'punkt-kluster'] }).length) return;   // prickarna går före
     const plans = [...new Map(e.features.map((f) => [f.properties.id, f.properties])).values()];
     visaPlan(plans, e.lngLat);
   });
@@ -468,7 +470,7 @@ async function loadVisible() {
     lage === 'granser' ? api(`/api/fastigheter?${urval}`) : EMPTY,
     lage === 'punkter' ? api(`/api/punkter?${urval}`) : { p: [] },
     lage === 'kommuner' ? api(`/api/kommunkluster?${filterQuery().slice(1)}`) : { k: [] },
-    planToggle.on && lage === 'granser' ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
+    planToggle.on && z >= PLAN_ZOOM ? api(`/api/planer?bbox=${bbox}`) : EMPTY]);
   if (seq !== loadSeq) return;
   for (const { properties: p } of fc.features) Object.assign(p, kategorier(p));
   const punkter = { type: 'FeatureCollection', features: pkt.p.map(([lon, lat, beteckning, varde_tkr, typ, agartyp, kop_ar, demo, areal_m2]) => ({
