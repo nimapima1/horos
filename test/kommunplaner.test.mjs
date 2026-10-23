@@ -58,7 +58,8 @@ test('hämtning från ArcGIS: alla objekt i omgångar, fält och dokumentlänkar
   assert.deepEqual({ ...rader[0], geojson: undefined, minx: undefined, miny: undefined, maxx: undefined, maxy: undefined }, {
     id: 'kommun:1280:1:1', typ: 'DP', planid: '1280K-DP4000', namn: 'ROSENHOLMS HANDELSTRÄDGÅRD', datum: '1989-05-25', kommun: '1280',
     geojson: undefined, minx: undefined, miny: undefined, maxx: undefined, maxy: undefined,
-    dokument: null });
+    // Den interna kartor.malmo.se-länken används inte; planvisaren byggs av planens nummer.
+    dokument: '[{"titel":"Planvisaren","url":"https://geo.malmo.se/planvisaren/?plan=DP4000"}]' });
 });
 
 test('hämtning från WFS: varje lager ger sin plantyp, upphävda och fel svar stoppas', async () => {
@@ -112,6 +113,17 @@ test('hämtning från ArcGIS-vy med upprepade OBJECTID: en rad per objekt, avkor
     ['kommun:1266:12:1', '12-HÖR-1', '[{"titel":"Plankarta","url":"https://a/1.pdf"}]'],
     ['kommun:1266:12:2', '12-HÖR-2', '[{"titel":"Plankarta","url":"https://a/2.pdf"}]']]);
   await assert.rejects(hamtaKommunplaner('1266', svar(2)), /ofullständigt svar \(2 av 3\)/);
+});
+
+test('dokumentlänkar: HTML-länkar med länktexten som rubrik, annars kommunens sida', async () => {
+  const geometry = { type: 'Polygon', coordinates: [[[18.1, 59.1], [18.11, 59.1], [18.11, 59.11], [18.1, 59.1]]] };
+  const haninge = await hamtaKommunplaner('0136', async () => Response.json({ type: 'FeatureCollection', features: [{ id: 'p.1', geometry,
+    properties: { planbet_lokal: 'B1', lank_dokument_ext: '<a target="_blank" href="https://a.se/B1 karta.pdf ">Plankarta</a><br><a href=\'http://a.se/x.pdf\'>Osäker</a>' } }] }));
+  assert.deepEqual(JSON.parse(haninge.rader[0].dokument), [{ titel: 'Plankarta', url: 'https://a.se/B1%20karta.pdf' }]);
+  const ring = [[14.8, 56.87], [14.8, 56.88], [14.81, 56.88], [14.81, 56.87], [14.8, 56.87]];
+  const vaxjo = await hamtaKommunplaner('0780', async (url) => url.includes('returnIdsOnly') ? Response.json({ objectIds: [1] })
+    : Response.json({ features: [{ attributes: { OBJECTID: 1, BETECKNING: '0780K-P1' }, geometry: { rings: [ring] } }] }));
+  assert.equal(JSON.parse(vaxjo.rader[0].dokument)[0].titel, 'Gällande planer hos kommunen');
 });
 
 test('hämtning: filter på kommunkod i ett gemensamt planarkiv, och öppen GeoJSON-fil', async () => {
