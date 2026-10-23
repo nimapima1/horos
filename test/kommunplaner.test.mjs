@@ -43,6 +43,8 @@ test('hämtning från ArcGIS: alla objekt i omgångar, fält och dokumentlänkar
   const ring = [[13, 55.6], [13, 55.61], [13.01, 55.61], [13.01, 55.6], [13, 55.6]];
   const { rader } = await hamtaKommunplaner('1280', async (url) => {
     anrop.push(url);
+    if (url.includes('planvisaren-server/search?q=DP4000')) return Response.json(['https://geo.malmo.se/planvisaren-server/pdf/dp/DP4000_1.pdf',
+      'https://geo.malmo.se/planvisaren-server/pdf/dp/DP4000_dok.pdf', 'https://annan.se/x.pdf']);
     if (url.includes('returnIdsOnly')) return Response.json({ objectIdFieldName: 'OBJECTID_1', objectIds: [1, 2] });
     assert.match(url, /objectIds=1,2&outFields=\*&outSR=4326/);
     // Som Malmö: id-fältet anges bara i id-svaret, och ett annat OBJECTID har samma värde i alla objekt.
@@ -52,14 +54,15 @@ test('hämtning från ArcGIS: alla objekt i omgångar, fält och dokumentlänkar
       { attributes: { OBJECTID_1: 2, OBJECTID: 7, LMAKT: 'x' }, geometry: { rings: [[[0, 0], [0, 1], [1, 1], [0, 0]]] } },
     ] });
   });
-  assert.equal(anrop.length, 2);
+  assert.equal(anrop.length, 3);
   assert.match(anrop[0], /^https:\/\/gis\.malmo\.se\/arcgis\/rest\/services\/SEPlan\/Gallande_planer\/MapServer\/1\/query/);
   assert.equal(rader.length, 1);
   assert.deepEqual({ ...rader[0], geojson: undefined, minx: undefined, miny: undefined, maxx: undefined, maxy: undefined }, {
     id: 'kommun:1280:1:1', typ: 'DP', planid: '1280K-DP4000', namn: 'ROSENHOLMS HANDELSTRÄDGÅRD', datum: '1989-05-25', kommun: '1280',
     geojson: undefined, minx: undefined, miny: undefined, maxx: undefined, maxy: undefined,
-    // Den interna kartor.malmo.se-länken används inte; planvisaren byggs av planens nummer.
-    dokument: '[{"titel":"Planvisaren","url":"https://geo.malmo.se/planvisaren/?plan=DP4000"}]' });
+    // Den interna kartor.malmo.se-länken används inte; planvisarens sökning ger PDF:erna (bara från geo.malmo.se).
+    dokument: JSON.stringify([{ titel: 'Plankarta del 1', url: 'https://geo.malmo.se/planvisaren-server/pdf/dp/DP4000_1.pdf' },
+      { titel: 'Planbeskrivning', url: 'https://geo.malmo.se/planvisaren-server/pdf/dp/DP4000_dok.pdf' }]) });
 });
 
 test('hämtning från WFS: varje lager ger sin plantyp, upphävda och fel svar stoppas', async () => {
@@ -124,6 +127,22 @@ test('dokumentlänkar: HTML-länkar med länktexten som rubrik, annars kommunens
   const vaxjo = await hamtaKommunplaner('0780', async (url) => url.includes('returnIdsOnly') ? Response.json({ objectIds: [1] })
     : Response.json({ features: [{ attributes: { OBJECTID: 1, BETECKNING: '0780K-P1' }, geometry: { rings: [ring] } }] }));
   assert.equal(JSON.parse(vaxjo.rader[0].dokument)[0].titel, 'Gällande planer hos kommunen');
+});
+
+test('dokumentlänkar som prövas: 404, inloggningssida och död server sparas inte', async () => {
+  const ring = [[14.55, 56.89], [14.55, 56.9], [14.56, 56.9], [14.56, 56.89], [14.55, 56.89]];
+  const lankar = ['https://a.se/ok.pdf', 'https://a.se/saknas.pdf', 'https://a.se/login.pdf', 'https://dod.se/1.pdf', 'https://dod.se/2.pdf'];
+  const provade = [];
+  const { rader } = await hamtaKommunplaner('0764', async (url) => {
+    if (url.includes('returnIdsOnly')) return Response.json({ objectIds: [1, 2, 3, 4, 5] });
+    if (url.includes('/query')) return Response.json({ features: lankar.map((Descr, i) => ({ attributes: { OBJECTID: i + 1, Plannr_L30: `A${i}`, Descr }, geometry: { rings: [ring] } })) });
+    provade.push(url);
+    if (url.includes('dod.se')) throw new TypeError('fetch failed');
+    if (url.includes('saknas')) return new Response('', { status: 404 });
+    return new Response('x', { headers: { 'content-type': url.includes('login') ? 'text/html' : 'application/pdf' } });
+  });
+  assert.deepEqual(rader.map((r) => r.dokument && JSON.parse(r.dokument)[0].url), ['https://a.se/ok.pdf', null, null, null, null]);
+  assert.equal(provade.filter((u) => u.includes('dod.se')).length, 1);
 });
 
 test('hämtning: filter på kommunkod i ett gemensamt planarkiv, och öppen GeoJSON-fil', async () => {
