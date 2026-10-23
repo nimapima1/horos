@@ -40,6 +40,14 @@ test('shapefil: ringar, attribut och projektion läses', () => {
   assert.deepEqual(objekt[0].rings[1][1], [4, 2]);
 });
 
+test('shapefil: avklippt dbf-huvud ger fel, inte en oändlig loop', () => {
+  const sokvag = join(mkdtempSync(join(ROOT, 'data/_test/shp-')), 'planer');
+  skrivShape(sokvag);
+  const huvud = Buffer.alloc(32); huvud.writeUInt16LE(97, 8);
+  writeFileSync(sokvag + '.dbf', huvud);
+  assert.throws(() => lasShape(sokvag + '.shp'), /saknar avslutning/);
+});
+
 test('SWEREF 99 lokal zon: medelmeridianen ger dess longitud, TM är oförändrad', () => {
   const [lon, lat] = sweref99ToWgs84(150000, 6300000, 16.5, 1, 150000);
   assert.ok(Math.abs(lon - 16.5) < 1e-9);
