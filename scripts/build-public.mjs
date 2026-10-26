@@ -25,6 +25,7 @@ import { join } from 'node:path';
 import { openDb, DB_PATH, ROOT, harJuridiskAgare, NYHET_PLATS_UTANFOR, rebuildAdressFts, rebuildBolagFts, rebuildFastighetFts, rebuildRtree, withTransaction } from '../lib/db.mjs';
 import { parseArgs } from '../lib/csv.mjs';
 import { publiceraNyheter } from '../lib/nyheter.mjs';
+import { utanKallaBort } from '../lib/kommunplaner.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const OUT = args.out ?? join(ROOT, 'data', 'public.sqlite');
@@ -98,6 +99,7 @@ withTransaction(db, () => {
 });
 db.exec('DETACH DATABASE src');
 
+utanKallaBort(db);
 publiceraNyheter(db);
 rebuildFastighetFts(db);
 rebuildBolagFts(db);

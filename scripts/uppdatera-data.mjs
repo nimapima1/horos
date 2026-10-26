@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { openDb, ROOT, rebuildRtree, harJuridiskAgare, normOrgnr } from '../lib/db.mjs';
 import { hamtaNgp, ngpPlaner, sparaNgp } from '../lib/ngp.mjs';
 import { markeraPlanHamtning } from '../lib/uppdateringsmeta.mjs';
-import { KALLOR, hamtaKommunplaner, sparaKommunplaner, utanNgpDubbletter } from '../lib/kommunplaner.mjs';
+import { KALLOR, hamtaKommunplaner, sparaKommunplaner, utanNgpDubbletter, utanKallaBort } from '../lib/kommunplaner.mjs';
 
 const STATUSAR = "'påbörjad','samråd','granskning','antagen','överklagad','tillsyn','laga kraft'";
 
@@ -57,6 +57,7 @@ export async function uppdateraData(path, { env = process.env, hamta = hamtaNgp,
     } else stamp('planer', 'vantar', 'Inga kommuner har importerats eller konfigurerats.');
 
     // Kommunernas egna karttjänster en gång i veckan: de ändras sällan och hela omgången tar några minuter.
+    if (utanKallaBort(db)) rebuildRtree(db, 'plan');
     const kommunTid = db.prepare("SELECT varde FROM meta WHERE nyckel='kommunplaner_hamtade'").get()?.varde;
     if (env.KOMMUNPLANER === '0') stamp('kommunplaner', 'vantar', 'Avstängt med KOMMUNPLANER=0.');
     else if (kommunTid && Date.now() - Date.parse(kommunTid) < 6.5 * 864e5) {

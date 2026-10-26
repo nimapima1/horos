@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../lib/db.mjs';
-import { datum, plantyp, esriTillGeojson, rensaGeometri, hamtaKommunplaner, utanNgpDubbletter, sparaKommunplaner } from '../lib/kommunplaner.mjs';
+import { datum, plantyp, esriTillGeojson, rensaGeometri, hamtaKommunplaner, utanNgpDubbletter, sparaKommunplaner, utanKallaBort } from '../lib/kommunplaner.mjs';
 
 test('datum: bara tydliga datum, år när källan bara har året', () => {
   assert.equal(datum('19890525'), '1989-05-25');
@@ -96,6 +96,12 @@ test('dubbletter mot NGP och arkivering vid ny import', () => {
     assert.deepEqual(db.prepare("SELECT id, status FROM plan WHERE kalla = 'kommun' ORDER BY id").all().map((r) => [r.id, r.status]),
       [['kommun:1280:1:2', 'arkiverad'], ['kommun:1280:1:3', 'laga kraft']]);
     assert.throws(() => sparaKommunplaner(db, [rad('kommun:1280:1:4', 0)], '0126'), /kommun stämmer inte/);
+    // Tingsryd (0763) har ingen källa längre: dess planer tas bort, NGP:s och andra kommuners ligger kvar.
+    db.prepare(`INSERT INTO plan (id, typ, kommun, geojson, minx, miny, maxx, maxy, kalla, status) VALUES ('kommun:0763:24:1', 'DP', '0763', ?, 14, 56, 14.01, 56.01, 'kommun', 'laga kraft')`).run(geo);
+    db.prepare(`INSERT INTO plan (id, typ, kommun, geojson, minx, miny, maxx, maxy, kalla, status) VALUES ('ngp:0763', 'DP', '0763', ?, 14, 56, 14.01, 56.01, 'ngp', 'laga kraft')`).run(geo);
+    assert.equal(utanKallaBort(db), 1);
+    assert.deepEqual(db.prepare("SELECT id FROM plan WHERE kommun = '0763'").all().map((r) => r.id), ['ngp:0763']);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM plan WHERE kalla = 'kommun'").get().n, 2);
   } finally { db.close(); }
 });
 
