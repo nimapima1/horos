@@ -3,7 +3,7 @@
 // node scripts/import-kommunplaner.mjs --kommun alla|0126[,1280] [--dry]
 import { parseArgs } from '../lib/csv.mjs';
 import { openDb, rebuildRtree } from '../lib/db.mjs';
-import { KALLOR, hamtaKommunplaner, sparaKommunplaner, utanNgpDubbletter } from '../lib/kommunplaner.mjs';
+import { KALLOR, hamtaKommunplaner, sparaKommunplaner, utanNgpDubbletter, utanKallaBort } from '../lib/kommunplaner.mjs';
 import { KOMMUNER } from '../lib/kommuner.mjs';
 
 const args = parseArgs(process.argv.slice(2));
@@ -30,7 +30,11 @@ try {
         console.error(`${kod} ${namn.get(kod) ?? ''}: ${error instanceof TypeError ? 'anslutningen misslyckades' : error.message}`);
       }
     }
-    if (!args.dry) rebuildRtree(db, 'plan');
+    if (!args.dry) {
+      const bort = utanKallaBort(db);
+      if (bort) console.log(`${bort} planer borttagna från kommuner som inte längre har någon källa.`);
+      rebuildRtree(db, 'plan');
+    }
   } finally { db.close(); }
   console.log(`${antal} planer från ${koder.length - fel.length} kommuner.${args.dry ? ' Provkörning: databasen ändrades inte.' : ''}`);
   if (fel.length) { console.log(`Misslyckades: ${fel.join(',')}`); process.exitCode = 1; }
