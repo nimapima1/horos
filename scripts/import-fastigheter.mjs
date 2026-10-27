@@ -61,7 +61,7 @@ const betOf = (r) => {
   if (betCol && r[betCol]) return fastighetsBet(r[betCol], r[parts.kommun] ?? r[kommunCol] ?? args.kommun);
   if (parts.trakt) {
     const be = [r[parts.block], r[parts.enhet]].filter((x) => x != null && x !== '').join(':');
-    return fastighetsBet([r[parts.trakt], be].filter(Boolean).join(' '), r[parts.kommun] ?? r[kommunCol] ?? args.kommun);
+    return fastighetsBet([r[parts.trakt], be].filter(Boolean).join(' '), r[parts.kommun] ?? r[kommunCol] ?? args.kommun, { utanKommun: true });
   }
   return null;
 };

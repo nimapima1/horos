@@ -61,7 +61,7 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
 - Rumsliga index: R-träd `fastighet_rtree`/`plan_rtree` (rowid). Byggs av build-public och,
   lokalt, av servern vid start. Servern klarar äldre publika databaser utan dem eller utan `plan`.
 - Tester: `npm test` (node:test, `test/`).
-- Importer: fastighetsbeteckningar kräver kommun i beteckningen, en kommunkolumn eller `--kommun namn|kod`. Taxering kräver `--enhet kr|tkr` om värdekolumnen saknar enhet.
+- Importer: fastighetsbeteckningar kräver kommun i beteckningen, en kommunkolumn eller `--kommun namn|kod`. Excel (.xlsx) läses direkt (`readXlsx` i `lib/csv.mjs`). Med kommunen i en egen kolumn och aldrig i beteckningen: `fastighetsBet(..., { utanKommun: true })`, annars blir traktnamn som BERG eller VALLENTUNA PRÄSTGÅRD lästa som kommunen. Taxering kräver `--enhet kr|tkr` om värdekolumnen saknar enhet.
   `--fullstandigt` på ett fullständigt nytt ägaruttag av lagfart/taxering får häva privatmarkeringar endast från den källan och för kända juridiska ägare, aldrig med `--append`; markeringar med okänd källa ligger kvar.
   `build-public.mjs` bygger `data/public.sqlite` med bara tillåtna fastigheter; Lantmäteriets
   data kräver `--lm-beslut <ärendenr>`, planerna `--lm-planer <ärendenr>`, arbetsställena `--scb-villkor`. Förorenade och utsatta områden tas alltid med (utsatta områden: Polisen anger inga villkor; användaren beslutade 2026-10-11 att publicera utan att fråga). Live byggs med `--alla-bolag`.
@@ -162,7 +162,7 @@ Väntar på:
   leveranssätt (HTTPS), format (JSON) och URL. Mottagaren `https://horos.se/api/mfn` är live sedan 2026-10-12
   med `MFN_SECRET` satt; hemligheten skickad till MFN 2026-10-12, leveransen igång (alla bolag, ingen kostnad,
   källa "MFN", prenumerationen förnyas inte). Väntar inte längre på MFN (se `PRIVAT.md`).
-- Skatteverket: taxeringsvärden, ärendet pågår (detaljer i `PRIVAT.md`).
+- Skatteverket: taxeringsvärden för hyreshus- och industrienheter, hela landet (utan ägare), kom 2026-10-21 och ligger i `data/taxeringsvärden/` (.xlsx, läses direkt; importeras med `import-taxering <hyreshus>` och sedan `<industri> --append`). Kompletterande begäran om 1xx, 2xx, 5xx, 7xx och 8xx skickad 2026-10-27 (detaljer i `PRIVAT.md`).
 - Lantmäteriet (allmän handling): lagfarter/köpeskillingar från 2016 där förvärvaren är juridisk
   person, och nuvarande juridiska ägare. **Tomträttsinnehav är inte efterfrågat**: kontrollera när
   filen kommer om tomträtt/upplåtelseform finns med; annars begär det separat (se `OVERLAMNING.md`).

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import vm from 'node:vm';
-import { deflateRawSync } from 'node:zlib';
+import { zip } from './zip.mjs';
 import { ROOT } from '../lib/db.mjs';
 
 const { lasCsv, hittaKolumner, packaUppZip } = vm.runInNewContext(
@@ -24,25 +24,6 @@ test('kolumner: efter rubrik, annars den som ser ut som beteckningar; en beteckn
   assert.deepEqual(vanlig(hittaKolumner([['x', 'FASTIGHETEN 1:2'], ['y', 'KUNGSBRON 1:3']])), { start: 0, bet: 1, adress: -1, kommun: -1 });
   assert.equal(hittaKolumner([['bara', 'text']]).bet, -1);
 });
-
-// En zip med en packad (deflate) och en opackad fil, som Excel skriver dem.
-function zip(filer) {
-  const lokala = [], centrala = [];
-  let offset = 0;
-  for (const [namn, text, packa] of filer) {
-    const data = Buffer.from(text), ut = packa ? deflateRawSync(data) : data, n = Buffer.from(namn);
-    const lokal = Buffer.alloc(30); lokal.writeUInt32LE(0x04034b50, 0); lokal.writeUInt16LE(packa ? 8 : 0, 8);
-    lokal.writeUInt32LE(ut.length, 18); lokal.writeUInt32LE(data.length, 22); lokal.writeUInt16LE(n.length, 26);
-    const central = Buffer.alloc(46); central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(packa ? 8 : 0, 10);
-    central.writeUInt32LE(ut.length, 20); central.writeUInt32LE(data.length, 24); central.writeUInt16LE(n.length, 28);
-    central.writeUInt32LE(offset, 42);
-    lokala.push(lokal, n, ut); centrala.push(central, n);
-    offset += 30 + n.length + ut.length;
-  }
-  const cd = Buffer.concat(centrala), slut = Buffer.alloc(22);
-  slut.writeUInt32LE(0x06054b50, 0); slut.writeUInt16LE(filer.length, 10); slut.writeUInt32LE(cd.length, 12); slut.writeUInt32LE(offset, 16);
-  return new Uint8Array(Buffer.concat([...lokala, cd, slut]));
-}
 
 test('zip: packade och opackade filer kommer ut oförändrade; annat än zip ger ett begripligt fel', async () => {
   const filer = await packaUppZip(zip([['xl/worksheets/sheet1.xml', '<row>Å Ä Ö</row>'.repeat(50), true], ['mimetype', 'abc', false]]));
