@@ -1,8 +1,8 @@
-// Importerar taxeringsuppgifter från Skatteverkets utlämnade fil (CSV eller Excel sparad som CSV).
-// Kolumnnamnen är okända tills svaret kommer, så de gissas via synonymer.
+// Importerar taxeringsuppgifter från Skatteverkets utlämnade fil (Excel .xlsx eller CSV).
+// Kolumnerna gissas via synonymer.
 // Kör först med --dry för att se vilka kolumner som hittades.
 //
-//   node scripts/import-taxering.mjs data/raw/taxering.csv [--dry] [--enhet kr|tkr] [--fullstandigt] [--kommun namn|kod] [--map fält=kolumn ...]
+//   node scripts/import-taxering.mjs data/raw/taxering.xlsx [--dry] [--enhet kr|tkr] [--fullstandigt] [--kommun namn|kod] [--map fält=kolumn ...]
 //
 // Fält: beteckning, taxeringsenhet, typ, ar, varde, markvarde, byggvarde, orgnr, andel
 // Rader där ägaren inte är en juridisk person (personnummer) hoppas över. Typkoder (t.ex. 325)
@@ -18,6 +18,7 @@ if (!file) { console.error('Ange CSV-fil. Se kommentaren överst i skriptet.'); 
 const FIELDS = {
   beteckning: ['fastighetsbeteckning', 'beteckning', 'fastighet', 'registerbeteckning'],
   kommun: ['kommunnamn', 'kommunkod', 'kommun'],
+  lan: ['lanskod', 'lan'],
   taxeringsenhet: ['taxeringsenhetsnummer', 'taxeringsenhet', 'tenr', 'taxenhet'],
   typ: ['typkod', 'taxeringsenhetstyp', 'typ'],
   ar: ['taxeringsar', 'ar', 'taxar'],
@@ -37,6 +38,16 @@ if (!['kr', 'tkr'].includes(enhet)) throw new Error('Ange --enhet kr|tkr när v�
 const toTkr = (v) => (v == null ? null : Math.round(enhet === 'kr' ? v / 1000 : v));
 console.log(`Värden tolkas som ${enhet}.`);
 
+// Skatteverkets uttag (2026): länskod och kommunkod i var sin kolumn ("1", "14" -> "0114"), och "M.FL" efter
+// beteckningen när taxeringsenheten omfattar flera fastigheter (värdet hamnar på den som står först).
+// Beteckningen har då aldrig kommunen först.
+const bet = (r) => {
+  const lan = get(r, 'lan'), k = get(r, 'kommun'), b = get(r, 'beteckning')?.replace(/\s+M\.?\s?FL\.?$/i, '');
+  return lan && /^\d{1,2}$/.test(k ?? '')
+    ? fastighetsBet(b, lan.padStart(2, '0') + k.padStart(2, '0'), { utanKommun: true })
+    : fastighetsBet(b, k ?? args.kommun);
+};
+
 let personer = 0;
 const okanda = new Set();
 const recs = [];
@@ -46,13 +57,13 @@ for (const r of rows) {
   const orgnr = normOrgnr(orgnrRaw);
   if (orgnrRaw && !orgnr) {                              // personnummer: spara aldrig
     personer++;
-    privata.add(fastighetsBet(get(r, 'beteckning'), get(r, 'kommun') ?? args.kommun));   // bara beteckningen, för uteslutning
+    privata.add(bet(r));   // bara beteckningen, för uteslutning
     continue;
   }
   const ar = num(get(r, 'ar'));
   const typ = get(r, 'typ'), text = typText(typ, ar);
   if (/^\d{3}$/.test(typ ?? '') && text === typ) okanda.add(typ);   // kod som inte finns i listan
-  recs.push([fastighetsBet(get(r, 'beteckning'), get(r, 'kommun') ?? args.kommun), get(r, 'taxeringsenhet'), text, ar,
+  recs.push([bet(r), get(r, 'taxeringsenhet'), text, ar,
     toTkr(num(get(r, 'varde'))), toTkr(num(get(r, 'markvarde'))), toTkr(num(get(r, 'byggvarde'))), orgnr, get(r, 'andel')]);
 }
 console.log(`${recs.length} rader att importera, ${personer} hoppade över (fysiska personer).`);

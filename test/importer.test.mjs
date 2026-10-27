@@ -56,6 +56,10 @@ test('fastigheter: kommun gör identiteten entydig; --dry skapar eller ändrar i
   assert.equal(fastighetsBet(' Stockholm  Pilen 1 ', '180'), 'STOCKHOLM PILEN 1');
   assert.throws(() => fastighetsBet('Pilen 1'), /kommun/);
   assert.throws(() => fastighetsBet('Solna Pilen 1', 'Stockholm'), /kommun/);
+  // Traktnamn som också är kommuner, när källan har kommunen i en egen kolumn (Skatteverket, Fastighetsindelning).
+  assert.equal(fastighetsBet('Vallentuna Prästgård 1:144', '0115', { utanKommun: true }), 'VALLENTUNA VALLENTUNA PRÄSTGÅRD 1:144');
+  assert.equal(fastighetsBet('Berg 1:12', 'Värmdö', { utanKommun: true }), 'VÄRMDÖ BERG 1:12');
+  assert.throws(() => fastighetsBet('Berg 1:12', null, { utanKommun: true }), /kommun/);
 });
 
 test('taxering och lagfart använder samma identitet i båda kommunerna', () => {
