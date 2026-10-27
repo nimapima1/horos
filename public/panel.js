@@ -126,6 +126,8 @@ async function openFastighet(bet, adress) {
   const ar = f.taxering[0]?.ar;
   const senaste = f.taxering.filter((t) => t.ar === ar);
   const varde = senaste.reduce((s, t) => s + (t.varde_tkr ?? 0), 0);
+  const delar = senaste.some((t) => t.markvarde_tkr != null || t.byggvarde_tkr != null)
+    ? `Mark ${mkr(senaste.reduce((s, t) => s + (t.markvarde_tkr ?? 0), 0))} · byggnad ${mkr(senaste.reduce((s, t) => s + (t.byggvarde_tkr ?? 0), 0))}` : '';
   // Förändring mot förra taxeringsåret med värde (taxeringen är sorterad nyast först).
   const forraAr = f.taxering.find((t) => t.ar < ar && t.varde_tkr != null)?.ar;
   const forra = forraAr && f.taxering.filter((t) => t.ar === forraAr).reduce((s, t) => s + (t.varde_tkr ?? 0), 0);
@@ -156,7 +158,7 @@ async function openFastighet(bet, adress) {
     ])}
     ${anvandningRuta(anvandning, ar, f.anvandning, loa, s)}
     ${stats([
-      [`Taxeringsvärde${ar ? ` ${ar}` : ''}`, f.taxering.length ? mkr(varde) : '–'],
+      [`Taxeringsvärde${ar ? ` ${ar}` : ''}`, f.taxering.length ? mkr(varde) : '–', delar],
       ['Upplåtelseform', Object.fromEntries(s.upplatelseformer)[f.upplatelse] ?? '–', f.upplatelse ? 'Enligt Lantmäteriet' : 'Uppgift saknas'],
       ...(andring != null ? [[`Ändring sedan ${forraAr}`, `${andring > 0 ? '+' : ''}${(andring * 100).toLocaleString('sv-SE', { maximumFractionDigits: 0 })} %`]] : []),
       ['Tomtareal', f.areal_m2 ? `${Math.round(f.areal_m2).toLocaleString('sv-SE')} m²` : '–'],
