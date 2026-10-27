@@ -39,11 +39,13 @@ test('readXlsx: bladet enligt arbetsboken, delad och egen text, tomma celler på
     ['xl/workbook.xml', '<workbook><sheets><sheet name="Ark" sheetId="1" r:id="rId2"/></sheets></workbook>', false],
     ['xl/_rels/workbook.xml.rels', '<Relationships><Relationship Id="rId1" Target="worksheets/fel.xml"/><Relationship Target="worksheets/sheet2.xml" Id="rId2"/></Relationships>', true],
     ['xl/sharedStrings.xml', '<sst><si><t>LÄN</t></si><si><r><t>KÖP</t></r><r><t>MANNEN 1</t></r></si><si><t>A &amp; B</t></si></sst>', true],
-    ['xl/worksheets/sheet2.xml', '<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="s"><v>2</v></c></row>'
+    ['xl/worksheets/sheet2.xml', '<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"/><c r="C1" t="s"><v>2</v></c><c r="D1" t="s"><v></v></c></row>'
       + '<row r="2"><c r="A2"><v>1</v></c><c r="B2" t="s"><v>1</v></c><c r="C2" t="inlineStr"><is><t>x&lt;y</t></is></c><c r="D2" s="1"/></row></sheetData>', true],
   ]));
-  assert.deepEqual(readXlsx(xlsx), [['LÄN', '', 'A & B'], ['1', 'KÖPMANNEN 1', 'x<y', '']]);
+  assert.deepEqual(readXlsx(xlsx), [['LÄN', '', 'A & B', ''], ['1', 'KÖPMANNEN 1', 'x<y', '']]);
   assert.throws(() => readXlsx(Buffer.alloc(100)), /inte en Excelfil/);
-  // Synonymerna i ordning: värdet ska inte hamna på markvärdet, som står först och också innehåller "varde".
-  assert.deepEqual(mapColumns(['MARKVÄRDE (tkr)', 'TAXERINGSVÄRDE  (tkr)'], { varde: ['taxeringsvarde', 'varde'] }), { varde: 1 });
+  // Delord: kolumnernas ordning avgör, inte synonymernas (lagfarter: köparen står före säljaren).
+  assert.deepEqual(mapColumns(['Förvärvare-ID', 'Säljare organisationsnummer'], { orgnr: ['organisationsnummer', 'forvarvareid'] }), { orgnr: 0 });
+  // Ett taget fält matchas inte igen på delord: värdet hamnar inte på markvärdet.
+  assert.deepEqual(mapColumns(['MARKVÄRDE (tkr)', 'TAXERINGSVÄRDE  (tkr)'], { markvarde: ['markvarde'], varde: ['taxeringsvarde', 'varde'] }), { markvarde: 0, varde: 1 });
 });

@@ -65,7 +65,7 @@ async function lasXlsx(arrayBuffer) {
     const rad = [];
     for (const c of alla(row, 'c')) {
       const t = c.getAttribute('t'), v = alla(c, 'v')[0]?.textContent ?? '', ref = c.getAttribute('r');
-      rad[ref ? kolumn(ref) : rad.length] = t === 's' ? delad[Number(v)] ?? '' : t === 'inlineStr' ? text(c) : v;
+      rad[ref ? kolumn(ref) : rad.length] = t === 's' ? (v && delad[Number(v)]) ?? '' : t === 'inlineStr' ? text(c) : v;
     }
     return Array.from(rad, (x) => x ?? '');
   });

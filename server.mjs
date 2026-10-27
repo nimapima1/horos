@@ -997,14 +997,16 @@ function matchaRad(r) {
   let bet = normBeteckning(text(r?.bet)), kommun = text(r?.kommun) ? kommunAv(text(r.kommun)) : null;
   const [adress, adressKommun] = text(r?.adress).split(',').map((x) => x.trim());
   const forst = bet && kommunForst(bet);
-  if (forst) { kommun ??= forst.kommun; bet = forst.resten; }
+  if (forst) kommun ??= forst.kommun;
   kommun ??= adressKommun ? kommunAv(adressKommun) : null;
   if (!kommun) return { beteckning: null, via: null, orsak: 'kommun' };
   const iKommunen = (f) => f && (f.kommun ?? '').toUpperCase() === kommun.toUpperCase();
   if (bet) {
-    if (forst && forst.kommun !== kommun) return { beteckning: null, via: null, orsak: 'kommun' };
-    const f = q.fastighet.get(fastighetsBet(bet, kommun));
-    if (iKommunen(f)) return { beteckning: f.beteckning, via: 'beteckning' };
+    // Kommunen först i beteckningen, eller ett traktnamn som också är en kommun (BERG, VALLENTUNA PRÄSTGÅRD): pröva båda.
+    for (const b of forst?.kommun === kommun ? [forst.resten, bet] : [bet]) {
+      const f = q.fastighet.get(fastighetsBet(b, kommun, { utanKommun: true }));
+      if (iKommunen(f)) return { beteckning: f.beteckning, via: 'beteckning' };
+    }
   }
   if (adress && q.sokAdress && /\p{L}/u.test(adress)) {
     // Alla träffar i adressökningen (sökrutan visar bara 6): samma gata finns i många orter.

@@ -430,7 +430,15 @@ test('inläsning från fil: beteckning och kommun krävs, kommunen från kolumne
   // En fastighet i en riktig kommun, långt från de andra (påverkar inga bbox-tester).
   db.prepare("INSERT INTO fastighet (beteckning, kommun, areal_m2, geojson, minx, miny, maxx, maxy, kalla) VALUES ('SOLNA R 1:1', 'Solna', 100, ?, 25, 66, 25.001, 66.0005, 'lantmateriet')")
     .run(rect(25, 66, 25.001, 66.0005));
+  // Traktnamn som också är kommuner.
+  for (const [b, k, x] of [['VÄRMDÖ BERG 1:12', 'Värmdö', 25.01], ['VALLENTUNA VALLENTUNA PRÄSTGÅRD 1:144', 'Vallentuna', 25.02]]) {
+    db.prepare("INSERT INTO fastighet (beteckning, kommun, areal_m2, geojson, minx, miny, maxx, maxy, kalla) VALUES (?, ?, 100, ?, ?, 66, ?, 66.0005, 'lantmateriet')")
+      .run(b, k, rect(x, 66, x + 0.001, 66.0005), x, x + 0.001);
+  }
   db.close();
+  const trakt = await post('/api/matcha', { rader: [{ bet: 'Berg 1:12', kommun: 'Värmdö' }, { bet: 'Vallentuna Prästgård 1:144', kommun: 'Vallentuna' },
+    { bet: 'Vallentuna Vallentuna Prästgård 1:144' }] }).then((x) => x.json());
+  assert.deepEqual(trakt.traffar.map((t) => t.beteckning), ['VÄRMDÖ BERG 1:12', 'VALLENTUNA VALLENTUNA PRÄSTGÅRD 1:144', 'VALLENTUNA VALLENTUNA PRÄSTGÅRD 1:144']);
   const rader = [{ bet: 'r 1:1', kommun: 'Solna' }, { bet: 'Solna R 1:1' }, { bet: 'R 1:1', kommun: 'SOLNA KOMMUN' },
     { bet: 'R 1:1' }, { bet: 'R 1:1', kommun: 'Sundbyberg' }, { bet: 'T 1:1', kommun: 'Testkommun' }, { adress: 'Ingen gata 1' }, {}];
   const r = await post('/api/matcha', { rader }).then((x) => x.json());

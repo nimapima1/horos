@@ -20,11 +20,13 @@ const FIELDS = {
   kommun: ['kommunnamn', 'kommunkod', 'kommun'],
   lan: ['lanskod', 'lan'],
   taxeringsenhet: ['taxeringsenhetsnummer', 'taxeringsenhet', 'tenr', 'taxenhet'],
-  typ: ['typkod', 'taxeringsenhetstyp', 'typ'],
-  ar: ['taxeringsar', 'ar', 'taxar'],
-  varde: ['taxeringsvarde', 'totaltaxeringsvarde', 'tax_varde', 'varde'],
+  // Värdena före år och typ, och mark- och byggnadsvärdet före värdet: ett fält som matchas på delord tar
+  // kolumnen ("ar" finns i "Taxeringsvarde", "varde" i "Markvärde"), se mapColumns.
   markvarde: ['markvarde', 'tomtvarde', 'markvärde'],
   byggvarde: ['byggnadsvarde', 'byggvarde', 'byggnadsvärde'],
+  varde: ['taxeringsvarde', 'totaltaxeringsvarde', 'tax_varde', 'varde'],
+  typ: ['typkod', 'taxeringsenhetstyp', 'typ'],
+  ar: ['taxeringsar', 'ar', 'taxar'],
   orgnr: ['organisationsnummer', 'orgnr', 'agareid', 'agaresidentitet', 'personorganisationsnummer', 'idnummer'],
   andel: ['agarandel', 'andel'],
 };
