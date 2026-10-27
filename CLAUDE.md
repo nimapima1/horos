@@ -69,6 +69,17 @@ köpeskilling**. Historiska flygfoton ("då och nu") är lågt prioriterade.
   Använd en annan port än 3000 (`PORT=3005`) om användaren har en egen server igång.
   SQLite-filer för test i `data/_test/` (långa sökvägar i scratchpad fungerar inte).
 - Git-commits: `git -c user.name="Nima Behnejad" -c user.email="nima.behnejad@gmail.com" commit`.
+- **En worktree per session** (flera sessioner körs samtidigt; 2026-10-27 bytte en session gren i huvudmappen
+  och en annans commit hamnade direkt på master). Kodändringar görs alltid i en egen worktree under
+  `.claude/worktrees/<namn>` (appens worktree-val, eller `git worktree add .claude/worktrees/<namn> -b <gren> origin/master`),
+  aldrig i `C:\Claude-projects\fastighetskarta`. Huvudmappen står på master: där dras mergade ändringar in, och där
+  körs importer, testservrar och publicering. Kontrollera grenen (`git branch --show-current`) före varje commit
+  och push; committa och pusha aldrig på master.
+  En worktree saknar det som inte ligger i git: `data/` (databasen, råfilerna), `node_modules/`, `public/vendor/`
+  och `PRIVAT.md`. Kör `npm install` om servern ska startas; använd huvudmappens databas med
+  `FASTIGHETSKARTA_DB=C:/Claude-projects/fastighetskarta/data/fastighetskarta.sqlite` och läs råfiler från
+  huvudmappens `data/`. `npm test` fungerar direkt (testerna skapar egna filer i worktreens `data/_test/`).
+  `PRIVAT.md` redigeras i huvudmappen.
 
 `PRIVAT.md` (inte i git, repot är publikt): mejlkontakter, myndighetsärenden och kostnader. Lägg sådant där, inte här.
 
