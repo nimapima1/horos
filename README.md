@@ -1,6 +1,6 @@
 # Horos
 
-En öppen karta över **bolagsägda fastigheter i Stockholm**, byggd enbart på offentliga
+En öppen karta över **bolagsägda fastigheter**, byggd enbart på offentliga
 källor. Namnet kommer från antikens Athen, där gränsstenar (*horoi*) ställdes ut på tomter
 för att offentligt visa vem som hade anspråk på marken. Klicka på en fastighet för att se ägare, taxeringsvärde och överlåtelser, eller sök
 på ett bolag för att se vilka fastigheter det äger.
