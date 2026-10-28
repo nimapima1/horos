@@ -753,7 +753,7 @@ function openAdress(adress, lonlat, bet) {
   showPanel(`
     <h2>${esc(adress)}</h2>
     <p class="empty">Ingen fastighet i Horos på den här adressen. Horos visar bara fastigheter som ägs
-      av bolag, föreningar och andra juridiska personer, och bara i Stockholms kommun.</p>`);
+      av bolag, föreningar och andra juridiska personer.</p>`);
 }
 
 // Status och demoflagga.

@@ -311,7 +311,7 @@ async function openOm() {
   select(null);
   showPanel(`
     <h2>Horos</h2>
-    <div class="meta">Öppen karta över bolagsägda fastigheter i Stockholm</div>
+    <div class="meta">Öppen karta över bolagsägda fastigheter</div>
     <p>I antikens Athen ställdes gränsstenar, <em>horoi</em> (ὅροι), ut på tomter för att
       offentligt visa vem som hade anspråk på marken. Horos gör samma sak med dagens offentliga uppgifter:
       vilka bolag, föreningar och kommuner som äger fastigheterna, deras taxeringsvärden och vad de har köpts för.</p>
