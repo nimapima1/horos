@@ -381,6 +381,14 @@ map.on('load', () => {
   map.addLayer({ id: 'plan-line', type: 'line', source: 'planer',
     layout: { visibility: planToggle.on ? 'visible' : 'none', 'line-join': 'round' },
     paint: { 'line-color': css('--plan'), 'line-width': 2.5, 'line-dasharray': [2, 1.5] } });
+  // Gatunamnen överst och ljusa: stilens mörkgrå syns knappt, och fastighetsytorna skulle annars täcka dem.
+  if (map.getLayer('highway_name_other')) {
+    map.moveLayer('highway_name_other');
+    map.setLayoutProperty('highway_name_other', 'text-size', ['interpolate', ['linear'], ['zoom'], 14, 10, 18, 13]);
+    map.setPaintProperty('highway_name_other', 'text-color', css('--map-text'));
+    map.setPaintProperty('highway_name_other', 'text-halo-color', css('--map-kant'));
+    map.setPaintProperty('highway_name_other', 'text-halo-width', 1.5);
+  }
 
   map.on('click', 'plan-fill', async (e) => {
     if (map.queryRenderedFeatures(e.point, { layers: ['punkt', 'punkt-kluster'] }).length) return;   // prickarna går före
