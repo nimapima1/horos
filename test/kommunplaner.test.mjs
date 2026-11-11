@@ -38,31 +38,36 @@ test('geometrin: lat/lon vänds, z tas bort, utanför Sverige eller öppen ring 
   assert.equal(rensaGeometri({ type: 'LineString', coordinates: [[18, 59], [18.1, 59]] }), null);
 });
 
-test('hämtning från ArcGIS: alla objekt i omgångar, fält och dokumentlänkar enligt inställningen', async () => {
+test('hämtning ur Malmös Stadsatlas: namn och datum ur detaljplaneportalen, PDF:er ur planvisaren, annars portalens sida', async () => {
   const anrop = [];
-  const ring = [[13, 55.6], [13, 55.61], [13.01, 55.61], [13.01, 55.6], [13, 55.6]];
+  // WMS 1.3.0 i EPSG:4326 svarar lat/lon; rensaGeometri byter axlarna.
+  const ring = [[55.6, 13], [55.61, 13], [55.61, 13.01], [55.6, 13.01], [55.6, 13]];
   const { rader } = await hamtaKommunplaner('1280', async (url) => {
     anrop.push(url);
+    if (url.includes('GetDetaljplan?detaljplanId=840')) return Response.json({ Plannamn: 'ROSENHOLMS HANDELSTRÄDGÅRD', DatoIkraft: '1989-05-25T00:00:00' });
+    if (url.includes('GetDetaljplan?detaljplanId=841')) return Response.json({ Plannamn: 'Ändring', DatoIkraft: null });
     if (url.includes('planvisaren-server/search?q=DP4000')) return Response.json(['https://geo.malmo.se/planvisaren-server/pdf/dp/DP4000_1.pdf',
       'https://geo.malmo.se/planvisaren-server/pdf/dp/DP4000_dok.pdf', 'https://annan.se/x.pdf']);
-    if (url.includes('returnIdsOnly')) return Response.json({ objectIdFieldName: 'OBJECTID_1', objectIds: [1, 2] });
-    assert.match(url, /objectIds=1,2&outFields=\*&outSR=4326/);
-    // Som Malmö: id-fältet anges bara i id-svaret, och ett annat OBJECTID har samma värde i alla objekt.
-    return Response.json({ features: [
-      { attributes: { OBJECTID_1: 1, OBJECTID: 7, LMAKT: '1280K-DP4000', PLANNAMN: 'ROSENHOLMS HANDELSTRÄDGÅRD', FIX_LAGAKR: '19890525', PLAN_: 'DP4000',
-        url_1: 'https://kartor.malmo.se/Planvisaren?plan=dp4000_1.pdf', url_dok: ' ' }, geometry: { rings: [ring] } },
-      { attributes: { OBJECTID_1: 2, OBJECTID: 7, LMAKT: 'x' }, geometry: { rings: [[[0, 0], [0, 1], [1, 1], [0, 0]]] } },
+    if (url.includes('planvisaren-server/search?q=')) return Response.json([]);
+    assert.match(url, /^https:\/\/stadsatlas\.malmo\.se\/wms\/sma\.qgs\?.*REQUEST=GetFeatureInfo&LAYERS=detaljplaner_p/);
+    return Response.json({ type: 'FeatureCollection', features: [
+      { properties: { plan: 'DP4000', url: 'https://malmo.seplan.se/plan/1#/detaljplanid/840' }, geometry: { type: 'Polygon', coordinates: [ring] } },
+      { properties: { plan: 'ÄDP4267', url: 'https://malmo.seplan.se/plan/1#/detaljplanid/841' }, geometry: { type: 'Polygon', coordinates: [ring] } },
+      { properties: { plan: 'x' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [0, 1], [1, 1], [0, 0]]] } },
     ] });
   });
-  assert.equal(anrop.length, 3);
-  assert.match(anrop[0], /^https:\/\/gis\.malmo\.se\/arcgis\/rest\/services\/SEPlan\/Gallande_planer\/MapServer\/1\/query/);
-  assert.equal(rader.length, 1);
-  assert.deepEqual({ ...rader[0], geojson: undefined, minx: undefined, miny: undefined, maxx: undefined, maxy: undefined }, {
-    id: 'kommun:1280:1:1', typ: 'DP', planid: '1280K-DP4000', namn: 'ROSENHOLMS HANDELSTRÄDGÅRD', datum: '1989-05-25', kommun: '1280',
+  assert.equal(anrop.length, 5);
+  assert.equal(rader.length, 2);
+  const utan = (r) => ({ ...r, geojson: undefined, minx: undefined, miny: undefined, maxx: undefined, maxy: undefined });
+  assert.deepEqual(utan(rader[0]), {
+    id: 'kommun:1280:detaljplaner_p:0', typ: 'DP', planid: '1280K-DP4000', namn: 'ROSENHOLMS HANDELSTRÄDGÅRD', datum: '1989-05-25', kommun: '1280',
     geojson: undefined, minx: undefined, miny: undefined, maxx: undefined, maxy: undefined,
-    // Den interna kartor.malmo.se-länken används inte; planvisarens sökning ger PDF:erna (bara från geo.malmo.se).
+    // Bara PDF:er från geo.malmo.se.
     dokument: JSON.stringify([{ titel: 'Plankarta del 1', url: 'https://geo.malmo.se/planvisaren-server/pdf/dp/DP4000_1.pdf' },
       { titel: 'Planbeskrivning', url: 'https://geo.malmo.se/planvisaren-server/pdf/dp/DP4000_dok.pdf' }]) });
+  assert.equal(JSON.parse(rader[0].geojson).coordinates[0][0][0], 13);
+  assert.deepEqual([rader[1].typ, rader[1].namn, rader[1].datum, JSON.parse(rader[1].dokument)],
+    ['ÄDP', 'Ändring', null, [{ titel: 'Planen i Malmös detaljplaneportal', url: 'https://malmo.seplan.se/plan/1#/detaljplanid/841' }]]);
 });
 
 test('hämtning från WFS: varje lager ger sin plantyp, upphävda och fel svar stoppas', async () => {
@@ -107,7 +112,7 @@ test('dubbletter mot NGP och arkivering vid ny import', () => {
 
 test('hämtning från ArcGIS: avkortat svar stoppar importen', async () => {
   const ring = [[13, 55.6], [13, 55.61], [13.01, 55.61], [13.01, 55.6], [13, 55.6]];
-  await assert.rejects(hamtaKommunplaner('1280', async (url) => url.includes('returnIdsOnly')
+  await assert.rejects(hamtaKommunplaner('1265', async (url) => url.includes('returnIdsOnly')
     ? Response.json({ objectIds: [1, 2] })
     : Response.json({ exceededTransferLimit: true, features: [{ attributes: { OBJECTID: 1 }, geometry: { rings: [ring] } }] })), /ofullständigt svar/);
 });
@@ -130,9 +135,9 @@ test('dokumentlänkar: HTML-länkar med länktexten som rubrik, annars kommunens
     properties: { planbet_lokal: 'B1', lank_dokument_ext: '<a target="_blank" href="https://a.se/B1 karta.pdf ">Plankarta</a><br><a href=\'http://a.se/x.pdf\'>Osäker</a>' } }] }));
   assert.deepEqual(JSON.parse(haninge.rader[0].dokument), [{ titel: 'Plankarta', url: 'https://a.se/B1%20karta.pdf' }]);
   const ring = [[14.8, 56.87], [14.8, 56.88], [14.81, 56.88], [14.81, 56.87], [14.8, 56.87]];
-  const vaxjo = await hamtaKommunplaner('0780', async (url) => url.includes('returnIdsOnly') ? Response.json({ objectIds: [1] })
-    : Response.json({ features: [{ attributes: { OBJECTID: 1, BETECKNING: '0780K-P1' }, geometry: { rings: [ring] } }] }));
-  assert.equal(JSON.parse(vaxjo.rader[0].dokument)[0].titel, 'Gällande planer hos kommunen');
+  const linkoping = await hamtaKommunplaner('0580', async (url) => url.includes('returnIdsOnly') ? Response.json({ objectIds: [1] })
+    : Response.json({ features: [{ attributes: { OBJECTID: 1, EXTID: '0580K-P1' }, geometry: { rings: [ring] } }] }));
+  assert.equal(JSON.parse(linkoping.rader[0].dokument)[0].titel, 'Gällande planer hos kommunen');
 });
 
 test('dokumentlänkar som prövas: 404, inloggningssida och död server sparas inte', async () => {
