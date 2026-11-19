@@ -70,6 +70,24 @@ test('hämtning ur Malmös Stadsatlas: namn och datum ur detaljplaneportalen, PD
     ['ÄDP', 'Ändring', null, [{ titel: 'Planen i Malmös detaljplaneportal', url: 'https://malmo.seplan.se/plan/1#/detaljplanid/841' }]]);
 });
 
+test('hämtning ur MTG:s myCarta: Web Mercator räknas om, GeometryCollection blir MultiPolygon, stavfel i typen', async () => {
+  // Hova (14,2 E, 58,86 N) i EPSG:3857, med z som i källan.
+  const ring = (x, y) => [[x, y, 0], [x + 500, y, 0], [x + 500, y + 500, 0], [x, y, 0]];
+  const { rader } = await hamtaKommunplaner('1447', async (url) => {
+    assert.match(url, /antagna_detaljplaner_g\.wms\?.*REQUEST=GetFeatureInfo&.*CRS=EPSG:3857/);
+    return Response.json({ type: 'FeatureCollection', features: [
+      { id: 1, properties: { beteck: '1447-P78', namn: 'Del av Björnemossen', kategori: 'Byggnapdsplan', plankartaurl: 'https://karta.mariestad.se/plan/planer_g/Akt_1447_P78.pdf', gammalplanurl: null },
+        geometry: { type: 'GeometryCollection', geometries: [{ type: 'Polygon', coordinates: [ring(1580000, 8150000)] }, { type: 'Polygon', coordinates: [ring(1581000, 8150000)] }] } },
+    ] });
+  });
+  assert.equal(rader.length, 1);
+  assert.deepEqual([rader[0].planid, rader[0].namn, rader[0].typ, rader[0].datum], ['1447-P78', 'Del av Björnemossen', 'BPL', null]);
+  const g = JSON.parse(rader[0].geojson);
+  assert.equal(g.type, 'MultiPolygon');
+  assert.ok(Math.abs(g.coordinates[0][0][0][0] - 14.1933) < 1e-3 && Math.abs(g.coordinates[0][0][0][1] - 58.86) < 0.01);
+  assert.deepEqual(JSON.parse(rader[0].dokument), [{ titel: 'Plankarta', url: 'https://karta.mariestad.se/plan/planer_g/Akt_1447_P78.pdf' }]);
+});
+
 test('hämtning från WFS: varje lager ger sin plantyp, upphävda och fel svar stoppas', async () => {
   const geometry = { type: 'Polygon', coordinates: [[[14, 56.5], [14.01, 56.5], [14.01, 56.51], [14, 56.5]]] };
   const { rader } = await hamtaKommunplaner('0767', async (url) => {
