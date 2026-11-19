@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from '../lib/db.mjs';
 import { lasShape } from '../lib/shp.mjs';
@@ -38,6 +38,15 @@ test('shapefil: ringar, attribut och projektion läses', () => {
   assert.deepEqual(objekt[0].p, { namn: 'Ängen 1', nr: '42' });
   assert.deepEqual(objekt[0].rings.map((r) => r.length), [5, 5]);
   assert.deepEqual(objekt[0].rings[1][1], [4, 2]);
+});
+
+test('shapefil: .cpg säger UTF-8 men texten är Windows-1252', () => {
+  const sokvag = join(mkdtempSync(join(ROOT, 'data/_test/shp-')), 'planer');
+  skrivShape(sokvag);
+  const dbf = readFileSync(sokvag + '.dbf'), start = dbf.indexOf(Buffer.from('Ängen', 'utf8'));
+  const namn = Buffer.alloc(20, ' '); Buffer.from('Ängen 1', 'latin1').copy(namn);
+  namn.copy(dbf, start); writeFileSync(sokvag + '.dbf', dbf);
+  assert.equal(lasShape(sokvag + '.shp').objekt[0].p.namn, 'Ängen 1');
 });
 
 test('shapefil utan .prj: projektionen blir okänd, inte ett fel', () => {
